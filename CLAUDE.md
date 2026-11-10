@@ -12,3 +12,4 @@
 - **Cloudflare is the maintainer's personal account.** Payments, plan changes and account creation are
   the maintainer's to do; secrets live in Wrangler secrets / `.dev.vars`, never in the repo.
 - **UI:** keep the simplified-ePrint layout in yellow (see `worker/public/static/style.css`).
+- **README:** keep it short. Every README change must be reviewed by a human before merging.
