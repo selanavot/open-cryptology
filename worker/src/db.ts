@@ -11,7 +11,7 @@ export interface Env {
   MAILER?: SendEmail;
   CONTACT_TO?: string;
   CONTACT_FROM?: string;
-  /** "1" = private preview: only requests that passed Cloudflare Access are served. */
+  /** "1" = only serve requests that passed Cloudflare Access (pre-launch / maintenance mode). */
   REQUIRE_ACCESS?: string;
   /** "1" = the cron harvests new/changed metadata from ePrint's OAI-PMH feed (see harvest.ts). */
   HARVEST_ENABLED?: string;

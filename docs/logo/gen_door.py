@@ -1,5 +1,5 @@
 import os, subprocess
-OUT = "/Users/selanavot/Documents/open-cryptology/docs/logo/door"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "door")
 os.makedirs(OUT, exist_ok=True)
 SCR = os.path.dirname(os.path.abspath(__file__))
 INK, Y, PAPER = "#212529", "#FFC72C", "#FFF6D6"

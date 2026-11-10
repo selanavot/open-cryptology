@@ -12,9 +12,9 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 - **Metadata from OAI-PMH** (`https://eprint.iacr.org/oai`, CC0), harvested incrementally with
   `from=<last datestamp>`, politely (≥1 s between requests).
 - **No bulk data on laptops.** Locally we use Wrangler's emulated D1/R2 with a ~20-paper PDF
-  sample. Full ingestion runs in the cloud and streams source → R2.
-- **Personal accounts only** (GitHub `selanavot`, personal Cloudflare). Nothing public until
-  explicitly decided.
+  sample. Bulk copies run inside Cloudflare and stream source → R2.
+- **Polite to IACR.** Metadata is harvested every 4 hours at most; PDFs are never fetched from
+  eprint.iacr.org.
 
 ## Components
 

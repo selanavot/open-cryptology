@@ -1,5 +1,5 @@
 import os, subprocess
-OUT = "/Users/selanavot/Documents/open-cryptology/docs/logo/concepts"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "concepts")
 SCR = os.path.dirname(__file__)
 INK, Y, AMBER = "#212529", "#FFC72C", "#E8891A"
 

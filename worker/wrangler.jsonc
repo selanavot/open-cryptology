@@ -1,6 +1,6 @@
 {
-  // Personal Cloudflare account (selanavot). Private preview: workers.dev URL behind Cloudflare Access
-  // (REQUIRE_ACCESS=1 rejects any request that did not pass Access). No custom domain yet.
+  // REQUIRE_ACCESS=1 keeps the site private: only requests that passed Cloudflare Access are served.
+  // Set it to "0" (and remove the Access policy) to make the site public.
   "name": "open-cryptology",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
