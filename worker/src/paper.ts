@@ -1,3 +1,4 @@
+import { turnstileOk, turnstileWidget } from "./turnstile";
 import { canonicalId, getPaper, getSources, parseAuthors, type Env, type Paper, type Source } from "./db";
 import { html, safeUrl, type Html } from "./html";
 import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
@@ -57,7 +58,7 @@ export async function paperPage(
       <dd>${pdfHref
         ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF</a>
           ${p.pdf_maybe_stale ? html`<div class="small text-muted mt-1">May be an older revision</div>` : ""}`
-        : uploadForm(p)}
+        : uploadForm(env, p)}
       </dd>
       ${p.category && html`<dt>Category</dt><dd><a rel="nofollow" href="/search?${new URLSearchParams({ q: p.category }).toString()}">${categoryBadge(p.category)}</a></dd>`}
       <dt>License</dt>
@@ -99,7 +100,7 @@ function licenseBadge(lic: LicenseInfo): Html {
 
 
 
-function uploadForm(p: Paper): Html {
+function uploadForm(env: Env, p: Paper): Html {
   return html`<form id="upload" action="/${p.id}/upload" method="post" enctype="multipart/form-data" class="upload-form">
   <p class="small mb-2">Not mirrored yet. Have the PDF? Upload it anonymously; it’s checked before it appears.</p>
   <input type="file" id="file" name="file" aria-label="PDF file" class="form-control form-control-sm" accept="application/pdf,.pdf" required>
@@ -107,6 +108,7 @@ function uploadForm(p: Paper): Html {
     <label for="website">Leave this field empty</label>
     <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
   </div>
+  ${turnstileWidget(env)}
   <button type="submit" class="btn btn-sm btn-outline-dark mt-2">Upload for verification</button>
 </form>`;
 }
@@ -294,6 +296,7 @@ export async function handleUpload(
   // Honeypot: bots fill every field. Pretend success, store nothing.
   const hp = form.get("website");
   if (typeof hp === "string" && hp.trim() !== "") return thanks(false);
+  if (!(await turnstileOk(env, form, req))) return fail(403, "Please complete the check", "The anti-spam check didn’t pass. Go back and try again.");
 
   const file = form.get("file");
   if (!file || typeof file === "string") return fail(400, "No file", "Please choose a PDF file to upload.");

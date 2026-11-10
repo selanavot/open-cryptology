@@ -1,3 +1,4 @@
+import { TURNSTILE_JS, turnstileOn } from "./turnstile";
 import type { Env } from "./db";
 import { html, type Html, type Val } from "./html";
 
@@ -12,12 +13,13 @@ const ASSET_VER = "5";
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
     "default-src 'none'",
-    "script-src 'self' https://cdnjs.cloudflare.com",
+    "script-src 'self' https://cdnjs.cloudflare.com https://challenges.cloudflare.com",
+    "frame-src https://challenges.cloudflare.com",
     // KaTeX writes inline style attributes.
     "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
     "font-src https://cdnjs.cloudflare.com",
     "img-src 'self' data:",
-    "connect-src 'self'",
+    "connect-src 'self' https://challenges.cloudflare.com",
     "form-action 'self'",
     "base-uri 'none'",
     "frame-ancestors 'none'",
@@ -70,6 +72,7 @@ html`<link rel="stylesheet" href="${KATEX}/katex.min.css" integrity="${KATEX_SRI
 <script defer src="${KATEX}/katex.min.js" integrity="${KATEX_SRI.js}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script defer src="${KATEX}/contrib/auto-render.min.js" integrity="${KATEX_SRI.autoRender}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>`}
 <script defer src="/static/app.js?v=${ASSET_VER}"></script>
+${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>

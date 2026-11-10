@@ -15,6 +15,9 @@ export interface Env {
   REQUIRE_ACCESS?: string;
   /** "1" = the cron harvests new/changed metadata from ePrint's OAI-PMH feed (see harvest.ts). */
   HARVEST_ENABLED?: string;
+  /** Turnstile (CAPTCHA) on upload/contact forms; secret is a Worker secret. */
+  TURNSTILE_SITEKEY?: string;
+  TURNSTILE_SECRET?: string;
 }
 
 export interface Paper {

@@ -27,7 +27,8 @@
     "SITE_NAME": "Open Cryptology",
     "ISSUES_URL": "https://github.com/selanavot/open-cryptology/issues",
     "ORIGIN_BASE": "https://eprint.iacr.org",
-    "CONTACT_FROM": "contact@example.org",
+    "CONTACT_FROM": "contact@opencryptology.org",
+    "TURNSTILE_SITEKEY": "0x4AAAAAAF8BmDcmx1GIL55a",
     "REQUIRE_ACCESS": "1",
     "HARVEST_ENABLED": "1"
   }

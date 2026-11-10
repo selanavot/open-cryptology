@@ -1,3 +1,4 @@
+import { turnstileOk, turnstileWidget } from "./turnstile";
 import { type Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage } from "./layout";
@@ -5,7 +6,7 @@ import { messagePage } from "./layout";
 // Contact form → email to the maintainer via Cloudflare Email Routing (send_email binding).
 // The destination address lives in the CONTACT_TO secret (never in git) and must be a verified
 // destination in Email Routing. CONTACT_FROM must be an address on the zone with Email Routing.
-// TODO before going public: Turnstile + per-IP rate limiting (honeypot + same-origin only for now).
+// Spam protection: honeypot, same-origin check, Turnstile, plus a zone rate-limiting rule.
 
 const TOPICS: Record<string, string> = {
   paper: "Problem with a paper (wrong/outdated PDF, metadata)",
@@ -43,6 +44,7 @@ export function contactForm(env: Env, url: URL): Html {
     <textarea class="form-control" id="c-message" name="message" required maxlength="${MAX_MSG}" rows="4"></textarea>
   </div>
   <div class="hp" aria-hidden="true"><label for="c-website">Website</label> <input id="c-website" name="website" tabindex="-1" autocomplete="off"></div>
+  ${turnstileWidget(env)}
   <div><button class="btn btn-outline-dark" type="submit">Send</button></div>
 </form>`;
 }
@@ -63,6 +65,9 @@ export async function handleContact(env: Env, req: Request, url: URL): Promise<R
     messagePage(env, 200, "Thanks!", html`<p>Your message was sent. <a href="/">Back to the homepage</a>.</p>`);
 
   if (s("website")) return thanks(); // honeypot: pretend success, send nothing
+  if (!(await turnstileOk(env, form, req))) {
+    return messagePage(env, 403, "Please complete the check", html`<p>The anti-spam check didn’t pass. <a href="/contact">Go back</a> and try again.</p>`);
+  }
   const message = s("message");
   const topic = TOPICS[s("topic")] ? s("topic") : "other";
   const paper = PAPER_ID_RE.test(s("paper")) ? s("paper") : "";
