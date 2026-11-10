@@ -24,29 +24,19 @@ and fetch.
 
 The mirror is a starting point. We want Open Cryptology to become one place for everything known
 about each paper, kept up to date as cryptography moves on: discussion, links to the papers and
-protocols it builds on, and known attacks on its constructions. Agents make keeping this current
-affordable.
-
-How to get there is wide open, and **we're looking for collaborators**. If you want to help shape
-it, reach out to [@selanavot](https://github.com/selanavot) or use the
-[contact form](https://opencryptology.org/#contact).
+protocols it builds on, and known attacks on its constructions.
 
 ## Contributing
 
-**Pull requests are welcome**, and so are [issues](https://github.com/selanavot/open-cryptology/issues).
-Authors wanting a paper removed or corrected can use the contact form or open an issue.
+**Pull requests are welcome.** Want to get more involved? Reach out to
+[@selanavot](https://github.com/selanavot) or use the [contact form](https://opencryptology.org/#contact).
 
-This project is **heavily AI-agent assisted**, and you're welcome to work the same way. Just
-remember to tell your agents to make no mistakes. 🙂 House rules are in [`CLAUDE.md`](CLAUDE.md);
-design notes in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+This project is heavily AI-agent assisted. Please tell your agents to make no mistakes. 🙂
+House rules: [`CLAUDE.md`](CLAUDE.md).
 
 ```bash
-cd worker && npm install
-npm run db:init          # create the local D1 schema
-npx wrangler dev         # http://localhost:8787
+cd worker && npm install && npm run db:init && npx wrangler dev   # http://localhost:8787
 ```
-
-Data pipeline: [`pipeline/README.md`](pipeline/README.md).
 
 ## License
 
