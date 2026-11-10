@@ -1,0 +1,13 @@
+{
+  // TEMPORARY helper for the one-off version-history backfill (pipeline/discover_versions.py).
+  // Hashes PDFs already in R2 and copies further versions from public copies (community GitHub
+  // mirror, Wayback Machine) into R2 inside Cloudflare, so the laptop only sends small JSON.
+  // Never fetches from eprint.iacr.org. Protected by a random shared key (secret VERSIONS_KEY).
+  // Delete after the backfill:  npx wrangler delete --name open-cryptology-versions
+  "name": "open-cryptology-versions",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "r2_buckets": [{ "binding": "PDFS", "bucket_name": "open-cryptology-pdfs" }]
+}
