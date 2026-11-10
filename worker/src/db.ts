@@ -36,6 +36,8 @@ export interface Paper {
   submitted: string | null;
   updated: string | null;
   withdrawn: number;
+  withdrawn_on: string | null; // YYYY-MM-DD
+  affiliations: string | null; // JSON array parallel to authors (null entries allowed)
   pdf_key: string | null;
   pdf_sha256: string | null;
   pdf_size: number | null;
@@ -52,6 +54,21 @@ export interface Source {
   size: number | null;
 }
 
+/** One stored PDF of a paper (db/schema.sql `versions`). */
+export interface Version {
+  id: number;
+  paper_id: string;
+  stamp: string; // captured_at as YYYYMMDDThhmmssZ
+  r2_key: string;
+  sha256: string | null;
+  sha1: string | null;
+  size: number | null;
+  source: string;
+  source_url: string | null;
+  captured_at: string;
+  added_at: string;
+}
+
 export interface ListItem {
   id: string;
   year: number;
@@ -62,6 +79,7 @@ export interface ListItem {
   license_code: string | null;
   submitted: string | null;
   withdrawn: number;
+  withdrawn_on: string | null;
   has_pdf: number;
 }
 
@@ -92,7 +110,23 @@ export async function getSources(env: Env, id: string): Promise<Source[]> {
 }
 
 const LIST_COLS =
-  "id, year, num, title, authors, category, license_code, submitted, withdrawn, (pdf_key IS NOT NULL) AS has_pdf";
+  "id, year, num, title, authors, category, license_code, submitted, withdrawn, withdrawn_on, (pdf_key IS NOT NULL) AS has_pdf";
+
+/** Newest first. */
+export async function getVersions(env: Env, id: string): Promise<Version[]> {
+  const r = await env.DB.prepare(
+    "SELECT * FROM versions WHERE paper_id = ?1 ORDER BY captured_at DESC, id DESC",
+  )
+    .bind(id)
+    .all<Version>();
+  return r.results ?? [];
+}
+
+export async function getVersion(env: Env, id: string, stamp: string): Promise<Version | null> {
+  return env.DB.prepare("SELECT * FROM versions WHERE paper_id = ?1 AND stamp = ?2")
+    .bind(id, stamp)
+    .first<Version>();
+}
 
 export async function homeData(env: Env, limit = 15) {
   const [stats, latest] = await env.DB.batch([
@@ -100,7 +134,8 @@ export async function homeData(env: Env, limit = 15) {
       "SELECT SUM(withdrawn = 0) AS papers, SUM(pdf_key IS NOT NULL AND withdrawn = 0) AS pdfs FROM papers",
     ),
     env.DB.prepare(
-      `SELECT ${LIST_COLS} FROM papers WHERE withdrawn = 0 ORDER BY year DESC, num DESC LIMIT ?1`,
+      // Withdrawn papers are listed too (with a badge), unless we know nothing about them.
+      `SELECT ${LIST_COLS} FROM papers WHERE withdrawn = 0 OR title <> '' ORDER BY year DESC, num DESC LIMIT ?1`,
     ).bind(limit),
   ]);
   const s = (stats.results?.[0] ?? {}) as { papers?: number; pdfs?: number };
@@ -154,7 +189,7 @@ export async function search(
     env.DB.prepare("SELECT count(*) AS n FROM papers_fts WHERE papers_fts MATCH ?1").bind(ftsQuery),
     env.DB.prepare(
       `SELECT p.id, p.year, p.num, p.title, p.authors, p.category, p.license_code, p.submitted,
-              p.withdrawn, (p.pdf_key IS NOT NULL) AS has_pdf,
+              p.withdrawn, p.withdrawn_on, (p.pdf_key IS NOT NULL) AS has_pdf,
               highlight(papers_fts, 1, ?4, ?5) AS title_hl,
               highlight(papers_fts, 2, ?4, ?5) AS authors_hl,
               snippet(papers_fts, 3, ?4, ?5, '…', 36) AS snip,

@@ -8,8 +8,9 @@ import { apiMissing, missingPage } from "./missing";
 import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
 import { llmsTxt, robotsTxt } from "./text";
 
-// /YYYY/NNNN, optional trailing slash, .pdf, or /upload. Numbers may be zero-padded.
-const PAPER_RE = /^\/(\d{4})\/(\d{1,6})(\.pdf|\/upload|\/)?$/;
+// /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
+// version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
+const PAPER_RE = /^\/(\d{4})\/(\d{1,6})(\.pdf|\/upload|\/|\/versions\/(\d{8}T\d{6}Z)\.pdf|\/versions\/?)?$/;
 const API_PAPER_RE = /^\/api\/papers\/(\d{4})\/(\d{1,6})\/?$/;
 
 function redirect(url: URL, path: string, status = 301): Response {
@@ -42,6 +43,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return handleUpload(env, req, url, year, num);
     }
     if (!isGet) return methodNotAllowed("GET, HEAD");
+    if (pm[4]) {
+      const want = `/${id}/versions/${pm[4]}.pdf`;
+      if (path !== want) return redirect(url, want);
+      return servePdf(env, req, year, num, ctx, pm[4]);
+    }
+    if (suffix.startsWith("/versions")) return redirect(url, `/${id}#versions`, 302);
     if (suffix === ".pdf") {
       if (path !== `/${id}.pdf`) return redirect(url, `/${id}.pdf`);
       return servePdf(env, req, year, num, ctx);
