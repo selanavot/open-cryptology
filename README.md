@@ -24,7 +24,9 @@ and fetch.
 
 The mirror is a starting point. We want Open Cryptology to become one place for everything known
 about each paper, kept up to date as cryptography moves on: discussion, links to the papers and
-protocols it builds on, and known attacks on its constructions.
+protocols it builds on, and known attacks on its constructions. We think agents are what make this
+feasible: keeping thousands of paper pages current by hand doesn't scale, but agents can do much
+of the reading, linking and updating cheaply.
 
 How to get there is wide open, and this is where we most want your input. If you have opinions on
 what would make this useful, what to build first, or how it should work, please
