@@ -1,12 +1,13 @@
 {
-  // Local-only for now. database_id is a placeholder until a personal Cloudflare account is set up.
+  // Personal Cloudflare account (selanavot). No public routes yet: workers_dev is false.
   "name": "open-cryptology",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": false,
+  "preview_urls": false,
   "assets": { "directory": "./public", "binding": "ASSETS" },
   "d1_databases": [
-    { "binding": "DB", "database_name": "open-cryptology", "database_id": "00000000-0000-0000-0000-000000000000" }
+    { "binding": "DB", "database_name": "open-cryptology", "database_id": "18ccadd9-a999-4b68-8ba6-8db45cd0d5a3" }
   ],
   "r2_buckets": [
     { "binding": "PDFS", "bucket_name": "open-cryptology-pdfs" }
