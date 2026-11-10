@@ -35,6 +35,7 @@ export async function paperPage(
     <h4>Paper ${id}</h4>
     <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${p.title}</a></h3>
     ${authors.map((a) => html`<div class="author"><span class="authorName">${a}</span></div>`)}
+    ${!pdfHref && uploadForm(env, p, orig)}
     <h5 class="mt-3">Abstract</h5>
     <p class="paper-abstract tex">${p.abstract || "No abstract available."}</p>
   </div>
@@ -45,7 +46,7 @@ export async function paperPage(
       <dd>${pdfHref
         ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF</a>
           ${p.pdf_maybe_stale ? html`<div class="small text-muted mt-1">May be an older revision</div>` : ""}`
-        : uploadForm(env, p)}
+        : html`<span class="text-muted">No PDF here yet.</span> <a href="#upload">Upload it</a>`}
       </dd>
       ${p.category && html`<dt>Category</dt><dd><a rel="nofollow" href="/search?${new URLSearchParams({ q: p.category }).toString()}">${categoryBadge(p.category)}</a></dd>`}
       <dt>License</dt>
@@ -87,10 +88,13 @@ function licenseBadge(lic: LicenseInfo): Html {
 
 
 
-function uploadForm(env: Env, p: Paper): Html {
-  return html`<form id="upload" action="/${p.id}/upload" method="post" enctype="multipart/form-data" class="upload-form">
-  <p class="small mb-2">Not mirrored yet. Have the PDF? Upload it anonymously; it’s checked before it appears.</p>
-  <input type="file" id="file" name="file" aria-label="PDF file" class="form-control form-control-sm" accept="application/pdf,.pdf" required>
+function uploadForm(env: Env, p: Paper, orig: string): Html {
+  return html`<form id="upload" action="/${p.id}/upload" method="post" enctype="multipart/form-data" class="upload-form upload-cta">
+  <p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
+  <p>Help out: <a href="${orig}" target="_blank" rel="noopener">download it from ePrint ↗</a> and
+  upload it here. Uploads are anonymous; we check every file before it appears.</p>
+  <label for="file" class="form-label mb-1">PDF file</label>
+  <input type="file" id="file" name="file" class="form-control form-control-sm" accept="application/pdf,.pdf" required>
   <div class="hp" aria-hidden="true">
     <label for="website">Leave this field empty</label>
     <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">

@@ -76,7 +76,21 @@
     });
   }
 
+  // Links to /YYYY/NNNN#upload: TeX rendering can shift the layout after the browser's initial
+  // jump to the upload box, so jump again (and once more on load, unless the reader has scrolled).
+  function scrollToUpload() {
+    if (location.hash !== "#upload") return;
+    var f = document.getElementById("upload");
+    if (!f) return;
+    f.scrollIntoView({ block: "start" });
+    var y = window.scrollY;
+    window.addEventListener("load", function () {
+      if (Math.abs(window.scrollY - y) < 2) f.scrollIntoView({ block: "start" });
+    });
+  }
+
   renderTex();
+  scrollToUpload();
   setupCopy();
   setupUpload();
   setupNavSearch();

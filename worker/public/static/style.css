@@ -262,11 +262,9 @@ div.eprintCard p { margin-top: .5rem; margin-bottom: .5rem; }
 @media (min-width: 992px) {
   .home-side { grid-template-columns: minmax(0, 1fr); align-content: start; }
 }
-.home-recent div.eprintCardContent { padding: .25rem 0 .5rem; }
 .recent-item { padding: .5rem 1.5rem; }
 @media (min-width: 1400px) { .recent-item { padding-left: 1rem; padding-right: 1rem; } }
 h6.recent-title { margin: 0; font-size: 1.1rem; }
-.recent-authors { font-style: italic; font-size: .9rem; margin-top: 0; }
 
 /* ---------- search */
 .search-layout { display: grid; grid-template-columns: minmax(0, 1fr); }
@@ -315,6 +313,18 @@ span.authorName { font-style: italic; }
 #metadata dt + dd { margin-top: .75rem; }
 #metadata dd { margin-left: 2rem; }
 .upload-form { margin-top: .75rem; padding: .75rem; background: #fff8e1; border: 1px dashed #e0b84a; border-radius: .25rem; }
+/* No PDF yet: the upload box sits under the authors; /YYYY/NNNN#upload lands on it below the fixed navbar. */
+.upload-cta {
+  margin: 1.25rem 0 .5rem; padding: 1rem 1.25rem; max-width: 40rem; background: #fff3cd;
+  border: 2px solid var(--nav); border-left-width: 6px; border-radius: .3rem;
+  scroll-margin-top: calc(var(--nav-h) + 1rem);
+}
+.upload-cta:target { box-shadow: 0 0 0 .25rem var(--focus); }
+.upload-cta p { margin: 0 0 .5rem; }
+.upload-cta-head { font-size: 1.15rem; }
+.upload-cta .form-control { max-width: 28rem; }
+/* Keep room for the 300px Turnstile widget on narrow phones. */
+@media (max-width: 575.98px) { .upload-cta { margin-left: -.5rem; margin-right: -.5rem; padding: .75rem; border-left-width: 4px; } }
 .attribution { overflow-wrap: anywhere; margin-bottom: .5rem; }
 #bibtex { white-space: pre; }
 
@@ -323,9 +333,8 @@ span.authorName { font-style: italic; }
 .message h3 { overflow-wrap: anywhere; }
 .contact-form { display: grid; gap: 1rem; max-width: 36rem; margin-top: 1.5rem; }
 .contact-form .form-label { font-weight: 500; }
-#metadata dd > .upload-form { margin-left: -1rem; }
 
-/* Home: the letter is the main column; search + recent papers sit on the right. */
+/* Home: the letter is the main column; search + papers missing a PDF sit on the right. */
 .home-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; padding: .5rem 1rem; }
 @media (min-width: 992px) { .home-layout { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 3rem; } }
 .home-letter { max-width: 42rem; font-size: 1.05rem; line-height: 1.65; }
@@ -336,6 +345,12 @@ span.authorName { font-style: italic; }
 .home-side .eprintCardContent { padding: .5rem 0 0; }
 .recent-list .recent-item { padding: .4rem 0; }
 .recent-list .recent-title { font-size: .95rem; margin: 0; }
-.recent-list .recent-authors { font-size: .82rem; font-style: italic; }
 .contact-panel { margin-top: 1.5rem; border-top: 1px solid #e9ecef; padding-top: .75rem; }
 .contact-panel summary { cursor: pointer; font-weight: 600; }
+
+/* Papers missing a PDF (/missing). */
+.missing-page { max-width: 48rem; padding: .5rem 1rem; }
+.missing-page .results-bar, .missing-page .results, .missing-page .pager { margin-left: 0; }
+.missing-page .recent-item { padding: .5rem 0; }
+.missing-filter { display: flex; align-items: center; gap: .5rem; }
+.missing-filter .form-select { width: auto; }
