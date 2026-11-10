@@ -25,7 +25,7 @@ and fetch.
 The mirror is a starting point. We want Open Cryptology to become one place for everything known
 about each paper, kept up to date as cryptography moves on: discussion, links to the papers and
 protocols it builds on, and known attacks on its constructions. If this is something that excites
-you, [reach out](https://github.com/selanavot)!
+you, reach out!
 
 ## Contributing
 
