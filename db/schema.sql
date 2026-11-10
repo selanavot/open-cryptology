@@ -52,9 +52,11 @@ CREATE TABLE IF NOT EXISTS uploads (
   uploader    TEXT,                          -- later: GitHub login
   created_at  TEXT NOT NULL,
   status      TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'accepted' | 'rejected'
-  checks      TEXT                           -- JSON verification report
+  checks      TEXT,                          -- JSON verification report
+  ip_hash     TEXT                           -- salted hash of the uploader's IP (rate limiting)
 );
 CREATE INDEX IF NOT EXISTS uploads_paper ON uploads(paper_id, status);
+CREATE INDEX IF NOT EXISTS uploads_created ON uploads(created_at);
 
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,

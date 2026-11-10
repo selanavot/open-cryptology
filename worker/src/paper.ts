@@ -1,3 +1,4 @@
+import { ipHash, overLimit, scanPdf } from "./uploadguard";
 import { turnstileOk, turnstileWidget } from "./turnstile";
 import { canonicalId, getPaper, getSources, parseAuthors, type Env, type Paper, type Source } from "./db";
 import { html, safeUrl, type Html } from "./html";
@@ -263,9 +264,9 @@ export async function handleUpload(
   year: number,
   num: number,
 ): Promise<Response> {
-  // TODO(auth): require a Cloudflare Turnstile token and a GitHub OAuth login before accepting
-  //   uploads; record the GitHub login in uploads.uploader.
-  // TODO(rate-limit): per-IP / per-account rate limiting (e.g. Workers Rate Limiting binding).
+  // Anonymous uploads. Layer-1 checks here (origin, Turnstile, honeypot, rate limits, daily caps,
+  // only-where-needed, PDF structure); files land in quarantine/ and are published only after the
+  // offline verifier matches them to the paper.
   const id = canonicalId(year, num);
   const back = html`<p><a class="btn btn-outline-dark" href="/${id}">Back to paper ${id}</a></p>`;
   const fail = (status: number, title: string, msg: string) =>
@@ -277,6 +278,8 @@ export async function handleUpload(
   const p = await getPaper(env, id);
   if (!p) return fail(404, "Paper not found", `Paper ${id} isn’t in the mirror.`);
   if (p.withdrawn) return fail(410, "Paper withdrawn", "Withdrawn papers don’t accept uploads.");
+  if (p.pdf_key && !p.pdf_maybe_stale)
+    return fail(409, "We already have this paper", "This paper already has an up-to-date PDF here, so no upload is needed. Thank you!");
 
   const len = Number(req.headers.get("content-length") ?? "0");
   if (len > MAX_UPLOAD + 64 * 1024) return fail(413, "File too large", "PDFs must be 20 MB or smaller.");
@@ -304,6 +307,9 @@ export async function handleUpload(
   const hp = form.get("website");
   if (typeof hp === "string" && hp.trim() !== "") return thanks(false);
   if (!(await turnstileOk(env, form, req))) return fail(403, "Please complete the check", "The anti-spam check didn’t pass. Go back and try again.");
+  const ip = await ipHash(env, req);
+  const limited = await overLimit(env, ip);
+  if (limited) return fail(429, "Slow down a little", limited);
 
   const file = form.get("file");
   if (!file || typeof file === "string") return fail(400, "No file", "Please choose a PDF file to upload.");
@@ -313,6 +319,8 @@ export async function handleUpload(
   const buf = await file.arrayBuffer();
   const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(5, buf.byteLength)));
   if (head !== "%PDF-") return fail(415, "Not a PDF", "That file doesn’t look like a PDF (it must start with %PDF).");
+  const bad = scanPdf(buf);
+  if (bad) return fail(422, "PDF not accepted", bad);
 
   const sha = toHex(await crypto.subtle.digest("SHA-256", buf));
   if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha) {
@@ -338,10 +346,10 @@ export async function handleUpload(
     customMetadata: { paper_id: id, sha256: sha, original_name: file.name.slice(0, 200) },
   });
   await env.DB.prepare(
-    `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks)
-     VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'pending', NULL)`,
+    `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)
+     VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'pending', NULL, ?7)`,
   )
-    .bind(uploadId, id, key, sha, buf.byteLength, new Date().toISOString())
+    .bind(uploadId, id, key, sha, buf.byteLength, new Date().toISOString(), ip)
     .run();
   return thanks(false);
 }

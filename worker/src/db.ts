@@ -18,6 +18,8 @@ export interface Env {
   /** Turnstile (CAPTCHA) on upload/contact forms; secret is a Worker secret. */
   TURNSTILE_SITEKEY?: string;
   TURNSTILE_SECRET?: string;
+  /** Workers Rate Limiting binding for uploads (per salted IP). */
+  UPLOAD_LIMITER?: RateLimit;
 }
 
 export interface Paper {
