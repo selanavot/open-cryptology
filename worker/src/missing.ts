@@ -1,6 +1,6 @@
 // Papers we don't have a PDF for yet ("help us fill the gaps"): the homepage card, /missing and
 // /api/missing. A paper counts as missing while it is live, has no mirrored PDF and has no upload
-// waiting for verification. The partial index papers_missing (db/schema.sql) serves these queries.
+// waiting for review. The partial index papers_missing (db/schema.sql) serves these queries.
 import type { Env } from "./db";
 import { html, type Html } from "./html";
 import { card, hasTex, page } from "./layout";
@@ -107,7 +107,7 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
     ? html`<strong>${papersWord(total)}</strong> don’t have a PDF here yet.`
     : html`<strong>${papersWord(total)}</strong> from ${mp.year} don’t have a PDF here yet.`}
   If you can grab one from ePrint, please upload it on the paper’s page. Uploads are anonymous, and
-  we check every file before it appears. Papers with an upload awaiting verification aren’t listed.</p>
+  a file that matches the paper appears right away. Papers with an upload awaiting review aren’t listed.</p>
   <form class="missing-filter" method="get" action="/missing">
     <label for="year" class="form-label mb-0">Year</label>
     <select class="form-select form-select-sm" id="year" name="year">

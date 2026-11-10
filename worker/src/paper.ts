@@ -92,7 +92,8 @@ function uploadForm(env: Env, p: Paper, orig: string): Html {
   return html`<form id="upload" action="/${p.id}/upload" method="post" enctype="multipart/form-data" class="upload-form upload-cta">
   <p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
   <p>Help out: <a href="${orig}" target="_blank" rel="noopener">download it from ePrint ↗</a> and
-  upload it here. Uploads are anonymous; we check every file before it appears.</p>
+  upload it here. Uploads are anonymous. A file that matches this paper’s title and authors
+  appears right away; anything else is reviewed first.</p>
   <label for="file" class="form-label mb-1">PDF file</label>
   <input type="file" id="file" name="file" class="form-control form-control-sm" accept="application/pdf,.pdf" required>
   <div class="hp" aria-hidden="true">
@@ -100,7 +101,7 @@ function uploadForm(env: Env, p: Paper, orig: string): Html {
     <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
   </div>
   ${turnstileWidget(env)}
-  <button type="submit" class="btn btn-sm btn-outline-dark mt-2">Upload for verification</button>
+  <button type="submit" class="btn btn-sm btn-outline-dark mt-2">Upload PDF</button>
 </form>`;
 }
 
