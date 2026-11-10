@@ -1,9 +1,10 @@
 {
-  // Personal Cloudflare account (selanavot). No public routes yet: workers_dev is false.
+  // Personal Cloudflare account (selanavot). Private preview: workers.dev URL behind Cloudflare Access
+  // (REQUIRE_ACCESS=1 rejects any request that did not pass Access). No custom domain yet.
   "name": "open-cryptology",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "assets": { "directory": "./public", "binding": "ASSETS" },
   "d1_databases": [
@@ -19,6 +20,7 @@
     "SITE_NAME": "Open Cryptology",
     "ISSUES_URL": "https://github.com/selanavot/open-cryptology/issues",
     "ORIGIN_BASE": "https://eprint.iacr.org",
-    "CONTACT_FROM": "contact@example.org"
+    "CONTACT_FROM": "contact@example.org",
+    "REQUIRE_ACCESS": "1"
   }
 }

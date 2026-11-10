@@ -92,6 +92,14 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // Private-preview gate: while REQUIRE_ACCESS=1, only serve requests that came through
+    // Cloudflare Access (which adds this header after login). Remove the var to go public.
+    if (env.REQUIRE_ACCESS === "1" && !req.headers.get("cf-access-jwt-assertion")) {
+      return new Response("Private preview.\n", {
+        status: 403,
+        headers: { "content-type": "text/plain", "cache-control": "no-store", "x-robots-tag": "noindex" },
+      });
+    }
     try {
       const res = await route(req, env, ctx);
       if (req.method === "HEAD" && res.body) return new Response(null, res);

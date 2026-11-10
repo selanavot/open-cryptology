@@ -11,6 +11,8 @@ export interface Env {
   MAILER?: SendEmail;
   CONTACT_TO?: string;
   CONTACT_FROM?: string;
+  /** "1" = private preview: only requests that passed Cloudflare Access are served. */
+  REQUIRE_ACCESS?: string;
 }
 
 export interface Paper {
