@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8",
   autoRender: "sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05",
 };
-const ASSET_VER = "6";
+const ASSET_VER = "7";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [

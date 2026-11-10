@@ -1,7 +1,8 @@
 import { contactForm } from "./contact";
 import { homeData, parseAuthors, search, toFtsQuery, type Env, type ListItem, type SearchHit } from "./db";
 import { highlighted, html, stripMarks, type Html } from "./html";
-import { card, categoryBadge, hasTex, messagePage, page } from "./layout";
+import { categoryBadge, hasTex, messagePage, page } from "./layout";
+import { missingCard } from "./missing";
 
 export const day = (iso: string | null | undefined): string => (iso ? iso.slice(0, 10) : "");
 export const fmtInt = (n: number): string => n.toLocaleString("en-US");
@@ -9,15 +10,6 @@ export const fmtInt = (n: number): string => n.toLocaleString("en-US");
 function authorLine(names: string[], max = 6): string {
   if (names.length <= max) return names.join(", ");
   return `${names.slice(0, max).join(", ")}, and ${names.length - max} more`;
-}
-
-/** ePrint homepage "Recent papers" entry: small id, h6 title, italic authors. */
-function recentItem(p: ListItem): Html {
-  return html`<div class="recent-item">
-  <small><a href="/${p.id}">${p.id}</a></small>
-  <h6 class="recent-title tex"><a href="/${p.id}">${p.title || "Untitled"}</a></h6>
-  <div class="recent-authors">${authorLine(parseAuthors(p.authors))}</div>
-</div>`;
 }
 
 /** ePrint search-results entry. */
@@ -50,7 +42,7 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 // ---------------------------------------------------------------------------- home
 
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const { latest } = await homeData(env, 10);
+  const missing = await missingCard(env, 12);
   const body = html`<div class="home-layout">
   <article class="home-letter">
     <p>Hello cryptographers!</p>
@@ -61,7 +53,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     speed up your research workflow by giving agents access to the information they need.</p>
     <p><strong>New papers</strong> appear here within days of being accepted on ePrint. We don’t
     take submissions; <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</p>
-    <p><strong>PDFs</strong> come from existing public copies, and readers fill in the gaps: if one is
+    <p><strong>PDFs</strong> come from existing public copies, and readers <a href="/missing">fill in the gaps</a>: if one is
     missing, download it from ePrint and upload it anonymously here.</p>
     <p><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the
     original. Please respect it: credit the authors, no commercial use for NC papers, unmodified
@@ -71,7 +63,6 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     protocols they build on, and known attacks on each construction.</p>
     <p>Something wrong or missing? <a href="#contact">Write to us</a> or
     <a href="${env.ISSUES_URL}">open an issue</a>. Want to help? Get in touch!</p>
-    <p>Thanks for visiting!</p>
     <details id="contact" class="contact-panel"${url.searchParams.has("paper") ? html` open` : ""}>
       <summary>Write to us</summary>
       ${contactForm(env, url)}
@@ -84,12 +75,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
         <button class="btn btn-outline-dark" type="submit">Search</button>
       </div>
     </form>
-    ${card(
-      "Recent papers",
-      html`<div class="recent-list">${latest.map(recentItem)}</div>
-      <p class="mt-2 mb-0"><a href="/search">More recent papers →</a></p>`,
-      "home-recent",
-    )}
+    ${missing.card}
   </aside>
 </div>`;
   return page(env, {
@@ -97,7 +83,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     description:
       "Unofficial mirror of the Cryptology ePrint Archive: fast search and easy access to papers for humans and AI assistants.",
     body,
-    katex: hasTex(...latest.map((p) => p.title)),
+    katex: missing.tex,
     cache: "public, max-age=300",
   });
 }

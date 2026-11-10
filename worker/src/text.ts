@@ -28,6 +28,9 @@ export function llmsTxt(env: Env, origin: string): Response {
   Supports "phrases", prefix*, and author:/title:/abstract: filters. An ID query like "2024/123" is
   reported in "id_match".
 - Search (HTML): ${origin}/search?q=QUERY
+- Papers we have no PDF for yet (JSON): ${origin}/api/missing?page=1&year=YYYY   (50 per page, newest
+  first; fields: id, title, year, url, original_url, upload_url; plus total, total_pages, next).
+  HTML: ${origin}/missing. Uploads are made by people through the form on each paper page.
 - Home (purpose, license guidance, contact form): ${origin}/
 - Original ePrint page for any paper: ${env.ORIGIN_BASE}/YYYY/NNN
 

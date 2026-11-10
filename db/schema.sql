@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS papers (
 );
 CREATE INDEX IF NOT EXISTS papers_year ON papers(year, num);
 CREATE INDEX IF NOT EXISTS papers_updated ON papers(updated);
+-- Papers still missing a PDF (homepage "help us fill the gaps", /missing, /api/missing).
+CREATE INDEX IF NOT EXISTS papers_missing ON papers(year DESC, num DESC) WHERE pdf_key IS NULL AND withdrawn = 0;
 
 -- Full-text search over metadata (external-content FTS5; rebuild after bulk loads with
 -- INSERT INTO papers_fts(papers_fts) VALUES('rebuild');)

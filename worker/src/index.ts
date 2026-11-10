@@ -4,6 +4,7 @@ import { canonicalId, type Env } from "./db";
 import { html } from "./html";
 import { messagePage } from "./layout";
 import { apiPaper, handleUpload, paperPage, servePdf } from "./paper";
+import { apiMissing, missingPage } from "./missing";
 import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
 import { llmsTxt, robotsTxt } from "./text";
 
@@ -76,6 +77,10 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return searchPage(env, url);
     case "/api/search":
       return apiSearch(env, url);
+    case "/missing":
+      return missingPage(env, url);
+    case "/api/missing":
+      return apiMissing(env, url);
     case "/api":
     case "/api/":
       return redirect(url, "/llms.txt", 302);
