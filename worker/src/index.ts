@@ -100,7 +100,12 @@ export default {
     }
     // Private-preview gate: while REQUIRE_ACCESS=1, only serve requests that came through
     // Cloudflare Access (which adds this header after login). Remove the var to go public.
-    if (env.REQUIRE_ACCESS === "1" && !req.headers.get("cf-access-jwt-assertion")) {
+    // Access sits in front of the workers.dev hostname only; on any other hostname (the custom
+    // domain) nothing is served while gated, so a forged header can't get through.
+    if (
+      env.REQUIRE_ACCESS === "1" &&
+      (!host.endsWith(".workers.dev") || !req.headers.get("cf-access-jwt-assertion"))
+    ) {
       return new Response("Private preview.\n", {
         status: 403,
         headers: { "content-type": "text/plain", "cache-control": "no-store", "x-robots-tag": "noindex" },

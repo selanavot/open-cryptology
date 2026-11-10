@@ -205,7 +205,14 @@ export async function servePdf(
       return new Response(hit.body, { headers });
     }
   }
-  const obj = await env.PDFS.get(p.pdf_key, hasRange ? { range: req.headers } : undefined);
+  let obj: R2ObjectBody | null;
+  try {
+    obj = await env.PDFS.get(p.pdf_key, hasRange ? { range: req.headers } : undefined);
+  } catch {
+    // R2 rejects unsatisfiable/malformed ranges; answer like an origin server would.
+    const h = await env.PDFS.head(p.pdf_key);
+    return new Response(null, { status: 416, headers: { "content-range": `bytes */${h?.size ?? "*"}` } });
+  }
   if (!obj) return missing(404, "The mirrored file is missing from storage.");
   if (!etag) headers.set("etag", obj.httpEtag);
   const size = obj.size;

@@ -122,7 +122,7 @@ export interface SearchParams {
 
 export function searchParams(url: URL): SearchParams {
   const q = (url.searchParams.get("q") ?? "").slice(0, 300);
-  const page = Math.min(MAX_PAGE, Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1));
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
   const sort = url.searchParams.get("sort") === "new" ? "new" : "relevance";
   return { q, page, sort };
 }
@@ -141,6 +141,7 @@ export async function runSearch(env: Env, sp: SearchParams) {
 
 export async function searchPage(env: Env, url: URL): Promise<Response> {
   const sp = searchParams(url);
+  sp.page = Math.min(sp.page, MAX_PAGE);
   const id = idFromQuery(sp.q);
   if (id) return Response.redirect(new URL(`/${id}`, url).toString(), 302);
   const { fts, total, hits, error } = await runSearch(env, sp);
@@ -208,7 +209,10 @@ export async function apiSearch(env: Env, url: URL): Promise<Response> {
   const sp = searchParams(url);
   const origin = url.origin;
   const id = idFromQuery(sp.q);
-  const { total, hits, error } = await runSearch(env, sp);
+  const beyond = sp.page > MAX_PAGE;
+  const { total, hits, error } = beyond ? { total: 0, hits: [], error: undefined } : await runSearch(env, sp);
+  const totalPages = Math.min(MAX_PAGE, Math.ceil(total / PER_PAGE));
+  const next = sp.page < totalPages ? (() => { const u = new URL(url); u.searchParams.set("page", String(sp.page + 1)); return u.toString(); })() : null;
   return json(
     {
       query: sp.q,
@@ -216,6 +220,8 @@ export async function apiSearch(env: Env, url: URL): Promise<Response> {
       total,
       page: sp.page,
       per_page: PER_PAGE,
+      total_pages: totalPages,
+      next,
       sort: sp.sort,
       error,
       results: hits.map((h) => ({
