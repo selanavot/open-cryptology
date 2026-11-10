@@ -52,7 +52,6 @@ export interface PageOpts {
 
 export function page(env: Env, o: PageOpts): Response {
   const site = env.SITE_NAME;
-  const original = o.original ?? env.ORIGIN_BASE;
   const doc = html`<!doctype html>
 <html lang="en">
 <head>

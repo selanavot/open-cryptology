@@ -73,4 +73,4 @@ Data pipeline (metadata harvest, source discovery, small sample ingest): see
 
 ## License
 
-Code: MIT (to be confirmed). Paper content: each paper's own license, as stated on its page.
+Code: MIT, see [`LICENSE`](LICENSE). Paper content: each paper's own license, as stated on its page.

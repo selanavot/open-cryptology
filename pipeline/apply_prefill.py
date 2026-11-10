@@ -1,8 +1,11 @@
-"""Record prefill_r2.py results in the remote D1 `papers` table (pdf_* columns), in chunks.
+"""ONE-OFF (remove after the PDF backfill). Record prefill_via_worker.py results in the remote D1
+`papers` table (pdf_* columns), in chunks.
 
 Run after D1's daily write quota has room (free tier: 100k row writes/day; ~1 write per paper).
-  python3 -I pipeline/apply_prefill.py data/prefill/results.jsonl [--dry-run]
-Only papers whose pdf_key is still NULL are touched; re-running is harmless.
+  CLOUDFLARE_ACCOUNT_ID=<account id> python3 -I pipeline/apply_prefill.py data/prefill/results.jsonl [--dry-run]
+Wrangler reads CLOUDFLARE_ACCOUNT_ID from the environment; it is only needed when your Wrangler
+login can see more than one account. Only papers whose pdf_key is still NULL are touched;
+re-running is harmless.
 """
 
 import json
@@ -39,12 +42,11 @@ def main(path, dry=False):
     print(f"{len(stmts)} updates in {(len(stmts) + CHUNK - 1) // CHUNK} chunks", flush=True)
     if dry:
         return
-    env = dict(os.environ, CLOUDFLARE_ACCOUNT_ID="f1a5c2273555ad714cc5911124e671a7")
     for i in range(0, len(stmts), CHUNK):
         with tempfile.NamedTemporaryFile("w", suffix=".sql", delete=False) as f:
             f.write("\n".join(stmts[i:i + CHUNK]))
         r = subprocess.run(["npx", "--no-install", "wrangler", "d1", "execute", "DB", "--remote", "-y", "--file", f.name],
-                           cwd=WORKER_DIR, env=env, capture_output=True, text=True)
+                           cwd=WORKER_DIR, capture_output=True, text=True)
         os.unlink(f.name)
         ok = r.returncode == 0 and '"success": true' in r.stdout
         print(f"chunk {i // CHUNK + 1}: {'ok' if ok else 'FAILED'}", flush=True)
