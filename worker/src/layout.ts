@@ -93,10 +93,6 @@ html`<link rel="stylesheet" href="${KATEX}/katex.min.css" integrity="${KATEX_SRI
     </div>
   </nav>
 </header>
-<div class="container unofficial" role="note">
-  <strong>Unofficial mirror</strong> — not affiliated with or endorsed by the IACR ·
-  <a href="${original}" rel="noopener">${o.originalLabel ?? "Visit the original"} ↗</a>
-</div>
 <main id="main" class="container eprintContent">
 ${o.body}
 </main>

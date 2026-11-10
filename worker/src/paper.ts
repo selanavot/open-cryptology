@@ -38,7 +38,6 @@ export async function paperPage(
   const p = look.paper;
   if (p.withdrawn) return tombstone(env, p, orig);
 
-  const sources = await getSources(env, id);
   const lic = licenseInfo(p, env.ORIGIN_BASE);
   const authors = parseAuthors(p.authors);
   const pdfHref = p.pdf_key ? `/${id}.pdf` : null;
@@ -48,7 +47,6 @@ export async function paperPage(
     <h4>Paper ${id}</h4>
     <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${p.title}</a></h3>
     ${authors.map((a) => html`<div class="author"><span class="authorName">${a}</span></div>`)}
-    ${p.pdf_maybe_stale ? staleNote(p) : ""}
     <h5 class="mt-3">Abstract</h5>
     <p class="paper-abstract tex">${p.abstract || "No abstract available."}</p>
   </div>
@@ -58,39 +56,25 @@ export async function paperPage(
       <dt id="pdf-status">Available format(s)</dt>
       <dd>${pdfHref
         ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF</a>
-          <div class="small text-muted mt-1">${fmtSize(p.pdf_size)}${p.pdf_size ? " · " : ""}from ${sourceLabel(p.pdf_source)}${p.pdf_source_date ? `, captured ${day(p.pdf_source_date)}` : ""}</div>`
-        : html`<span class="badge bg-light">Not mirrored yet</span>`}
-        ${otherCopies(sources, p)}
-        ${!p.pdf_key && uploadForm(p)}
+          ${p.pdf_maybe_stale ? html`<div class="small text-muted mt-1">May be an older revision</div>` : ""}`
+        : uploadForm(p)}
       </dd>
       ${p.category && html`<dt>Category</dt><dd><a rel="nofollow" href="/search?${new URLSearchParams({ q: p.category }).toString()}">${categoryBadge(p.category)}</a></dd>`}
       <dt>License</dt>
-      <dd>${licenseBadge(lic)}
-        ${lic.nd && html`<div class="small mt-1"><strong>NoDerivatives:</strong> redistribute verbatim only — no modified or derived versions.</div>`}
-        ${lic.retroactive && html`<div class="small text-muted mt-1">Assigned retroactively by the IACR for papers posted before 2022.</div>`}
-      </dd>
+      <dd>${licenseBadge(lic)}</dd>
       <dt>History</dt>
-      ${p.updated && p.updated !== p.submitted && html`<dd><time datetime="${p.updated}">${day(p.updated)}</time>: last updated on ePrint</dd>`}
+      ${p.updated && p.updated !== p.submitted && html`<dd><time datetime="${p.updated}">${day(p.updated)}</time>: last updated</dd>`}
       ${p.submitted && html`<dd><time datetime="${p.submitted}">${day(p.submitted)}</time>: submitted</dd>`}
-      ${look.fresh && html`<dd class="text-muted small">metadata fetched just now from ePrint</dd>`}
       <dt>Original</dt>
-      <dd><a href="${orig}" rel="noopener">${orig.replace(/^https?:\/\//, "")}</a></dd>
-      <dt>Short URL</dt>
-      <dd><a href="https://ia.cr/${id}" rel="noopener">https://ia.cr/${id}</a></dd>
-      <dt>Machine-readable</dt>
-      <dd><a href="/api/papers/${id}">JSON</a></dd>
+      <dd><a href="${orig}" rel="noopener">View on ePrint ↗</a></dd>
     </dl>
   </div>
 </div>
 
-${licenseBlock(lic, orig)}
-
 <p class="mt-4 mb-2"><strong>BibTeX</strong>
   <button type="button" class="ms-2 btn btn-sm btn-outline-dark" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy to clipboard</span></button></p>
 <pre id="bibtex">${bibtex(p, env.ORIGIN_BASE)}</pre>
-<p class="small text-muted mb-1">Please cite the original ePrint entry (as above), not this mirror.</p>
 <p class="small mb-0"><a href="/?paper=${p.id}#contact">Report a problem with this paper</a></p>`;
-
 
   return page(env, {
     title: `${id}: ${p.title}`,
@@ -105,49 +89,20 @@ ${licenseBlock(lic, orig)}
   });
 }
 
-function staleNote(p: Paper): Html {
-  return html`<div class="alert alert-warning small mt-3">The mirrored PDF may be an older revision: it comes from the
-  ${sourceLabel(p.pdf_source)}${p.pdf_source_date ? `, captured ${day(p.pdf_source_date)}` : ""}, and the
-  paper was updated on ePrint ${p.updated ? `on ${day(p.updated)}` : "since"}. Check the original for the latest version.</div>`;
-}
 
 function licenseBadge(lic: LicenseInfo): Html {
-  if (!lic.code) return html`<span class="text-muted">Unknown — see the original page</span>`;
+  if (!lic.code) return html`<span class="text-muted">See the original page</span>`;
   const u = safeUrl(lic.url);
-  return html`<span class="cc">${lic.code}</span><br>
-  <small>${u ? html`<a href="${u}" rel="license noopener">${lic.label}</a>` : lic.label}</small>`;
+  const title = lic.retroactive ? `${lic.label} (assigned retroactively by the IACR)` : lic.label;
+  return u ? html`<a class="cc" href="${u}" rel="license noopener" title="${title}">${lic.code}</a>` : html`<span class="cc" title="${title}">${lic.code}</span>`;
 }
 
-function licenseBlock(lic: LicenseInfo, orig: string): Html {
-  const u = safeUrl(lic.url);
-  return html`<p class="mt-4 mb-2"><strong>Attribution</strong>
-  <button type="button" class="ms-2 btn btn-sm btn-outline-dark" data-copy="attribution" aria-label="Copy attribution to clipboard">${icons.copy}<span>Copy to clipboard</span></button></p>
-<p id="attribution" class="attribution">${lic.attribution}</p>
-${lic.code &&
-html`<p class="small mb-0">You may reuse this paper under the terms of the
-${u ? html`<a href="${u}" rel="license noopener">license deed</a>` : "license"}:
-credit the authors and link the <a href="${orig}">original</a>${lic.nc ? "; no commercial use" : ""}${lic.sa ? "; share adaptations under the same license" : ""}${lic.nd ? "; redistribute verbatim only" : ""}.</p>`}`;
-}
 
-function otherCopies(sources: Source[], p: Paper): Html | "" {
-  const items = sources
-    .map((s) => ({ s, u: safeUrl(s.url) }))
-    .filter((x) => x.u);
-  if (!items.length) return "";
-  return html`<div class="other-copies small"><span class="text-muted">${p.pdf_key ? "Other copies" : "Copies elsewhere"}:</span>
-  <ul>${items.map(
-    ({ s, u }) => html`<li><a href="${u}" rel="noopener nofollow">${sourceLabel(s.kind)}</a>${
-      s.captured_at ? html` <span class="text-muted">(${day(s.captured_at)})</span>` : ""
-    }</li>`,
-  )}</ul></div>`;
-}
 
 function uploadForm(p: Paper): Html {
   return html`<form id="upload" action="/${p.id}/upload" method="post" enctype="multipart/form-data" class="upload-form">
-  <p class="small mb-2">Have a copy (e.g. downloaded from ePrint as a reader)? Upload it anonymously.
-  We never download PDFs from ePrint ourselves; uploads are checked against the paper before they appear.</p>
-  <label for="file" class="form-label small">PDF file (max ${fmtInt(MAX_UPLOAD / 1024 / 1024)} MB)</label>
-  <input type="file" id="file" name="file" class="form-control form-control-sm" accept="application/pdf,.pdf" required>
+  <p class="small mb-2">Not mirrored yet. Have the PDF? Upload it anonymously; it’s checked before it appears.</p>
+  <input type="file" id="file" name="file" aria-label="PDF file" class="form-control form-control-sm" accept="application/pdf,.pdf" required>
   <div class="hp" aria-hidden="true">
     <label for="website">Leave this field empty</label>
     <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
@@ -410,7 +365,6 @@ export async function apiPaper(
     );
   }
   const lic = licenseInfo(p, env.ORIGIN_BASE);
-  const sources = await getSources(env, id);
   return json({
     id,
     url: `${origin}/${id}`,
@@ -440,7 +394,7 @@ export async function apiPaper(
           maybe_stale: !!p.pdf_maybe_stale,
         }
       : null,
-    other_sources: sources.map((s) => ({ kind: s.kind, url: s.url, captured_at: s.captured_at, size: s.size })),
+    other_sources: (await getSources(env, id)).map((s) => ({ kind: s.kind, url: s.url, captured_at: s.captured_at, size: s.size })),
     bibtex: bibtex(p, env.ORIGIN_BASE),
   }, 200, "public, max-age=600");
 }
