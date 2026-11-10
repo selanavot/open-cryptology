@@ -1,5 +1,5 @@
 import { handleContact } from "./contact";
-import { runIngest } from "./ingest";
+import { runHarvest } from "./harvest";
 import { canonicalId, type Env } from "./db";
 import { html } from "./html";
 import { messagePage } from "./layout";
@@ -117,9 +117,9 @@ export default {
   },
   async scheduled(_ctrl: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      runIngest(env).then(
-        (r) => console.log("ingest", JSON.stringify(r)),
-        (e) => console.error("ingest failed", e instanceof Error ? e.stack : String(e)),
+      runHarvest(env).then(
+        (r) => console.log("harvest", JSON.stringify(r)),
+        (e) => console.error("harvest failed", e instanceof Error ? e.stack : String(e)),
       ),
     );
   },

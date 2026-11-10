@@ -15,8 +15,9 @@
   ],
   // Contact form email (Cloudflare Email Routing). CONTACT_TO is a secret (.dev.vars locally,
   // `wrangler secret put CONTACT_TO` in production) and must be a verified destination address.
-  // Minutely PDF ingestion (src/ingest.ts). Disable with INGEST_ENABLED != "1".
-  "triggers": { "crons": ["* * * * *"] },
+  // Metadata harvest every 4 hours (src/harvest.ts), kept rare to be polite to IACR.
+  // Disable with HARVEST_ENABLED != "1".
+  "triggers": { "crons": ["17 */4 * * *"] },
   "send_email": [{ "name": "MAILER" }],
   "vars": {
     "SITE_NAME": "Open Cryptology",
@@ -24,6 +25,6 @@
     "ORIGIN_BASE": "https://eprint.iacr.org",
     "CONTACT_FROM": "contact@example.org",
     "REQUIRE_ACCESS": "1",
-    "INGEST_ENABLED": "1"
+    "HARVEST_ENABLED": "1"
   }
 }

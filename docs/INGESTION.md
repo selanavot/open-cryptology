@@ -1,5 +1,14 @@
 # Full ingestion plan (no laptop)
 
+> **Current decision (2026-11-10):** the cloud cron does **metadata only**: an incremental
+> OAI-PMH harvest every 4 hours (`worker/src/harvest.ts`), kept rare to be polite to IACR.
+> PDFs are **not** ingested by the cron; R2 gets prefilled by a one-off (or occasionally
+> scheduled) agentic task from the community GitHub mirror and the Wayback Machine, plus
+> verified uploads. The Queue-based design below is kept for reference only.
+> Free-plan note: D1's free tier allows 100k row writes/day; the one-time bulk import used
+> ~219k, so bulk loads must be split across days (or done on Workers Paid).
+
+
 Status: plan. Locally we only run the Python pipeline against Wrangler's emulated D1/R2 with a
 ~20-PDF sample (`pipeline/README.md`). This document describes how the full archive gets into
 R2 and stays current, entirely in the cloud.

@@ -15,7 +15,7 @@ export type Lookup =
   | { kind: "found"; paper: Paper; fresh?: boolean }
   | { kind: "missing"; upstreamError?: boolean };
 
-interface OaiRecord {
+export interface OaiRecord {
   id: string;
   year: number;
   num: number;
@@ -113,7 +113,7 @@ const META_COLS = [
   "retro_license", "submitted", "updated", "withdrawn",
 ] as const;
 
-async function upsert(env: Env, r: OaiRecord): Promise<void> {
+export async function upsert(env: Env, r: OaiRecord): Promise<void> {
   const guard = "WHERE papers.updated IS NULL OR excluded.updated >= papers.updated";
   let stmt: D1PreparedStatement;
   if (r.withdrawn) {
@@ -131,14 +131,17 @@ async function upsert(env: Env, r: OaiRecord): Promise<void> {
        ON CONFLICT(id) DO UPDATE SET ${sets} ${guard}`,
     ).bind(...vals);
   }
-  // External-content FTS: index the new row. (Only reached when the id was absent; the
-  // pipeline's periodic 'rebuild' reconciles any race.)
-  const fts = env.DB.prepare(
-    `INSERT INTO papers_fts(rowid, id, title, authors, abstract)
-     SELECT rowid, id, title, authors, abstract FROM papers
-      WHERE id = ?1`,
+  // External-content FTS: drop the old index entry (if the row exists), then index the row as
+  // it is after the upsert. Both run in one batch (a transaction).
+  const ftsDelete = env.DB.prepare(
+    `INSERT INTO papers_fts(papers_fts, rowid, id, title, authors, abstract)
+     SELECT 'delete', rowid, id, title, authors, abstract FROM papers WHERE id = ?1`,
   ).bind(r.id);
-  await env.DB.batch([stmt, fts]);
+  const ftsInsert = env.DB.prepare(
+    `INSERT INTO papers_fts(rowid, id, title, authors, abstract)
+     SELECT rowid, id, title, authors, abstract FROM papers WHERE id = ?1`,
+  ).bind(r.id);
+  await env.DB.batch([ftsDelete, stmt, ftsInsert]);
 }
 
 // ------------------------------------------------------------------------- lookup
