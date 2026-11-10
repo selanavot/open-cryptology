@@ -32,11 +32,6 @@ protocols it builds on, and known attacks on its constructions.
 [@selanavot](https://github.com/selanavot) or use the [contact form](https://opencryptology.org/#contact).
 
 This project is heavily AI-agent assisted. Please tell your agents to make no mistakes. 🙂
-House rules: [`CLAUDE.md`](CLAUDE.md).
-
-```bash
-cd worker && npm install && npm run db:init && npx wrangler dev   # http://localhost:8787
-```
 
 ## License
 
