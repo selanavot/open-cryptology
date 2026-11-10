@@ -1,4 +1,5 @@
 import { ipHash, overLimit, scanPdf } from "./uploadguard";
+import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
 import { canonicalId, getPaper, getSources, parseAuthors, type Env, type Paper } from "./db";
 import { html, safeUrl, type Html } from "./html";
@@ -282,9 +283,10 @@ export async function handleUpload(
       "Thank you!",
       html`<p>${dup
         ? "We already received this exact file for this paper; it is waiting for verification."
-        : html`We received your PDF for paper <strong>${id}</strong>. It is in quarantine and will be
-          verified (that it is a valid PDF and matches this paper’s title and authors) before it appears on the site.`}</p>
-      <p class="small muted">Verification may take a while. Nothing else is needed from you.</p>${back}`,
+        : html`We received your PDF for paper <strong>${id}</strong>, but we couldn’t automatically confirm
+          it’s this paper (we look for the title and an author’s name on the first page), so a person will
+          review it before it appears.`}</p>
+      <p class="small muted">If you uploaded the wrong file, no harm done — just upload the right one.</p>${back}`,
       { cache: "no-store", noindex: true },
     );
 
@@ -324,7 +326,40 @@ export async function handleUpload(
     .first();
   if (dup) return thanks(true);
 
+  // Instant verification: page 1-2 text must contain the title and an author surname.
+  const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
+  const now = new Date().toISOString();
   const uploadId = crypto.randomUUID();
+  if (report.ok) {
+    // Published immediately, under a per-upload key (never overwrites an earlier copy).
+    const stamp = now.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+    const key = `pdf/${id}/upload-${stamp}.pdf`;
+    await env.PDFS.put(key, buf, {
+      httpMetadata: { contentType: "application/pdf" },
+      customMetadata: { paper_id: id, sha256: sha, source: "upload" },
+    });
+    await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE papers SET pdf_key = ?1, pdf_sha256 = ?2, pdf_size = ?3, pdf_source = 'upload',
+           pdf_source_date = ?4, pdf_maybe_stale = 0 WHERE id = ?5`,
+      ).bind(key, sha, buf.byteLength, now, id),
+      env.DB.prepare(
+        `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'accepted', ?7, ?8)`,
+      ).bind(uploadId, id, key, sha, buf.byteLength, now, JSON.stringify(report), ip),
+    ]);
+    return messagePage(
+      env,
+      200,
+      "Thank you, it’s live!",
+      html`<p>Your PDF matched paper <strong>${id}</strong> (title and authors found on the first page)
+      and is now available to everyone.</p>
+      <p><a class="btn btn-outline-dark" href="/${id}.pdf">Open the PDF</a>
+      <a class="btn btn-outline-dark" href="/missing">Upload another missing paper</a></p>${back}`,
+      { cache: "no-store", noindex: true },
+    );
+  }
+
   const key = `quarantine/${uploadId}.pdf`;
   await env.PDFS.put(key, buf, {
     httpMetadata: { contentType: "application/pdf" },
@@ -332,9 +367,9 @@ export async function handleUpload(
   });
   await env.DB.prepare(
     `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)
-     VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'pending', NULL, ?7)`,
+     VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'pending', ?7, ?8)`,
   )
-    .bind(uploadId, id, key, sha, buf.byteLength, new Date().toISOString(), ip)
+    .bind(uploadId, id, key, sha, buf.byteLength, now, JSON.stringify(report), ip)
     .run();
   return thanks(false);
 }
