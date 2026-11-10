@@ -7,13 +7,14 @@ by default) and to `gh` for GitHub listings.
 
 Nothing here writes data into git: generated SQL, caches and temp PDFs go under `data/`
 (gitignored) and are deleted after use. Nothing here fetches PDFs from eprint.iacr.org.
-Full cloud ingestion is described in `docs/INGESTION.md`.
+In production, metadata stays current via the Worker cron (`worker/src/harvest.ts`); how PDFs get
+into R2 is described in `docs/INGESTION.md`.
 
 | Script | Does | Network |
 |---|---|---|
 | `harvest_oai.py` | OAI-PMH ListRecords (oai_dc) -> `papers`, FTS rebuild, `meta.last_harvest` | eprint.iacr.org/oai, one client, >= 3 s/request, stops at first 403/429 |
 | `discover_sources.py` | where PDFs can be fetched -> `sources` (no downloads) + coverage table | `gh api`; web.archive.org CDX, >= 5 s/request |
-| `ingest_sample.py` | ~20 PDFs -> local R2 `pdf/YYYY/NNNN.pdf` + `papers.pdf_*` | raw.githubusercontent.com, web.archive.org |
+| `ingest_sample.py` | ~20 PDFs -> local R2 `pdf/YYYY/NNNN.pdf` + `papers.pdf_*` (local dev only: the only way to get PDFs into the emulated R2, to exercise the PDF route and paper pages with a mirrored copy) | raw.githubusercontent.com, web.archive.org |
 | `common.py` | polite HTTP GET (per-host spacing, backoff), SQL quoting, wrangler wrappers | |
 
 ## Usage
@@ -45,6 +46,18 @@ npx --no-install wrangler d1 execute DB --local --command \
   "SELECT id FROM papers_fts WHERE papers_fts MATCH 'isogeny' LIMIT 3"
 npx --no-install wrangler r2 object get open-cryptology-pdfs/pdf/2024/1731.pdf --local --file /tmp/x.pdf
 ```
+
+## One-off tooling (historical; remove after the PDF backfill)
+
+These drove the one-time prefill of R2 from public copies (community GitHub mirror, Wayback
+Machine). They are not part of the regular pipeline and get deleted once the backfill is done.
+
+| What | Does |
+|---|---|
+| `../prefill-worker/` | temporary Worker `open-cryptology-prefill`: copies PDFs from the allowed public mirrors into R2 inside Cloudflare (shared-key protected). Delete with `npx wrangler delete --name open-cryptology-prefill` |
+| `prefill_via_worker.py` | sends (id, source URL) batches to that Worker; resumable results log. Env: `PREFILL_WORKER_URL` (defaults to the deployed Worker) |
+| `apply_prefill.py` | writes the results into remote D1 `papers.pdf_*` in chunks (free-plan D1 write quota). Env: `CLOUDFLARE_ACCOUNT_ID` if your Wrangler login sees several accounts |
+| `missing_report.py` | CSV of live papers still without a PDF after the prefill |
 
 ## Data notes
 

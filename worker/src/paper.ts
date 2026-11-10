@@ -1,28 +1,13 @@
 import { ipHash, overLimit, scanPdf } from "./uploadguard";
 import { turnstileOk, turnstileWidget } from "./turnstile";
-import { canonicalId, getPaper, getSources, parseAuthors, type Env, type Paper, type Source } from "./db";
+import { canonicalId, getPaper, getSources, parseAuthors, type Env, type Paper } from "./db";
 import { html, safeUrl, type Html } from "./html";
 import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
 import { bibtex, licenseInfo, originalUrl, type LicenseInfo } from "./license";
 import { lookupPaper } from "./oai";
-import { day, fmtInt, json } from "./pages";
+import { day, json } from "./pages";
 
 export const MAX_UPLOAD = 20 * 1024 * 1024;
-
-const SOURCE_LABELS: Record<string, string> = {
-  "github-mirror": "community GitHub mirror",
-  wayback: "Internet Archive Wayback Machine",
-  arxiv: "arXiv",
-  oa: "open-access copy",
-  upload: "verified upload",
-  other: "other public copy",
-};
-const sourceLabel = (k: string | null) => (k ? SOURCE_LABELS[k] ?? k : "unknown source");
-
-function fmtSize(n: number | null): string {
-  if (!n) return "";
-  return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-}
 
 // ---------------------------------------------------------------------------- paper page
 

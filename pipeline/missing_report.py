@@ -1,4 +1,4 @@
-"""Spreadsheet (CSV) of live papers that still have no mirrored PDF after a prefill run.
+"""ONE-OFF (remove after the PDF backfill). Spreadsheet (CSV) of live papers that still have no mirrored PDF after a prefill run.
 
   python3 -I pipeline/missing_report.py data/prefill/candidates.json data/prefill/results.jsonl OUT.csv
 """
