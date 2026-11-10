@@ -1,5 +1,5 @@
 {
-  // TEMPORARY helper for the one-off R2 prefill (see pipeline/prefill_r2.py --via-worker).
+  // TEMPORARY helper for the one-off R2 prefill (driven by pipeline/prefill_via_worker.py).
   // Copies PDFs from public mirrors (GitHub community mirror, Wayback) into R2 inside Cloudflare.
   // Protected by a random shared key (secret PREFILL_KEY). Delete after the backfill:
   //   npx wrangler delete --name open-cryptology-prefill

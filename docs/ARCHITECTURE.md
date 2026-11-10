@@ -23,7 +23,7 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 | Metadata | Cloudflare D1 (`db/schema.sql`) | papers, FTS5 search, candidate sources, uploads |
 | PDFs | Cloudflare R2 bucket `open-cryptology-pdfs` | `pdf/YYYY/NNNN.pdf`; uploads under `quarantine/` |
 | Site + API | Cloudflare Worker (`worker/`) | server-rendered HTML, JSON API, `llms.txt` |
-| Pipeline | `pipeline/` (Python, stdlib) | OAI harvest → D1; source discovery; sample ingest |
+| Pipeline | `pipeline/` (Python, stdlib) | initial OAI harvest → D1; source discovery; local-dev PDF sample |
 | Updates | Cron Trigger every 4 h | incremental OAI `from=` metadata harvest only; PDFs prefilled separately |
 
 ## Routes (Worker)

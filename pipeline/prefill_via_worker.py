@@ -1,7 +1,14 @@
-"""Drive the temporary prefill Worker (prefill-worker/): send it batches of (id, source URL) and
-let it copy PDFs into R2 inside Cloudflare. The laptop only sends small JSON requests.
+"""ONE-OFF (remove after the PDF backfill). Drive the temporary prefill Worker (prefill-worker/):
+send it batches of (id, source URL) and let it copy PDFs into R2 inside Cloudflare. The laptop
+only sends small JSON requests.
 
   python3 -I pipeline/prefill_via_worker.py data/prefill/candidates.json data/prefill/results.jsonl
+
+candidates.json = `wrangler d1 execute DB --remote --json --command "SELECT p.id, p.year, p.num,
+p.title, p.updated, p.license_code, p.pdf_key, s.kind, s.url, s.captured_at, s.size FROM papers p
+LEFT JOIN sources s ON s.paper_id = p.id WHERE p.withdrawn = 0"`. The shared key is read from
+data/prefill/.prefill-key (same value as the Worker secret PREFILL_KEY); PREFILL_WORKER_URL
+overrides the Worker's /prefill endpoint. Results go to D1 separately via apply_prefill.py.
 
 Resumable: ids already "ok" in results.jsonl are skipped. Source choice per paper: a capture
 at/after the paper's last ePrint update wins (GitHub first), else the newest capture; on failure
@@ -16,7 +23,7 @@ import threading
 import time
 import urllib.request
 
-WORKER = "https://open-cryptology-prefill.opencryptology.workers.dev/prefill"
+WORKER = os.environ.get("PREFILL_WORKER_URL", "https://open-cryptology-prefill.opencryptology.workers.dev/prefill")
 KEY_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "prefill", ".prefill-key")
 GH_BATCH, GH_THREADS, WB_GAP = 20, 6, 3.0
 
