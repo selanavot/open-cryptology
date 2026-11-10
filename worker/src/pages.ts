@@ -56,10 +56,10 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     <p>Hello cryptographers!</p>
     <p>This is an unofficial, non-commercial mirror of the
     <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>. AI agents have become useful for
-    research, including literature review, but only if they can access prior work. ePrint’s access
-    control currently blocks them from fetching the PDFs. This mirror is meant to make that kind of
-    work easy again.</p>
-    <p><strong>New papers</strong> appear here within minutes of being accepted on ePrint. We don’t
+    research, from literature review to smarter search, but only if they can access prior work.
+    ePrint’s access control currently blocks them from fetching the PDFs. This mirror is meant to
+    speed up your research workflow by giving agents access to the information they need.</p>
+    <p><strong>New papers</strong> appear here within hours of being accepted on ePrint. We don’t
     take submissions; <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</p>
     <p><strong>PDFs</strong> come from existing public copies, and readers fill in the gaps: if one is
     missing, download it from ePrint and upload it anonymously here.</p>
@@ -71,7 +71,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     protocols they build on, and known attacks on each construction.</p>
     <p>Something wrong or missing? <a href="#contact">Write to us</a> or
     <a href="${env.ISSUES_URL}">open an issue</a>. Want to help? Get in touch!</p>
-    <p>Thanks for visiting,<br>Sela</p>
+    <p>Thanks for visiting!</p>
     <details id="contact" class="contact-panel"${url.searchParams.has("paper") ? html` open` : ""}>
       <summary>Write to us</summary>
       ${contactForm(env, url)}
