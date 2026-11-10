@@ -4,3 +4,6 @@
 /favicon.svg
   Cache-Control: public, max-age=86400
   X-Content-Type-Options: nosniff
+/apple-touch-icon.png
+  Cache-Control: public, max-age=86400
+  X-Content-Type-Options: nosniff

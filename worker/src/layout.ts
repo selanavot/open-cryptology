@@ -7,7 +7,7 @@ const KATEX_SRI = {
   js: "sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8",
   autoRender: "sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05",
 };
-const ASSET_VER = "4";
+const ASSET_VER = "5";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -62,7 +62,8 @@ ${o.canonical && html`<link rel="canonical" href="${o.canonical}">`}
 ${o.noindex && html`<meta name="robots" content="noindex">`}
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#FFC72C">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.svg?v=${ASSET_VER}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=${ASSET_VER}">
 <link rel="stylesheet" href="/static/style.css?v=${ASSET_VER}">
 ${o.katex &&
 html`<link rel="stylesheet" href="${KATEX}/katex.min.css" integrity="${KATEX_SRI.css}" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -77,7 +78,7 @@ html`<link rel="stylesheet" href="${KATEX}/katex.min.css" integrity="${KATEX_SRI
     <div class="container nav-inner">
       <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-label="Show menu">
       <label for="nav-toggle" class="nav-burger" aria-hidden="true"><span></span><span></span><span></span></label>
-      <a class="site-name" href="/">${site}</a>
+      <a class="site-name" href="/"><img class="site-logo" src="/static/logo.svg?v=${ASSET_VER}" alt="" width="40" height="40">${site}</a>
       <ul class="nav-links">
         <li><a href="/search">Papers</a></li>
       </ul>

@@ -108,6 +108,8 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
   justify-content: space-between; min-height: var(--nav-h); padding-left: 0; padding-right: 0;
 }
 .site-name { color: var(--nav-text); font-size: 1.6rem; line-height: 1.2; padding: .4rem 0; white-space: nowrap; }
+.site-name { display: inline-flex; align-items: center; gap: .6rem; }
+.site-logo { width: 2.5rem; height: 2.5rem; flex: none; }
 .site-name:visited { color: var(--nav-text); }
 .site-name:hover { color: var(--nav-hover); }
 .nav-links { display: flex; list-style: none; margin: 0 0 0 auto; padding: 0; font-size: 1.1rem; }
@@ -135,7 +137,8 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
 @media (max-width: 991.98px) {
   .site-name { font-size: 1.5rem; }
   .nav-burger { display: block; order: 0; }
-  .site-name { order: 1; flex: 1; text-align: center; }
+  .site-name { order: 1; flex: 1; text-align: center; justify-content: center; }
+  .site-logo { width: 2.1rem; height: 2.1rem; }
   .nav-search { order: 2; margin-left: 0; }
   .nav-links {
     order: 3; display: none; flex-basis: 100%; flex-direction: column;
@@ -146,7 +149,7 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
   .nav-search-dd { right: 0; width: 100%; }
 }
 @media (max-width: 767.98px) { .site-name { font-size: 1.4rem; } }
-@media (max-width: 359.98px) { .site-name { font-size: 1.15rem; } }
+@media (max-width: 359.98px) { .site-name { font-size: 1.15rem; gap: .4rem; } .site-logo { width: 1.6rem; height: 1.6rem; } }
 
 /* thin "unofficial" note under the navbar */
 .unofficial {
