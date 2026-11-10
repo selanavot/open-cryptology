@@ -92,6 +92,12 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const host = new URL(req.url).hostname;
+    if (host.startsWith("www.")) {
+      const to = new URL(req.url);
+      to.hostname = host.slice(4);
+      return Response.redirect(to.toString(), 301);
+    }
     // Private-preview gate: while REQUIRE_ACCESS=1, only serve requests that came through
     // Cloudflare Access (which adds this header after login). Remove the var to go public.
     if (env.REQUIRE_ACCESS === "1" && !req.headers.get("cf-access-jwt-assertion")) {

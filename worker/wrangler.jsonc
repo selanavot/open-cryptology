@@ -17,6 +17,10 @@
   // `wrangler secret put CONTACT_TO` in production) and must be a verified destination address.
   // Metadata harvest every 4 hours (src/harvest.ts), kept rare to be polite to IACR.
   // Disable with HARVEST_ENABLED != "1".
+  "routes": [
+    { "pattern": "opencryptology.org", "custom_domain": true },
+    { "pattern": "www.opencryptology.org", "custom_domain": true }
+  ],
   "triggers": { "crons": ["17 */4 * * *"] },
   "send_email": [{ "name": "MAILER" }],
   "vars": {
