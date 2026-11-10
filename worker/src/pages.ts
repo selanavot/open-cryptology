@@ -59,7 +59,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     research, from literature review to smarter search, but only if they can access prior work.
     ePrint’s access control currently blocks them from fetching the PDFs. This mirror is meant to
     speed up your research workflow by giving agents access to the information they need.</p>
-    <p><strong>New papers</strong> appear here within hours of being accepted on ePrint. We don’t
+    <p><strong>New papers</strong> appear here within days of being accepted on ePrint. We don’t
     take submissions; <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</p>
     <p><strong>PDFs</strong> come from existing public copies, and readers fill in the gaps: if one is
     missing, download it from ePrint and upload it anonymously here.</p>
