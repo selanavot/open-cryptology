@@ -1,6 +1,6 @@
 # Simplified door marks, drawn on a 32-unit grid so edges land on whole pixels at 16/32/64.
 import os, subprocess
-OUT = "/Users/selanavot/Documents/open-cryptology/docs/logo/simple"
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "simple")
 os.makedirs(OUT, exist_ok=True)
 SCR = os.path.dirname(os.path.abspath(__file__))
 INK, Y, PALE, AMBER = "#212529", "#FFC72C", "#FFF3C4", "#E8891A"
