@@ -24,22 +24,17 @@ and fetch.
 
 The mirror is a starting point. We want Open Cryptology to become one place for everything known
 about each paper, kept up to date as cryptography moves on: discussion, links to the papers and
-protocols it builds on, and known attacks on its constructions. We think agents are what make this
-feasible: keeping thousands of paper pages current by hand doesn't scale, but agents can do much
-of the reading, linking and updating cheaply.
+protocols it builds on, and known attacks on its constructions. Agents make keeping this current
+affordable.
 
-How to get there is wide open, and this is where we most want your input. If you have opinions on
-what would make this useful, what to build first, or how it should work, please
-[open an issue](https://github.com/selanavot/open-cryptology/issues) and start the conversation.
+How to get there is wide open, and **we're looking for collaborators**. If you want to help shape
+it, reach out to [@selanavot](https://github.com/selanavot) or use the
+[contact form](https://opencryptology.org/#contact).
 
 ## Contributing
 
-**Pull requests are welcome.** If you'd like to get more involved, especially in shaping the
-vision above, get in touch: open an
-[issue](https://github.com/selanavot/open-cryptology/issues), use the
-[contact form](https://opencryptology.org/#contact), or reach out to
-[@selanavot](https://github.com/selanavot). Authors wanting a paper removed or corrected can use
-the same channels.
+**Pull requests are welcome**, and so are [issues](https://github.com/selanavot/open-cryptology/issues).
+Authors wanting a paper removed or corrected can use the contact form or open an issue.
 
 This project is **heavily AI-agent assisted**, and you're welcome to work the same way. Just
 remember to tell your agents to make no mistakes. 🙂 House rules are in [`CLAUDE.md`](CLAUDE.md);
