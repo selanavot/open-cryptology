@@ -18,8 +18,7 @@ AI agents are useful for research only if they can read prior work. The
 [Cryptology ePrint Archive](https://eprint.iacr.org) keeps its PDFs behind a bot challenge that
 blocks agents fetching a paper for a user, which [IACR's own AI policy](https://iacr.org/policy/AIPolicy.html)
 allows. Open Cryptology is an unofficial, non-commercial mirror that makes every paper easy to find
-and fetch. The longer-term goal is one place for everything known about each paper: discussion,
-links to the work it builds on, and known attacks.
+and fetch.
 
 Metadata comes from ePrint's public OAI-PMH feed; PDFs come from existing public copies and verified
 uploads, **never from eprint.iacr.org**. Every paper keeps its authors' license, stated on its page
@@ -37,9 +36,20 @@ with a link to the original. Please respect it.
 
 Please fetch papers as you need them rather than crawling everything.
 
+## Vision
+
+The mirror is a starting point. We want Open Cryptology to become one place for everything known
+about each paper, kept up to date as cryptography moves on: discussion, links to the papers and
+protocols it builds on, and known attacks on its constructions.
+
+How to get there is wide open, and this is where we most want your input. If you have opinions on
+what would make this useful, what to build first, or how it should work, please
+[open an issue](https://github.com/selanavot/open-cryptology/issues) and start the conversation.
+
 ## Contributing
 
-**Pull requests are welcome.** If you'd like to get more involved, get in touch: open an
+**Pull requests are welcome.** If you'd like to get more involved, especially in shaping the
+vision above, get in touch: open an
 [issue](https://github.com/selanavot/open-cryptology/issues), use the
 [contact form](https://opencryptology.org/#contact), or reach out to
 [@selanavot](https://github.com/selanavot). Authors wanting a paper removed or corrected can use
