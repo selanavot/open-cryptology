@@ -1,22 +1,22 @@
 {
   // Local-only for now. database_id is a placeholder until a personal Cloudflare account is set up.
-  "name": "eprint-mirror",
+  "name": "open-cryptology",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": false,
   "assets": { "directory": "./public", "binding": "ASSETS" },
   "d1_databases": [
-    { "binding": "DB", "database_name": "eprint-mirror", "database_id": "00000000-0000-0000-0000-000000000000" }
+    { "binding": "DB", "database_name": "open-cryptology", "database_id": "00000000-0000-0000-0000-000000000000" }
   ],
   "r2_buckets": [
-    { "binding": "PDFS", "bucket_name": "eprint-pdfs" }
+    { "binding": "PDFS", "bucket_name": "open-cryptology-pdfs" }
   ],
   // Contact form email (Cloudflare Email Routing). CONTACT_TO is a secret (.dev.vars locally,
   // `wrangler secret put CONTACT_TO` in production) and must be a verified destination address.
   "send_email": [{ "name": "MAILER" }],
   "vars": {
-    "SITE_NAME": "ePrint Archive Mirror",
-    "ISSUES_URL": "https://github.com/selanavot/eprint-mirror/issues",
+    "SITE_NAME": "Open Cryptology",
+    "ISSUES_URL": "https://github.com/selanavot/open-cryptology/issues",
     "ORIGIN_BASE": "https://eprint.iacr.org",
     "CONTACT_FROM": "contact@example.org"
   }

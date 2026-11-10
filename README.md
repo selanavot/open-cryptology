@@ -1,7 +1,9 @@
-# ePrint Archive Mirror
+# Open Cryptology
 
-An unofficial, non-commercial mirror of the [Cryptology ePrint Archive](https://eprint.iacr.org),
-built so papers are easy to find and fetch, for people and for AI assistants.
+Open Cryptology starts as an unofficial, non-commercial mirror of the
+[Cryptology ePrint Archive](https://eprint.iacr.org), built so papers are easy to find and fetch,
+for people and for AI assistants. The longer-term goal is a shared, up-to-date place for each
+paper: discussion, links between papers and the protocols they build on, and known attacks.
 
 > **Not affiliated with or endorsed by the IACR.** The original archive is
 > <https://eprint.iacr.org>; cite papers there, not here.

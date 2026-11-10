@@ -7,7 +7,7 @@ Lines starting with `>` are notes, not page text.
 
 ## Title
 
-ePrint Archive Mirror
+Open Cryptology
 
 > Layout: title → search box → letter below → latest papers. No tagline. The "Unofficial mirror"
 > banner stays on every page unless you say otherwise.

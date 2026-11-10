@@ -1,5 +1,5 @@
 {
-  "name": "eprint-mirror-worker",
+  "name": "open-cryptology-worker",
   "private": true,
   "type": "module",
   "scripts": {

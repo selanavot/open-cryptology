@@ -326,7 +326,7 @@ papers as needed rather than crawling the whole site; bulk access may be offered
 </article>`;
   return page(env, {
     title: "About",
-    description: "What this unofficial ePrint mirror is, how it is populated, and how to respect paper licenses.",
+    description: "What Open Cryptology (an unofficial ePrint mirror) is, how it is populated, and how to respect paper licenses.",
     body,
     cache: "public, max-age=3600",
   });

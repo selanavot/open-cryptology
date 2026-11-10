@@ -1,4 +1,4 @@
-"""Shared helpers for the ePrint mirror pipeline (Python 3 stdlib only).
+"""Shared helpers for the Open Cryptology pipeline (Python 3 stdlib only).
 
 - polite HTTP GET with per-host minimum spacing and backoff on 429/5xx/connection errors
 - SQL literal quoting for generated D1 files
@@ -20,12 +20,12 @@ WORKER_DIR = os.path.join(REPO, "worker")
 DATA_DIR = os.path.join(REPO, "data")  # gitignored scratch space for generated SQL / temp files
 
 USER_AGENT = (
-    "eprint-mirror-pipeline/0.1 (unofficial non-commercial ePrint mirror; "
+    "open-cryptology-pipeline/0.1 (unofficial non-commercial ePrint mirror; "
     "polite metadata/source discovery)"
 )
 
 D1_BINDING = "DB"
-R2_BUCKET = "eprint-pdfs"
+R2_BUCKET = "open-cryptology-pdfs"
 
 
 def log(*a):

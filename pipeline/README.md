@@ -2,7 +2,7 @@
 
 Python 3 (stdlib only) scripts that fill the **local** Wrangler D1/R2 emulation for the Worker in
 `worker/`. Run them from the repo root with `python3 -I`. They shell out to
-`npx --no-install wrangler` inside `worker/` (bindings `DB` and bucket `eprint-pdfs`, `--local`
+`npx --no-install wrangler` inside `worker/` (bindings `DB` and bucket `open-cryptology-pdfs`, `--local`
 by default) and to `gh` for GitHub listings.
 
 Nothing here writes data into git: generated SQL, caches and temp PDFs go under `data/`
@@ -43,7 +43,7 @@ python3 -I pipeline/ingest_sample.py --ids 2024/123 --force
 cd worker
 npx --no-install wrangler d1 execute DB --local --command \
   "SELECT id FROM papers_fts WHERE papers_fts MATCH 'isogeny' LIMIT 3"
-npx --no-install wrangler r2 object get eprint-pdfs/pdf/2024/1731.pdf --local --file /tmp/x.pdf
+npx --no-install wrangler r2 object get open-cryptology-pdfs/pdf/2024/1731.pdf --local --file /tmp/x.pdf
 ```
 
 ## Data notes

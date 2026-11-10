@@ -6,7 +6,7 @@ import { canonicalId, getPaper, type Env, type Paper } from "./db";
 import { licenseCode } from "./license";
 
 const USER_AGENT =
-  "eprint-mirror-worker/0.1 (unofficial non-commercial ePrint mirror; on-demand single-record OAI lookup)";
+  "open-cryptology-worker/0.1 (unofficial non-commercial ePrint mirror; on-demand single-record OAI lookup)";
 const NEG_TTL_MISSING = 600; // s: OAI says idDoesNotExist
 const NEG_TTL_ERROR = 120; // s: upstream unreachable/blocked; don't hammer it
 const MAX_AHEAD = 300; // only look up ids at most this far past the newest known id of a year
@@ -143,7 +143,7 @@ async function upsert(env: Env, r: OaiRecord): Promise<void> {
 
 // ------------------------------------------------------------------------- lookup
 
-const negKey = (id: string) => `https://negative-cache.eprint-mirror.invalid/oai/${id}`;
+const negKey = (id: string) => `https://negative-cache.open-cryptology.invalid/oai/${id}`;
 
 async function eligible(env: Env, year: number, num: number): Promise<boolean> {
   const nowYear = new Date().getUTCFullYear();

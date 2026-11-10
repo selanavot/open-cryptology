@@ -145,7 +145,7 @@ OAI reports a withdrawn paper as `<header status="deleted">` with no metadata. O
 For the one-off 19.6 GB backfill a scheduled GitHub Actions workflow is simpler than Queues:
 matrix over years (each job well under the 6 h job limit), stream each PDF with `curl` from the
 GitHub mirror (or a `git clone --filter=blob:none` + sparse checkout of one year dir) into R2's
-S3-compatible API (`aws s3 cp - s3://eprint-pdfs/pdf/... --endpoint-url https://<acct>.r2.cloudflarestorage.com`),
+S3-compatible API (`aws s3 cp - s3://open-cryptology-pdfs/pdf/... --endpoint-url https://<acct>.r2.cloudflarestorage.com`),
 then write the `pdf_*` columns with `wrangler d1 execute --remote --file`. Needs an R2 API token
 and a D1-scoped API token as repository secrets. The daily incremental work (harvest, planner,
 small re-ingests) still belongs in the Worker cron.
