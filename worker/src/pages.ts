@@ -50,65 +50,47 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 // ---------------------------------------------------------------------------- home
 
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const { latest } = await homeData(env, 16);
-  const body = html`<div class="home-top">
-  <div class="home-intro">
-    <p class="mb-1">Hello cryptographers!</p>
-    <p class="text-justify mb-0">This is an unofficial, non-commercial mirror of the
+  const { latest } = await homeData(env, 10);
+  const body = html`<div class="home-layout">
+  <article class="home-letter">
+    <p>Hello cryptographers!</p>
+    <p>This is an unofficial, non-commercial mirror of the
     <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>. AI agents have become useful for
     research, including literature review, but only if they can access prior work. ePrint’s access
     control currently blocks them from fetching the PDFs. This mirror is meant to make that kind of
     work easy again.</p>
-  </div>
-  <div class="home-search">
-    <form method="get" action="/search" role="search">
+    <p><strong>New papers</strong> appear here within minutes of being accepted on ePrint. We don’t
+    take submissions; <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</p>
+    <p><strong>PDFs</strong> come from existing public copies, and readers fill in the gaps: if one is
+    missing, download it from ePrint and upload it anonymously here.</p>
+    <p><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the
+    original. Please respect it: credit the authors, no commercial use for NC papers, unmodified
+    copies only for ND.</p>
+    <p><strong>What’s next.</strong> The vision is a one-stop place for everything known about each
+    paper, kept up to date as cryptography moves on: discussion, links between papers and the
+    protocols they build on, and known attacks on each construction.</p>
+    <p>Something wrong or missing? <a href="#contact">Write to us</a> or
+    <a href="${env.ISSUES_URL}">open an issue</a>. Want to help? Get in touch!</p>
+    <p>Thanks for visiting,<br>Sela</p>
+    <details id="contact" class="contact-panel"${url.searchParams.has("paper") ? html` open` : ""}>
+      <summary>Write to us</summary>
+      ${contactForm(env, url)}
+    </details>
+  </article>
+  <aside class="home-side">
+    <form method="get" action="/search" role="search" class="mb-3">
       <div class="input-group">
-        <input type="text" name="q" class="form-control" placeholder="Search papers, or go to 2024/123" aria-label="Search titles, authors and abstracts, or enter a paper ID">
+        <input type="text" name="q" class="form-control" placeholder="Search, or go to 2024/123" aria-label="Search titles, authors and abstracts, or enter a paper ID">
         <button class="btn btn-outline-dark" type="submit">Search</button>
       </div>
     </form>
-  </div>
-</div>
-<div class="home-grid">
-  ${card(
-    "Recent papers",
-    html`<div class="recent-grid">${latest.map(recentItem)}</div>
-    <p class="text-end mt-2 mb-0"><a href="/search">More recent papers →</a></p>`,
-    "home-recent",
-  )}
-  <div class="home-side">
     ${card(
-      "New papers",
-      html`<p>New papers appear here within minutes of being accepted on ePrint. We don’t take
-      submissions; submit to ePrint as usual.</p>
-      <div class="btn-row"><a href="${env.ORIGIN_BASE}/submit" class="btn btn-outline-dark" rel="noopener">Submit on ePrint ↗</a></div>`,
+      "Recent papers",
+      html`<div class="recent-list">${latest.map(recentItem)}</div>
+      <p class="mt-2 mb-0"><a href="/search">More recent papers →</a></p>`,
+      "home-recent",
     )}
-    ${card(
-      "PDFs",
-      html`<p>PDFs come from existing public copies, and readers fill in the gaps: if one is missing,
-      download it from ePrint and upload it anonymously here.</p>`,
-    )}
-    ${card(
-      "Licenses",
-      html`<p>Every paper keeps its authors’ license and links back to the original. Please respect it:
-      credit the authors, no commercial use for NC papers, unmodified copies only for ND.</p>`,
-    )}
-    ${card(
-      "What’s next",
-      html`<p>The vision is a one-stop place for everything known about each paper, kept up to date as
-      cryptography moves on: discussion, links between papers and the protocols they build on, and
-      known attacks on each construction.</p>`,
-    )}
-    ${card(
-      "Contact",
-      html`<p>Something wrong or missing? Write below or
-      <a href="${env.ISSUES_URL}">open an issue</a>. Want to help? Get in touch!</p>
-      ${contactForm(env, url)}
-      <p class="mt-3 mb-0">Thanks for visiting,<br>Sela</p>`,
-      "",
-      "contact",
-    )}
-  </div>
+  </aside>
 </div>`;
   return page(env, {
     title: env.SITE_NAME,

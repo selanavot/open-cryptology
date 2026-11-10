@@ -1,0 +1,1 @@
+{ "extends": "../worker/tsconfig.json", "include": ["src"] }

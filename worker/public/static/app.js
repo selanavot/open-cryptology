@@ -81,3 +81,15 @@
   setupUpload();
   setupNavSearch();
 })();
+
+// Open the contact panel when arriving via #contact or clicking a #contact link.
+(function () {
+  function openContact() {
+    if (location.hash === "#contact") {
+      var d = document.getElementById("contact");
+      if (d && d.tagName === "DETAILS") d.open = true;
+    }
+  }
+  window.addEventListener("hashchange", openContact);
+  openContact();
+})();

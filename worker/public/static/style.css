@@ -347,3 +347,18 @@ span.authorName { font-style: italic; }
 .contact-form { display: grid; gap: 1rem; max-width: 36rem; margin-top: 1.5rem; }
 .contact-form .form-label { font-weight: 500; }
 #metadata dd > .upload-form { margin-left: -1rem; }
+
+/* Home: the letter is the main column; search + recent papers sit on the right. */
+.home-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; padding: .5rem 1rem; }
+@media (min-width: 992px) { .home-layout { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 3rem; } }
+.home-letter { max-width: 42rem; font-size: 1.05rem; line-height: 1.65; }
+.home-letter p { margin: 0 0 1rem; }
+.home-letter .contact-form { max-width: 32rem; margin-top: .5rem; }
+.home-side .eprintCardHeader { margin: 0; padding: .5rem; }
+.home-side .eprintCardHeader h3 { font-size: 1.25rem; }
+.home-side .eprintCardContent { padding: .5rem 0 0; }
+.recent-list .recent-item { padding: .4rem 0; }
+.recent-list .recent-title { font-size: .95rem; margin: 0; }
+.recent-list .recent-authors { font-size: .82rem; font-style: italic; }
+.contact-panel { margin-top: 1.5rem; border-top: 1px solid #e9ecef; padding-top: .75rem; }
+.contact-panel summary { cursor: pointer; font-weight: 600; }
