@@ -1,0 +1,78 @@
+# pipeline/
+
+Python 3 (stdlib only) scripts that fill the **local** Wrangler D1/R2 emulation for the Worker in
+`worker/`. Run them from the repo root with `python3 -I`. They shell out to
+`npx --no-install wrangler` inside `worker/` (bindings `DB` and bucket `eprint-pdfs`, `--local`
+by default) and to `gh` for GitHub listings.
+
+Nothing here writes data into git: generated SQL, caches and temp PDFs go under `data/`
+(gitignored) and are deleted after use. Nothing here fetches PDFs from eprint.iacr.org.
+Full cloud ingestion is described in `docs/INGESTION.md`.
+
+| Script | Does | Network |
+|---|---|---|
+| `harvest_oai.py` | OAI-PMH ListRecords (oai_dc) -> `papers`, FTS rebuild, `meta.last_harvest` | eprint.iacr.org/oai, one client, >= 3 s/request, stops at first 403/429 |
+| `discover_sources.py` | where PDFs can be fetched -> `sources` (no downloads) + coverage table | `gh api`; web.archive.org CDX, >= 5 s/request |
+| `ingest_sample.py` | ~20 PDFs -> local R2 `pdf/YYYY/NNNN.pdf` + `papers.pdf_*` | raw.githubusercontent.com, web.archive.org |
+| `common.py` | polite HTTP GET (per-host spacing, backoff), SQL quoting, wrangler wrappers | |
+
+## Usage
+
+```sh
+# 0. (once) local D1 schema
+(cd worker && npx --no-install wrangler d1 execute DB --local --file ../db/schema.sql)
+
+# 1. metadata
+python3 -I pipeline/harvest_oai.py --from-dir /path/to/saved/oai   # load saved page*.xml (no network)
+python3 -I pipeline/harvest_oai.py                                 # incremental from meta.last_harvest
+python3 -I pipeline/harvest_oai.py --full --save-dir data/oai      # everything, keep the raw pages
+#   --from/--until DATESTAMP, --dry-run, --chunk N (statements per SQL file, default 500)
+
+# 2. sources (GitHub mirror ~1.5 min; Wayback CDX ~2 h: 168 pages of the paged CDX API, one
+#    client, >= 5 s apart; reruns resume from data/cache/discover/ with --keep-cache)
+python3 -I pipeline/discover_sources.py
+python3 -I pipeline/discover_sources.py --skip-github --years 2025-2026 --keep-cache
+python3 -I pipeline/discover_sources.py --stats-only
+
+# 3. sample PDFs into local R2 (idempotent; tops up to -n)
+python3 -I pipeline/ingest_sample.py --dry-run
+python3 -I pipeline/ingest_sample.py
+python3 -I pipeline/ingest_sample.py --ids 2024/123 --force
+
+# checks
+cd worker
+npx --no-install wrangler d1 execute DB --local --command \
+  "SELECT id FROM papers_fts WHERE papers_fts MATCH 'isogeny' LIMIT 3"
+npx --no-install wrangler r2 object get eprint-pdfs/pdf/2024/1731.pdf --local --file /tmp/x.pdf
+```
+
+## Data notes
+
+- `papers.id` keeps ePrint's own spelling (`1996/002`, `2024/048`, `2024/1731`); `num` is the integer.
+- Upserts change metadata columns only and never move a record backwards in time
+  (`excluded.updated >= papers.updated`); `pdf_*` columns are never touched by the harvest.
+- OAI deleted records carry no metadata: a new one is inserted with `title=''`, `authors='[]'`,
+  `withdrawn=1`; an existing paper keeps its metadata and gets `withdrawn=1`.
+- `license_code` is derived from `dc:rights` (`CC BY`, `CC BY-SA`, `CC BY-NC`, `CC BY-NC-SA`,
+  `CC BY-NC-ND`, `CC0`); `retro_license = year < 2022`.
+- `sources` (one row per paper and kind):
+  - `github-mirror`: `arturo-kong/IACR-eprint-mirror`. File names are not always zero-padded
+    (`2023/2.pdf` is `2023/002`). `captured_at` = date of the earliest commit containing the
+    file's current blob (exact per file, derived from the 32-commit history), i.e. when it was
+    pushed, a little after it was downloaded. `tuxxy/IACR-eprint-mirror` is an older ancestor of
+    the same history and adds nothing.
+  - `wayback`: latest capture of `eprint.iacr.org/YYYY/NNNN.pdf` whose payload is a 200 PDF
+    (a `warc/revisit` counts when its digest matches a PDF capture: IA stores unchanged
+    re-crawls as revisits, and `id_` replay returns the original bytes). Listed with the CDX
+    pagination API (168 pages, ~35 s each, ~2 h). `size` is the CDX `length` (approximate).
+- "fresh" in the coverage table = a source captured at/after the OAI datestamp `updated`.
+  The datestamp also moves on some metadata-only edits, so this is conservative.
+
+## Known issues
+
+- On 2026-11-10 eprint.iacr.org started answering this machine's harvester with a Cloudflare
+  "you have been blocked" 403 for `/oai` (robots.txt still 200). `harvest_oai.py` stops cleanly
+  (exit 2, nothing written) and does not try to get around it. The resumptionToken loop was
+  verified against a local stub serving saved pages (`--oai-url http://127.0.0.1:PORT/oai`).
+- web.archive.org CDX is slow and throttles (504s, HTML "Temporarily Offline", refused
+  connections). `discover_sources.py` backs off up to 10-15 min and caches finished pages.

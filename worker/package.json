@@ -1,0 +1,15 @@
+{
+  "name": "eprint-mirror-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:init": "wrangler d1 execute DB --local --file ../db/schema.sql",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "wrangler": "4.153.0",
+    "typescript": "5.9.3",
+    "@cloudflare/workers-types": "5.20261023.1"
+  }
+}

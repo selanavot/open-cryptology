@@ -1,0 +1,6 @@
+/static/*
+  Cache-Control: public, max-age=86400
+  X-Content-Type-Options: nosniff
+/favicon.svg
+  Cache-Control: public, max-age=86400
+  X-Content-Type-Options: nosniff
