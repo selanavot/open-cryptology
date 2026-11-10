@@ -20,22 +20,6 @@ blocks agents fetching a paper for a user, which [IACR's own AI policy](https://
 allows. Open Cryptology is an unofficial, non-commercial mirror that makes every paper easy to find
 and fetch.
 
-Metadata comes from ePrint's public OAI-PMH feed; PDFs come from existing public copies and verified
-uploads, **never from eprint.iacr.org**. Every paper keeps its authors' license, stated on its page
-with a link to the original. Please respect it.
-
-## Using it
-
-| What | URL |
-|---|---|
-| Paper page | `/YYYY/NNNN` |
-| PDF | `/YYYY/NNNN.pdf` |
-| Paper metadata (JSON) | `/api/papers/YYYY/NNNN` |
-| Search (JSON) | `/api/search?q=...` |
-| Guide for AI agents | `/llms.txt` |
-
-Please fetch papers as you need them rather than crawling everything.
-
 ## Vision
 
 The mirror is a starting point. We want Open Cryptology to become one place for everything known
