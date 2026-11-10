@@ -65,3 +65,36 @@ CREATE TABLE IF NOT EXISTS meta (
   value TEXT
 );
 
+
+-- ---------------------------------------------------------------------------------------------
+-- Withdrawn papers and version history (2026-11). Appended as ALTER/CREATE so existing databases
+-- can be migrated with exactly these statements (see docs/VERSIONS.md); on a fresh database they
+-- simply run after the CREATE TABLEs above. (Re-running the whole file on an already migrated
+-- database stops at the first ALTER with "duplicate column"; everything before it is idempotent.)
+
+-- Day the paper was withdrawn on ePrint (YYYY-MM-DD), from the abstract page's history, else the
+-- OAI datestamp of the deleted record. NULL for live papers.
+ALTER TABLE papers ADD COLUMN withdrawn_on TEXT;
+-- JSON array parallel to `authors` (affiliation or null per author), when known. OAI-PMH has no
+-- affiliations, so this is only filled where an abstract page was parsed (withdrawn backfill).
+ALTER TABLE papers ADD COLUMN affiliations TEXT;
+
+-- Every distinct PDF we hold for a paper. papers.pdf_key is the latest one (the default PDF).
+-- R2 keys: the first mirrored copy keeps its original key 'pdf/YYYY/NNNN.pdf'; further versions
+-- live at 'pdf/YYYY/NNNN/<stamp>.pdf' where stamp = captured_at as YYYYMMDDThhmmssZ.
+CREATE TABLE IF NOT EXISTS versions (
+  id          INTEGER PRIMARY KEY,
+  paper_id    TEXT NOT NULL,
+  stamp       TEXT NOT NULL,                 -- captured_at as YYYYMMDDThhmmssZ (URL: /YYYY/NNNN/versions/<stamp>.pdf)
+  r2_key      TEXT NOT NULL UNIQUE,
+  sha256      TEXT,                          -- hex; NULL until hashed
+  sha1        TEXT,                          -- base32 SHA-1 (same form as Wayback CDX digests), for dedup
+  size        INTEGER,
+  source      TEXT NOT NULL,                 -- 'github-mirror' | 'wayback' | 'upload'
+  source_url  TEXT,
+  captured_at TEXT NOT NULL,                 -- ISO; when the source captured this content
+  added_at    TEXT NOT NULL,                 -- ISO; when it was added to the mirror
+  UNIQUE (paper_id, stamp),
+  UNIQUE (paper_id, sha256)
+);
+CREATE INDEX IF NOT EXISTS versions_paper ON versions(paper_id, captured_at);

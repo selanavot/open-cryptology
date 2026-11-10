@@ -107,18 +107,26 @@ export async function upsert(env: Env, r: OaiRecord): Promise<void> {
   const guard = "WHERE papers.updated IS NULL OR excluded.updated >= papers.updated";
   let stmt: D1PreparedStatement;
   if (r.withdrawn) {
+    // Deleted records carry no metadata. An existing paper keeps all of its metadata and PDFs
+    // (ePrint keeps the abstract page too); only the flag, the datestamp and the withdrawal day
+    // change. withdrawn_on = the deleted record's datestamp unless a date is already known.
     stmt = env.DB.prepare(
-      `INSERT INTO papers (id,year,num,title,authors,retro_license,updated,withdrawn)
-       VALUES (?1,?2,?3,'','[]',?4,?5,1)
-       ON CONFLICT(id) DO UPDATE SET updated=excluded.updated, withdrawn=1 ${guard}`,
+      `INSERT INTO papers (id,year,num,title,authors,retro_license,updated,withdrawn,withdrawn_on)
+       VALUES (?1,?2,?3,'','[]',?4,?5,1,substr(?5,1,10))
+       ON CONFLICT(id) DO UPDATE SET updated=excluded.updated, withdrawn=1,
+         withdrawn_on=CASE WHEN papers.withdrawn = 1 AND papers.withdrawn_on IS NOT NULL
+                           THEN papers.withdrawn_on ELSE excluded.withdrawn_on END ${guard}`,
     ).bind(r.id, r.year, r.num, r.retro_license, r.updated);
   } else {
     const cols = ["id", "year", "num", ...META_COLS];
     const vals = cols.map((c) => (r as unknown as Record<string, unknown>)[c] ?? null);
     const sets = META_COLS.map((c) => `${c}=excluded.${c}`).join(", ");
+    // A live record clears any withdrawal; affiliations (not in OAI) survive only while the
+    // author list is unchanged.
     stmt = env.DB.prepare(
       `INSERT INTO papers (${cols.join(",")}) VALUES (${cols.map((_, i) => `?${i + 1}`).join(",")})
-       ON CONFLICT(id) DO UPDATE SET ${sets} ${guard}`,
+       ON CONFLICT(id) DO UPDATE SET ${sets}, withdrawn_on=NULL,
+         affiliations=CASE WHEN excluded.authors = papers.authors THEN papers.affiliations ELSE NULL END ${guard}`,
     ).bind(...vals);
   }
   // External-content FTS: drop the old index entry (if the row exists), then index the row as
