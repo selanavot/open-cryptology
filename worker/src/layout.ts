@@ -80,9 +80,6 @@ html`<link rel="stylesheet" href="${KATEX}/katex.min.css" integrity="${KATEX_SRI
       <a class="site-name" href="/">${site}</a>
       <ul class="nav-links">
         <li><a href="/search">Papers</a></li>
-        <li><a href="/about">About</a></li>
-        <li><a href="/api">API</a></li>
-        <li><a href="/contact">Contact</a></li>
       </ul>
       <details class="nav-search">
         <summary title="Search" aria-label="Search">${searchIcon()}</summary>
@@ -120,10 +117,8 @@ ${footer(env)}
 function footer(env: Env): Html {
   return html`<footer class="container site-footer">
   <nav aria-label="Footer">
-    <a href="/about">About &amp; licenses</a> ·
-    <a href="/api">API</a> ·
-    <a href="/llms.txt">llms.txt</a> ·
-    <a href="/contact">Contact</a> ·
+    <a href="/llms.txt">For AI agents (llms.txt)</a> ·
+    <a href="/#contact">Contact</a> ·
     <a href="${env.ISSUES_URL}">Report an issue</a>
   </nav>
   <p>${env.SITE_NAME} is an unofficial, non-commercial mirror of the
@@ -147,8 +142,8 @@ export const icons = {
 };
 
 /** ePrint-style card: centred h3 header with the gradient underline, then content. */
-export function card(title: string, content: Val, cls = ""): Html {
-  return html`<section class="eprintCard ${cls}">
+export function card(title: string, content: Val, cls = "", id = ""): Html {
+  return html`<section class="eprintCard ${cls}"${id ? html` id="${id}"` : ""}>
   <div class="eprintCardHeader"><h3>${title}</h3></div>
   <div class="eprintCardContent">${content}</div>
 </section>`;

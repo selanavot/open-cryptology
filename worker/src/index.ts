@@ -1,9 +1,10 @@
-import { contactPage, handleContact } from "./contact";
+import { handleContact } from "./contact";
+import { runIngest } from "./ingest";
 import { canonicalId, type Env } from "./db";
 import { html } from "./html";
 import { messagePage } from "./layout";
 import { apiPaper, handleUpload, paperPage, servePdf } from "./paper";
-import { aboutPage, apiDocsPage, apiSearch, homePage, json, notFound, searchPage } from "./pages";
+import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
 import { llmsTxt, robotsTxt } from "./text";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, or /upload. Numbers may be zero-padded.
@@ -42,7 +43,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (!isGet) return methodNotAllowed("GET, HEAD");
     if (suffix === ".pdf") {
       if (path !== `/${id}.pdf`) return redirect(url, `/${id}.pdf`);
-      return servePdf(env, req, year, num);
+      return servePdf(env, req, year, num, ctx);
     }
     if (path !== `/${id}`) return redirect(url, `/${id}`);
     return paperPage(env, ctx, url, year, num);
@@ -61,7 +62,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === "/contact") {
     if (req.method === "POST") return handleContact(env, req, url);
     if (!isGet) return methodNotAllowed("GET, HEAD, POST");
-    return contactPage(env, url);
+    return new Response(null, { status: 302, headers: { location: `/${url.search}#contact` } });
   }
   if (!isGet) return methodNotAllowed("GET, HEAD");
 
@@ -70,17 +71,16 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
   switch (path) {
     case "/":
-      return homePage(env);
+      return homePage(env, url);
     case "/search":
       return searchPage(env, url);
     case "/api/search":
       return apiSearch(env, url);
     case "/api":
-      return apiDocsPage(env, url.origin);
     case "/api/":
-      return redirect(url, "/api");
+      return redirect(url, "/llms.txt", 302);
     case "/about":
-      return aboutPage(env);
+      return redirect(url, "/", 302);
     case "/llms.txt":
       return llmsTxt(env, url.origin);
     case "/robots.txt":
@@ -114,5 +114,13 @@ export default {
         <a href="${env.ISSUES_URL}">report an issue</a>.</p>`,
       );
     }
+  },
+  async scheduled(_ctrl: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      runIngest(env).then(
+        (r) => console.log("ingest", JSON.stringify(r)),
+        (e) => console.error("ingest failed", e instanceof Error ? e.stack : String(e)),
+      ),
+    );
   },
 } satisfies ExportedHandler<Env>;

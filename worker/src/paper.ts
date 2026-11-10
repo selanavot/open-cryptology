@@ -89,7 +89,7 @@ ${licenseBlock(lic, orig)}
   <button type="button" class="ms-2 btn btn-sm btn-outline-dark" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy to clipboard</span></button></p>
 <pre id="bibtex">${bibtex(p, env.ORIGIN_BASE)}</pre>
 <p class="small text-muted mb-1">Please cite the original ePrint entry (as above), not this mirror.</p>
-<p class="small mb-0"><a href="/contact?paper=${p.id}">Report a problem with this paper</a></p>`;
+<p class="small mb-0"><a href="/?paper=${p.id}#contact">Report a problem with this paper</a></p>`;
 
 
   return page(env, {
@@ -190,6 +190,7 @@ export async function servePdf(
   req: Request,
   year: number,
   num: number,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   const id = canonicalId(year, num);
   const orig = originalUrl(env.ORIGIN_BASE, id);
@@ -238,6 +239,15 @@ export async function servePdf(
   }
 
   const hasRange = req.headers.has("range");
+  if (!hasRange) {
+    const hit = await caches.default.match(pdfCacheKey(req, p));
+    if (hit?.body) {
+      headers.set("content-length", hit.headers.get("content-length") ?? "");
+      if (!etag && hit.headers.get("etag")) headers.set("etag", hit.headers.get("etag")!);
+      headers.set("x-cache", "hit");
+      return new Response(hit.body, { headers });
+    }
+  }
   const obj = await env.PDFS.get(p.pdf_key, hasRange ? { range: req.headers } : undefined);
   if (!obj) return missing(404, "The mirrored file is missing from storage.");
   if (!etag) headers.set("etag", obj.httpEtag);
@@ -257,7 +267,24 @@ export async function servePdf(
     return new Response(obj.body, { status: 206, headers });
   }
   headers.set("content-length", String(size));
+  if (ctx && obj.body) {
+    // Edge cache for full downloads so repeat fetches don't cost R2 reads. Keyed on the object's
+    // version so a re-ingest is picked up. (No-op on *.workers.dev; works on a custom domain.)
+    const [a, b] = obj.body.tee();
+    ctx.waitUntil(
+      caches.default.put(
+        pdfCacheKey(req, p),
+        new Response(b, { headers: { "content-type": "application/pdf", "content-length": String(size), "cache-control": "public, max-age=604800", etag: obj.httpEtag } }),
+      ),
+    );
+    return new Response(a, { headers });
+  }
   return new Response(obj.body, { headers });
+}
+
+function pdfCacheKey(req: Request, p: { pdf_key: string | null; pdf_size: number | null; pdf_source_date: string | null }): Request {
+  const v = encodeURIComponent(`${p.pdf_size ?? ""}-${p.pdf_source_date ?? ""}`);
+  return new Request(new URL(`/__pdf-cache/${p.pdf_key}?v=${v}`, req.url).toString());
 }
 
 // ---------------------------------------------------------------------------- upload

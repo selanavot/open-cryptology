@@ -60,3 +60,12 @@ CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- Cloud ingestion bookkeeping (cron in the Worker): failures back off per paper.
+CREATE TABLE IF NOT EXISTS ingest_state (
+  paper_id    TEXT PRIMARY KEY,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  last_error  TEXT,
+  last_source TEXT,
+  next_try_at TEXT                            -- ISO; NULL = eligible now
+);

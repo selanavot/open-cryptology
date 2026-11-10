@@ -1,6 +1,6 @@
 import { type Env } from "./db";
-import { html } from "./html";
-import { messagePage, page } from "./layout";
+import { html, type Html } from "./html";
+import { messagePage } from "./layout";
 
 // Contact form → email to the maintainer via Cloudflare Email Routing (send_email binding).
 // The destination address lives in the CONTACT_TO secret (never in git) and must be a verified
@@ -21,15 +21,12 @@ function contactConfigured(env: Env): boolean {
   return Boolean(env.MAILER && env.CONTACT_TO && env.CONTACT_FROM);
 }
 
-export function contactPage(env: Env, url: URL): Response {
+/** Contact form, rendered as a panel on the home page (posts to /contact). */
+export function contactForm(env: Env, url: URL): Html {
   const paper = url.searchParams.get("paper") ?? "";
   const topic = url.searchParams.get("topic") ?? (paper ? "paper" : "other");
-  const body = html`<div class="prose">
-<h2 class="page-title">Contact</h2>
-<p>Report a problem, request a takedown, or just say hi. Messages go straight to the
-maintainer. You can also <a href="${env.ISSUES_URL}">open a public issue on GitHub</a>.</p>
-${!contactConfigured(env) && html`<div class="alert alert-warning small">The contact form isn’t configured on this deployment yet — please use
-<a href="${env.ISSUES_URL}">GitHub issues</a> instead.</div>`}
+  return html`${!contactConfigured(env) && html`<div class="alert alert-warning small">The contact form isn’t configured on this deployment yet — please
+<a href="${env.ISSUES_URL}">open a GitHub issue</a> instead.</div>`}
 <form class="contact-form" action="/contact" method="post">
   <div><label class="form-label" for="c-topic">Topic</label>
     <select class="form-select" id="c-topic" name="topic">${Object.entries(TOPICS).map(
@@ -39,17 +36,15 @@ ${!contactConfigured(env) && html`<div class="alert alert-warning small">The con
   <div><label class="form-label" for="c-paper">Paper ID <span class="text-muted small">(optional, e.g. 2024/123)</span></label>
     <input class="form-control" id="c-paper" name="paper" value="${PAPER_ID_RE.test(paper) ? paper : ""}" inputmode="numeric" maxlength="12" pattern="\\d{4}/\\d{1,6}">
   </div>
-  <div><label class="form-label" for="c-email">Your email <span class="text-muted small">(optional — only if you want a reply)</span></label>
+  <div><label class="form-label" for="c-email">Your email <span class="text-muted small">(optional, only if you want a reply)</span></label>
     <input class="form-control" type="email" id="c-email" name="email" maxlength="200" autocomplete="email">
   </div>
   <div><label class="form-label" for="c-message">Message</label>
-    <textarea class="form-control" id="c-message" name="message" required maxlength="${MAX_MSG}" rows="8"></textarea>
+    <textarea class="form-control" id="c-message" name="message" required maxlength="${MAX_MSG}" rows="4"></textarea>
   </div>
   <div class="hp" aria-hidden="true"><label for="c-website">Website</label> <input id="c-website" name="website" tabindex="-1" autocomplete="off"></div>
   <div><button class="btn btn-outline-dark" type="submit">Send</button></div>
-</form>
-</div>`;
-  return page(env, { title: "Contact", body, noindex: true, cache: "public, max-age=300" });
+</form>`;
 }
 
 export async function handleContact(env: Env, req: Request, url: URL): Promise<Response> {

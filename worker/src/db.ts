@@ -13,6 +13,8 @@ export interface Env {
   CONTACT_FROM?: string;
   /** "1" = private preview: only requests that passed Cloudflare Access are served. */
   REQUIRE_ACCESS?: string;
+  /** "1" = the minutely cron ingests PDFs into R2 (see ingest.ts). */
+  INGEST_ENABLED?: string;
 }
 
 export interface Paper {
