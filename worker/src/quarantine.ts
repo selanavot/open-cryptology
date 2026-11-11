@@ -1,4 +1,5 @@
 import { type Env } from "./db";
+import { coverageChanged } from "./missing";
 
 // Uploads that couldn't be verified automatically wait in R2 under quarantine/ (and in `uploads`
 // with status 'pending') until the maintainer approves or rejects them at /review (review.ts).
@@ -36,6 +37,7 @@ export async function queueForReview(env: Env, origin: string, a: QueueArgs): Pr
   )
     .bind(uploadId, a.paperId, key, a.sha, a.size, a.uploader, new Date().toISOString(), a.checks, a.ip)
     .run();
+  await coverageChanged(origin, a.paperId);
   await notifyReview(env, origin);
   return uploadId;
 }

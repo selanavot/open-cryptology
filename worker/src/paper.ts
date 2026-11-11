@@ -3,6 +3,7 @@ import { activeContentScan, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
 import { canonicalId, getPaper, getSources, getVersion, getVersions, parseAuthors, type Env, type Paper } from "./db";
+import { coverageChanged } from "./missing";
 import { versionJson, versionsList } from "./versions";
 import { html, safeUrl, type Html } from "./html";
 import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
@@ -469,6 +470,7 @@ export async function handleUpload(
          VALUES (?1, ?2, ?3, ?4, ?5, 'upload', NULL, ?6, ?6)`,
       ).bind(id, stamp, key, sha, buf.byteLength, now),
     ]);
+    await coverageChanged(url.origin, id);
     return uploadRedirect(url, id, "live");
   }
 
