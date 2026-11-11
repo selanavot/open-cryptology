@@ -1,19 +1,9 @@
-// On-demand freshness: when /YYYY/NNNN is not in D1 (e.g. posted minutes ago), ask ePrint's
-// OAI-PMH endpoint (metadata is CC0, not behind the challenge) for that single record and
-// upsert it with the same normalization as pipeline/harvest_oai.py. Never fetches PDFs.
+// OAI-PMH record parsing and the D1 upsert, used by the scheduled harvest (harvest.ts) with the
+// same normalization as pipeline/harvest_oai.py. Requests from visitors never reach ePrint: the
+// harvest (every 4 hours) is the only thing that talks to it.
 
-import { canonicalId, getPaper, type Env, type Paper } from "./db";
+import { type Env } from "./db";
 import { licenseCode } from "./license";
-
-const USER_AGENT =
-  "open-cryptology-worker/0.1 (unofficial non-commercial ePrint mirror; on-demand single-record OAI lookup)";
-const NEG_TTL_MISSING = 600; // s: OAI says idDoesNotExist
-const NEG_TTL_ERROR = 120; // s: upstream unreachable/blocked; don't hammer it
-const MAX_AHEAD = 300; // only look up ids at most this far past the newest known id of a year
-
-export type Lookup =
-  | { kind: "found"; paper: Paper; fresh?: boolean }
-  | { kind: "missing"; upstreamError?: boolean };
 
 export interface OaiRecord {
   id: string;
@@ -142,70 +132,4 @@ export async function upsert(env: Env, r: OaiRecord): Promise<void> {
      SELECT rowid, id, title, authors, abstract FROM papers WHERE id = ?1`,
   ).bind(r.id);
   await env.DB.batch([ftsDelete, stmt, ftsInsert]);
-}
-
-// ------------------------------------------------------------------------- lookup
-
-const negKey = (id: string) => `https://negative-cache.open-cryptology.invalid/oai/${id}`;
-
-async function eligible(env: Env, year: number, num: number): Promise<boolean> {
-  const nowYear = new Date().getUTCFullYear();
-  if (year < 1996 || year > nowYear || num < 1) return false;
-  const row = await env.DB.prepare("SELECT max(num) AS n FROM papers WHERE year = ?1")
-    .bind(year)
-    .first<{ n: number | null }>();
-  const max = row?.n ?? null;
-  // The harvest is complete for older ids, so a gap there is not a fresh paper.
-  if (max === null) return year >= nowYear - 1 && num <= MAX_AHEAD;
-  return num > max && num <= max + MAX_AHEAD;
-}
-
-export async function lookupPaper(
-  env: Env,
-  ctx: ExecutionContext,
-  year: number,
-  num: number,
-): Promise<Lookup> {
-  const id = canonicalId(year, num);
-  const existing = await getPaper(env, id);
-  if (existing) return { kind: "found", paper: existing };
-  if (!(await eligible(env, year, num))) return { kind: "missing" };
-
-  const cache = caches.default;
-  const cached = await cache.match(negKey(id));
-  if (cached) return { kind: "missing", upstreamError: cached.headers.get("x-neg") === "error" };
-
-  const remember = (why: "missing" | "error", ttl: number) =>
-    ctx.waitUntil(
-      cache.put(
-        negKey(id),
-        new Response("", { headers: { "cache-control": `max-age=${ttl}`, "x-neg": why } }),
-      ),
-    );
-
-  const url =
-    `${env.ORIGIN_BASE.replace(/\/$/, "")}/oai?verb=GetRecord&metadataPrefix=oai_dc` +
-    `&identifier=oai:eprint.iacr.org:${id}`;
-  let xml: string;
-  try {
-    const res = await fetch(url, {
-      headers: { "user-agent": USER_AGENT, accept: "application/xml, text/xml" },
-      signal: AbortSignal.timeout(8000),
-    });
-    xml = await res.text();
-    if (!res.ok || !xml.includes("<OAI-PMH")) throw new Error(`OAI HTTP ${res.status}`);
-  } catch (e) {
-    console.warn(`OAI lookup for ${id} failed:`, String(e));
-    remember("error", NEG_TTL_ERROR);
-    return { kind: "missing", upstreamError: true };
-  }
-
-  const parsed = parseGetRecord(xml);
-  if ("error" in parsed || parsed.record.id !== id) {
-    remember("missing", NEG_TTL_MISSING);
-    return { kind: "missing" };
-  }
-  await upsert(env, parsed.record);
-  const paper = await getPaper(env, id);
-  return paper ? { kind: "found", paper, fresh: true } : { kind: "missing" };
 }

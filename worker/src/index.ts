@@ -47,7 +47,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return servePdf(env, req, year, num, ctx);
     }
     if (path !== `/${id}`) return redirect(url, `/${id}`);
-    return paperPage(env, ctx, url, year, num);
+    return paperPage(env, url, year, num);
   }
 
   if (req.method === "OPTIONS" && path.startsWith("/api/")) {
@@ -68,7 +68,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (!isGet) return methodNotAllowed("GET, HEAD");
 
   const am = API_PAPER_RE.exec(path);
-  if (am) return apiPaper(env, ctx, url, Number(am[1]), Number(am[2]));
+  if (am) return apiPaper(env, url, Number(am[1]), Number(am[2]));
 
   switch (path) {
     case "/":

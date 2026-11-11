@@ -1,11 +1,10 @@
-import { ipHash, overLimit, scanPdf } from "./uploadguard";
+import { ACTIVE_MSG, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
 import { canonicalId, getPaper, getSources, parseAuthors, type Env, type Paper } from "./db";
 import { html, safeUrl, type Html } from "./html";
 import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
 import { bibtex, licenseInfo, originalUrl, type LicenseInfo } from "./license";
-import { lookupPaper } from "./oai";
 import { day, json } from "./pages";
 
 export const MAX_UPLOAD = 20 * 1024 * 1024;
@@ -14,16 +13,14 @@ export const MAX_UPLOAD = 20 * 1024 * 1024;
 
 export async function paperPage(
   env: Env,
-  ctx: ExecutionContext,
   url: URL,
   year: number,
   num: number,
 ): Promise<Response> {
   const id = canonicalId(year, num);
   const orig = originalUrl(env.ORIGIN_BASE, id);
-  const look = await lookupPaper(env, ctx, year, num);
-  if (look.kind === "missing") return paperMissing(env, id, orig, !!look.upstreamError);
-  const p = look.paper;
+  const p = await getPaper(env, id);
+  if (!p) return paperMissing(env, id, orig);
   if (p.withdrawn) return tombstone(env, p, orig);
 
   const lic = licenseInfo(p, env.ORIGIN_BASE);
@@ -105,14 +102,12 @@ function uploadForm(env: Env, p: Paper, orig: string): Html {
 </form>`;
 }
 
-function paperMissing(env: Env, id: string, orig: string, upstreamError: boolean): Response {
+function paperMissing(env: Env, id: string, orig: string): Response {
   return messagePage(
     env,
     404,
     `Paper ${id} not found`,
-    html`<p>${upstreamError
-      ? "This paper isn’t in the mirror yet, and we couldn’t reach ePrint to check just now."
-      : "This paper isn’t in the mirror. If it was posted very recently it may appear shortly."}</p>
+    html`<p>This paper isn’t in the mirror. New ePrint papers show up here within a few hours.</p>
     <p><a class="btn btn-outline-dark" href="${orig}" rel="noopener">Try it on the original ePrint ↗</a></p>
     <p>Or <a href="/search">search the mirror</a>.</p>`,
     { original: orig, originalLabel: `Paper ${id} on the original ePrint`, cache: "public, max-age=60" },
@@ -333,6 +328,7 @@ export async function handleUpload(
 
   // Instant verification: page 1-2 text must contain the title and an author surname.
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
+  if (report.active) return fail(422, "PDF not accepted", ACTIVE_MSG);
   const now = new Date().toISOString();
   const uploadId = crypto.randomUUID();
   if (report.ok) {
@@ -383,7 +379,6 @@ export async function handleUpload(
 
 export async function apiPaper(
   env: Env,
-  ctx: ExecutionContext,
   url: URL,
   year: number,
   num: number,
@@ -391,15 +386,14 @@ export async function apiPaper(
   const id = canonicalId(year, num);
   const origin = url.origin;
   const orig = originalUrl(env.ORIGIN_BASE, id);
-  const look = await lookupPaper(env, ctx, year, num);
-  if (look.kind === "missing") {
+  const p = await getPaper(env, id);
+  if (!p) {
     return json(
-      { error: "not_found", id, original_url: orig, upstream_error: !!look.upstreamError },
+      { error: "not_found", id, original_url: orig },
       404,
       "public, max-age=60",
     );
   }
-  const p = look.paper;
   if (p.withdrawn) {
     return json(
       { id, withdrawn: true, title: p.title || null, original_url: orig, dates: { updated: p.updated } },

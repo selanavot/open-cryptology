@@ -40,16 +40,23 @@ export async function overLimit(env: Env, ip: string): Promise<string | null> {
 }
 
 /** Structural sanity scan of an uploaded PDF. Returns a reason to reject, or null.
- *  Heuristic: names inside compressed object streams aren't visible, so this is a first filter;
- *  the daily verifier and the quarantine are the real gates. */
+ *  Heuristic first filter on the raw bytes. Names inside compressed object streams aren't
+ *  visible here; verifyPdf (verify.ts) checks the parsed document for scripts and attachments. */
 export function scanPdf(buf: ArrayBuffer): string | null {
   const bytes = new Uint8Array(buf);
   const tail = new TextDecoder("latin1").decode(bytes.subarray(Math.max(0, bytes.length - 2048)));
   if (!tail.includes("%%EOF")) return "That PDF looks truncated (no end-of-file marker).";
   // Scan the raw bytes as latin1 for active-content features we never need for a paper.
-  const text = new TextDecoder("latin1").decode(bytes);
-  const bad = [/\/JavaScript\b/, /\/JS\s*[(<\[]/, /\/Launch\b/, /\/EmbeddedFiles?\b/, /\/RichMedia\b/, /\/XFA\b/];
-  if (bad.some((re) => re.test(text)))
-    return "That PDF contains active content (scripts, embedded files or launch actions), which we don’t accept.";
+  // PDF names may spell characters as #xx (/J#61vaScript), so decode those inside names first.
+  const text = new TextDecoder("latin1")
+    .decode(bytes)
+    .replace(NAME_WITH_ESCAPE, (name) => name.replace(/#([0-9A-Fa-f]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16))));
+  if (ACTIVE.some((re) => re.test(text))) return ACTIVE_MSG;
   return null;
 }
+
+/** A PDF name token (up to the next delimiter or whitespace) containing at least one #xx escape. */
+const NAME_WITH_ESCAPE = /\/[^\s\/<>\[\]()%{}]*#[0-9A-Fa-f]{2}[^\s\/<>\[\]()%{}]*/g;
+const ACTIVE = [/\/JavaScript\b/, /\/JS\s*[(<\[]/, /\/JS\s+\d+\s+\d+\s+R\b/, /\/Launch\b/, /\/EmbeddedFiles?\b/, /\/RichMedia\b/, /\/XFA\b/];
+export const ACTIVE_MSG =
+  "That PDF contains active content (scripts, embedded files or launch actions), which we don’t accept.";
