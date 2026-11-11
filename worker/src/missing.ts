@@ -105,7 +105,7 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
   <p class="mt-3">${mp.year === null
     ? html`<strong>${papersWord(total)}</strong> ${total === 1 ? "doesn’t" : "don’t"} have a PDF here yet.`
     : html`<strong>${papersWord(total)}</strong> from ${mp.year} ${total === 1 ? "doesn’t" : "don’t"} have a PDF here yet.`}
-  Grab one from ePrint and upload it on the paper’s page: it’s anonymous and appears right away.</p>
+  Grab one from ePrint and upload it on the paper’s page: it’s anonymous, and a matching file appears right away.</p>
   <form class="missing-filter" method="get" action="/missing">
     <label for="year" class="form-label mb-0">Year</label>
     <select class="form-select form-select-sm" id="year" name="year">

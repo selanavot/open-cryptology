@@ -1,5 +1,6 @@
 import { apiUpload } from "./apiupload";
 import { handleReview, isReviewPath } from "./review";
+import { notifyReview } from "./quarantine";
 import { handleContact } from "./contact";
 import { runHarvest } from "./harvest";
 import { canonicalId, type Env } from "./db";
@@ -157,5 +158,7 @@ export default {
         (e) => console.error("harvest failed", e instanceof Error ? e.stack : String(e)),
       ),
     );
+    // Review emails are throttled per upload; this sends one for uploads queued since the last.
+    if (env.SITE_URL) ctx.waitUntil(notifyReview(env, env.SITE_URL));
   },
 } satisfies ExportedHandler<Env>;

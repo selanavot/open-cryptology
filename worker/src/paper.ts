@@ -1,4 +1,4 @@
-import { notifyReview } from "./review";
+import { pendingDuplicate, queueForReview } from "./quarantine";
 import { ACTIVE_MSG, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
@@ -324,7 +324,7 @@ function noPdfYet(env: Env, req: Request, p: Paper, orig: string): Response {
       html`<p><strong>${p.title}</strong></p>
       <p>Help fill the gap: <a href="${orig}" target="_blank" rel="noopener">download it from ePrint ↗</a>,
       then upload it here so everyone (people and AI agents) can get it. Uploads are anonymous, and a
-      file that matches the paper goes live right away.</p>
+      file that matches the paper goes live right away; anything else is reviewed first.</p>
       <p><a class="btn btn-outline-dark" href="/${p.id}#upload">Upload the PDF</a>
       <a class="btn btn-outline-dark" href="${orig}" target="_blank" rel="noopener">Get it on ePrint ↗</a></p>`,
       { original: orig, cache: "no-cache", headers },
@@ -336,7 +336,8 @@ function noPdfYet(env: Env, req: Request, p: Paper, orig: string): Response {
     `Once you have the PDF, please upload it so everyone, including other AI agents, can get it: ` +
     `POST it to ${origin}/api/upload/${p.id} (e.g. curl -X POST --data-binary @paper.pdf -H "Content-Type: application/pdf" ${origin}/api/upload/${p.id}), ` +
     `or use the form at ${upload}. ` +
-    `Uploads are anonymous, and a file that matches the paper goes live right away.`;
+    `Uploads are anonymous. A file that matches the paper goes live right away (HTTP 201); otherwise it is stored and ` +
+    `a person reviews it (HTTP 202 "queued_for_review": received, pending review, no need to upload it again).`;
   if (accept.includes("application/json")) {
     return new Response(JSON.stringify({ error: "no_pdf_yet", id: p.id, title: p.title, original_url: orig, upload_url: upload, api_upload_url: `${origin}/api/upload/${p.id}`, message }, null, 2), {
       status: 404,
@@ -410,12 +411,7 @@ export async function handleUpload(
   if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha) {
     return uploadRedirect(url, id, "have");
   }
-  const dup = await env.DB.prepare(
-    "SELECT id FROM uploads WHERE paper_id = ?1 AND sha256 = ?2 AND status = 'pending' LIMIT 1",
-  )
-    .bind(id, sha)
-    .first();
-  if (dup) return thanks(true);
+  if (await pendingDuplicate(env, id, sha)) return thanks(true);
 
   // Instant verification: page 1-2 text must contain the title and an author surname.
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
@@ -447,18 +443,9 @@ export async function handleUpload(
     return uploadRedirect(url, id, "live");
   }
 
-  const key = `quarantine/${uploadId}.pdf`;
-  await env.PDFS.put(key, buf, {
-    httpMetadata: { contentType: "application/pdf" },
-    customMetadata: { paper_id: id, sha256: sha, original_name: file.name.slice(0, 200) },
+  await queueForReview(env, url.origin, {
+    paperId: id, body: buf, size: buf.byteLength, sha, checks: JSON.stringify(report), ip, uploader: null, originalName: file.name,
   });
-  await env.DB.prepare(
-    `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)
-     VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'pending', ?7, ?8)`,
-  )
-    .bind(uploadId, id, key, sha, buf.byteLength, now, JSON.stringify(report), ip)
-    .run();
-  await notifyReview(env, url.origin, uploadId, id, p.title, JSON.stringify(report));
   return thanks(false);
 }
 
@@ -484,23 +471,11 @@ async function largeUpload(
   if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha) {
     return uploadRedirect(url, p.id, "have");
   }
-  const dup = await env.DB.prepare("SELECT id FROM uploads WHERE paper_id = ?1 AND sha256 = ?2 AND status = 'pending' LIMIT 1")
-    .bind(p.id, sha)
-    .first();
-  if (dup) return thanks(true);
-  const uploadId = crypto.randomUUID();
-  const key = `quarantine/${uploadId}.pdf`;
-  await env.PDFS.put(key, file, {
-    httpMetadata: { contentType: "application/pdf" },
-    customMetadata: { paper_id: p.id, sha256: sha, original_name: file.name.slice(0, 200) },
+  if (await pendingDuplicate(env, p.id, sha)) return thanks(true);
+  await queueForReview(env, url.origin, {
+    paperId: p.id, body: file, size: file.size, sha, ip, uploader: null, originalName: file.name,
+    checks: JSON.stringify({ ok: false, skipped: "large file (over 30 MB), not checked automatically" }),
   });
-  await env.DB.prepare(
-    `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)
-     VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'pending', ?7, ?8)`,
-  )
-    .bind(uploadId, p.id, key, sha, file.size, new Date().toISOString(), JSON.stringify({ ok: false, skipped: "large file, needs review" }), ip)
-    .run();
-  await notifyReview(env, url.origin, uploadId, p.id, p.title, "large file (over 30 MB), needs a person to check it");
   return thanks(false);
 }
 

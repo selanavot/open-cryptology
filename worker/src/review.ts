@@ -3,7 +3,8 @@ import { html } from "./html";
 import { messagePage } from "./layout";
 
 // Maintainer review of uploads that couldn't be verified automatically.
-// Each pending upload triggers an email with a link to /review/<uploadId>. Review pages are behind
+// /review lists every pending upload (newest first); /review/<uploadId> shows one. Pending uploads
+// trigger a (throttled) summary email linking to /review (quarantine.ts). Review pages are behind
 // Cloudflare Access (the maintainer's Cloudflare login): an Access application must cover /review*
 // on every hostname, and the Worker additionally verifies the Access JWT (signature via the team's
 // JWKS, audience, expiry), so a forged header can't get in even if Access were misconfigured.
@@ -59,46 +60,90 @@ interface UploadRow {
   checks: string | null;
 }
 
-/** Email the maintainer about an upload waiting for review. Never throws. */
-export async function notifyReview(env: Env, origin: string, uploadId: string, paperId: string, title: string, checks: string): Promise<void> {
-  if (!env.MAILER || !env.CONTACT_TO || !env.CONTACT_FROM) return;
+const REVIEW_RE = /^\/review\/([0-9a-f-]{36})(\/file)?$/;
+const INDEX_RE = /^\/review\/?$/;
+
+export function isReviewPath(path: string): boolean {
+  return INDEX_RE.test(path) || REVIEW_RE.test(path);
+}
+
+/** One line summary of a stored verification report (uploads.checks). */
+function checkSummary(checks: string | null): string {
+  if (!checks) return "no check";
   try {
-    const link = `${origin}/review/${uploadId}`;
-    await env.MAILER.send({
-      from: { name: `${env.SITE_NAME} uploads`, email: env.CONTACT_FROM },
-      to: env.CONTACT_TO,
-      subject: `[${env.SITE_NAME}] Upload needs review: ${paperId}`,
-      text: [
-        `An upload for ${paperId} couldn't be verified automatically.`,
-        "",
-        `Paper: ${title}`,
-        `Check: ${checks}`,
-        "",
-        `Review it (view the PDF, then approve or reject): ${link}`,
-      ].join("\n"),
-    });
-  } catch (e) {
-    console.error("review email failed", e instanceof Error ? e.message : String(e));
+    const c = JSON.parse(checks) as { titleScore?: number; authorHit?: string | null; noText?: boolean; error?: string; skipped?: string };
+    if (c.skipped) return c.skipped;
+    if (c.error) return `couldn’t parse: ${c.error}`;
+    const parts = [`title ${Math.round((c.titleScore ?? 0) * 100)}%`, c.authorHit ? `author found (${c.authorHit})` : "no author found"];
+    if (c.noText) parts.push("no readable text on pages 1–2");
+    return parts.join(" · ");
+  } catch {
+    return checks.slice(0, 200);
   }
 }
 
-const REVIEW_RE = /^\/review\/([0-9a-f-]{36})(\/file)?$/;
+const NO_STORE = { cache: "no-store", noindex: true } as const;
 
-export function isReviewPath(path: string): boolean {
-  return REVIEW_RE.test(path);
+/** All pending uploads, newest first, with links to review each one. */
+async function reviewIndex(env: Env, url: URL): Promise<Response> {
+  const r = await env.DB.prepare(
+    `SELECT u.id, u.paper_id, u.size, u.created_at, u.checks, u.uploader, p.title, (p.pdf_key IS NOT NULL) AS has_pdf
+       FROM uploads u LEFT JOIN papers p ON p.id = u.paper_id
+      WHERE u.status = 'pending' ORDER BY u.created_at DESC LIMIT 500`,
+  ).all<{ id: string; paper_id: string; size: number; created_at: string; checks: string | null; uploader: string | null; title: string | null; has_pdf: number }>();
+  const rows = r.results ?? [];
+  const done = url.searchParams.get("done");
+  const action = url.searchParams.get("action");
+  return messagePage(
+    env,
+    200,
+    "Uploads waiting for review",
+    html`${done && /^\d{4}\/\d+$/.test(done) && (action === "approved" || action === "rejected")
+      ? html`<p class="upload-notice upload-notice-ok" role="status">Upload for <a href="/${done}">${done}</a> ${action}.</p>`
+      : ""}
+    <p>${rows.length === 0 ? "Nothing is waiting for review." : `${rows.length}${rows.length === 500 ? "+" : ""} pending, newest first.`}</p>
+    <ol class="review-list">
+      ${rows.map(
+        (u) => html`<li style="margin-bottom:1em">
+        <a href="/review/${u.id}"><strong>${u.paper_id}</strong></a> ${u.title ?? "(paper not in the mirror)"}
+        ${u.has_pdf ? html`<strong>(paper already has a PDF now)</strong>` : ""}<br>
+        <span class="small">${u.created_at.slice(0, 16).replace("T", " ")} UTC · ${(u.size / 1e6).toFixed(1)} MB ·
+        ${u.uploader === "api" ? "agent API" : "web form"} · ${checkSummary(u.checks)}</span><br>
+        <span class="small"><a href="/review/${u.id}">Review</a> · <a href="/review/${u.id}/file" target="_blank" rel="noopener">PDF ↗</a> ·
+        <a href="/${u.paper_id}" target="_blank" rel="noopener">paper page ↗</a> ·
+        <a href="${env.ORIGIN_BASE}/${u.paper_id}" target="_blank" rel="noopener">ePrint ↗</a></span>
+        <form method="post" action="/review/${u.id}" style="display:inline">
+          <input type="hidden" name="back" value="list">
+          <button class="btn btn-sm btn-outline-dark" name="action" value="approve">Approve</button>
+          <button class="btn btn-sm btn-outline-dark" name="action" value="reject">Reject</button>
+        </form>
+      </li>`,
+      )}
+    </ol>`,
+    NO_STORE,
+  );
 }
 
 export async function handleReview(req: Request, env: Env, url: URL): Promise<Response> {
-  const m = REVIEW_RE.exec(url.pathname)!;
-  const uploadId = m[1];
   const isPost = req.method === "POST";
   if (!(await accessIdentity(req, env))) {
     return messagePage(env, 403, "Maintainers only", html`<p>Reviewing uploads requires the maintainer’s login.</p>`, { cache: "no-store", noindex: true });
   }
+  if (INDEX_RE.test(url.pathname)) {
+    if (isPost) return messagePage(env, 405, "Method not allowed", html`<p>Use the buttons next to each upload.</p>`, NO_STORE);
+    return reviewIndex(env, url);
+  }
+  const m = REVIEW_RE.exec(url.pathname)!;
+  const uploadId = m[1];
   if (isPost && req.headers.get("origin") && req.headers.get("origin") !== url.origin) {
     return messagePage(env, 403, "Rejected", html`<p>Cross-site requests aren’t accepted.</p>`, { cache: "no-store", noindex: true });
   }
   const form = isPost ? await req.formData() : null;
+  /** Approve/reject from the list page: go back to it. */
+  const backToList = (paperId: string, action: string) =>
+    form?.get("back") === "list"
+      ? new Response(null, { status: 303, headers: { location: `/review?done=${encodeURIComponent(paperId)}&action=${action}`, "cache-control": "no-store" } })
+      : null;
 
   const up = await env.DB.prepare("SELECT * FROM uploads WHERE id = ?1").bind(uploadId).first<UploadRow>();
   if (!up) return messagePage(env, 404, "Upload not found", html`<p>No such upload.</p>`, { cache: "no-store", noindex: true });
@@ -136,12 +181,12 @@ export async function handleReview(req: Request, env: Env, url: URL): Promise<Re
         env.DB.prepare("UPDATE uploads SET status = 'accepted', r2_key = ?2 WHERE id = ?1").bind(up.id, key),
       ]);
       await env.PDFS.delete(up.r2_key);
-      return messagePage(env, 200, "Approved", html`<p>The PDF for <a href="/${p.id}">${p.id}</a> is now live.</p>`, { cache: "no-store", noindex: true });
+      return backToList(p.id, "approved") ?? messagePage(env, 200, "Approved", html`<p>The PDF for <a href="/${p.id}">${p.id}</a> is now live.</p><p><a href="/review">All pending uploads</a></p>`, { cache: "no-store", noindex: true });
     }
     if (action === "reject") {
       await env.PDFS.delete(up.r2_key);
       await env.DB.prepare("UPDATE uploads SET status = 'rejected' WHERE id = ?1").bind(up.id).run();
-      return messagePage(env, 200, "Rejected", html`<p>The upload for <a href="/${p.id}">${p.id}</a> was deleted.</p>`, { cache: "no-store", noindex: true });
+      return backToList(p.id, "rejected") ?? messagePage(env, 200, "Rejected", html`<p>The upload for <a href="/${p.id}">${p.id}</a> was deleted.</p><p><a href="/review">All pending uploads</a></p>`, { cache: "no-store", noindex: true });
     }
     return messagePage(env, 400, "Unknown action", html`<p>Choose approve or reject.</p>`, { cache: "no-store", noindex: true });
   }
@@ -154,7 +199,7 @@ export async function handleReview(req: Request, env: Env, url: URL): Promise<Re
     `Review upload for ${p.id}`,
     html`<p><strong>${p.title}</strong><br>${authors.join(", ")}</p>
     <p class="small">Uploaded ${up.created_at.slice(0, 16).replace("T", " ")} UTC · ${(up.size / 1e6).toFixed(1)} MB · status <strong>${up.status}</strong><br>
-    Automatic check: <code>${up.checks ?? "none"}</code></p>
+    Automatic check: ${checkSummary(up.checks)} <code>${up.checks ?? ""}</code></p>
     <p><a class="btn btn-outline-dark" href="${fileHref}" target="_blank" rel="noopener">Open the uploaded PDF ↗</a>
     <a class="btn btn-outline-dark" href="/${p.id}" target="_blank" rel="noopener">Paper page ↗</a>
     <a class="btn btn-outline-dark" href="${env.ORIGIN_BASE}/${p.id}" target="_blank" rel="noopener">ePrint page ↗</a></p>
@@ -163,7 +208,8 @@ export async function handleReview(req: Request, env: Env, url: URL): Promise<Re
       <button class="btn btn-outline-dark" name="action" value="approve">Approve: publish it</button>
       <button class="btn btn-outline-dark" name="action" value="reject">Reject: delete it</button>
     </form>`
-      : html`<p>This upload was already ${up.status}.</p>`}`,
+      : html`<p>This upload was already ${up.status}.</p>`}
+    <p class="small"><a href="/review">All pending uploads</a></p>`,
     { cache: "no-store", noindex: true },
   );
 }

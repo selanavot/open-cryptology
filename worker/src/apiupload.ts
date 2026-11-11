@@ -1,11 +1,14 @@
 import { canonicalId, getPaper, parseAuthors, type Env } from "./db";
-import { API_LIMITS, ipHash, overLimit, scanPdf } from "./uploadguard";
+import { pendingDuplicate, queueForReview } from "./quarantine";
+import { API_LIMITS, ipHash, overLimit, reviewQueueFull, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 
 // Upload API for AI agents: POST /api/upload/YYYY/NNNN with the PDF as the request body
-// (Content-Type: application/pdf) or as a multipart "file" field. No CAPTCHA — instead, only files
-// that pass the instant title + author check are accepted; anything else is rejected (422) and
-// nothing is stored or queued for review. Rate-limited per IP (API_UPLOAD_LIMITER + daily caps).
+// (Content-Type: application/pdf) or as a multipart "file" field. No CAPTCHA. Files that pass the
+// instant title + author check go live (201). A well-formed PDF that doesn't pass is kept in
+// quarantine for the maintainer to review, like web-form uploads (202 queued_for_review), so an
+// agent never needs to retry. Broken files, active content and unneeded uploads are refused (4xx).
+// Rate-limited per IP (API_UPLOAD_LIMITER + daily caps, plus a cap on uploads queued for review).
 
 const MAX_API_UPLOAD = 30 * 1024 * 1024; // larger files: use the web form (they need human review)
 const toHex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -54,17 +57,27 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
   if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha)
     return j(200, { status: "already_have_it", id, pdf_url: pdfUrl, sha256: sha });
 
+  const queuedMsg = (again: boolean) =>
+    (again ? "We already received this exact file; it is waiting for review. " : "Received, thank you. ") +
+    `We couldn't automatically confirm from the title and author names on its first pages that this PDF is ${id} ("${p.title}"), ` +
+    "so a person will review it before it goes live. There is no need to upload it again.";
+  const dup = await pendingDuplicate(env, id, sha);
+  if (dup) {
+    let check: unknown = null;
+    try {
+      check = dup.checks ? JSON.parse(dup.checks) : null;
+    } catch {}
+    return j(202, { status: "queued_for_review", id, sha256: sha, check, message: queuedMsg(true) });
+  }
+
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
   if (report.active) return j(422, { error: "bad_pdf", message: "That PDF contains active content (scripts or embedded files)." });
+  if (report.error) return j(422, { error: "bad_pdf", message: `We couldn't read that PDF (${report.error.slice(0, 200)}).` });
   if (!report.ok) {
-    return j(422, {
-      error: "no_match",
-      id,
-      check: report,
-      message:
-        `This PDF doesn't look like ${id} ("${p.title}"): we couldn't find the title and an author's name on its first pages. ` +
-        `Nothing was stored. If you're sure it's right, a person can upload it at ${url.origin}/${id}#upload for review.`,
-    });
+    const full = await reviewQueueFull(env, ip);
+    if (full) return j(429, { error: "review_queue_full", id, check: report, message: full });
+    await queueForReview(env, url.origin, { paperId: id, body: buf, size: buf.byteLength, sha, checks: JSON.stringify(report), ip, uploader: "api" });
+    return j(202, { status: "queued_for_review", id, sha256: sha, size: buf.byteLength, check: report, message: queuedMsg(false) });
   }
 
   const now = new Date().toISOString();
