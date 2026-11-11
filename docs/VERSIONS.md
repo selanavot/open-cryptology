@@ -84,8 +84,10 @@ cd ..
 python3 -I pipeline/discover_versions.py list
 python3 -I pipeline/discover_versions.py existing --prefill-results data/prefill/results.jsonl
 python3 -I pipeline/discover_versions.py plan
-python3 -I pipeline/discover_versions.py copy        # long: hours (2 fetchers x 2 s, pauses on refusals)
-python3 -I pipeline/discover_versions.py apply
+python3 -I pipeline/discover_versions.py copy        # long: hours; applies what it stored every 15 min
+python3 -I pipeline/discover_versions.py apply       # incremental (only copies not yet applied)
+# a copy started without checkpoints: re-apply every 15 min until it exits
+#   python3 -I pipeline/discover_versions.py apply --watch 15 --until-pid <copy pid>
 python3 -I pipeline/discover_versions.py stats
 cd worker && npx --no-install wrangler delete --name open-cryptology-versions
 ```

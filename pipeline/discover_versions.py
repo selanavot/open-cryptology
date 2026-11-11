@@ -19,18 +19,23 @@ Stages (each resumable; state lives in data/versions/, gitignored):
             content we already hold (sha256), so duplicates cost a download but no storage.
             -> data/versions/copy-results.jsonl
   apply     Insert `versions` rows for stored copies; point papers.pdf_key at the latest version
-            when a newer one was found or none was set (e.g. withdrawn papers).
+            when a newer one was found or none was set (e.g. withdrawn papers). Incremental: only
+            copies not yet applied (data/versions/applied-keys.txt) are sent; --all resends all.
+            `copy` itself checkpoints this way every --apply-every seconds (default 15 min), so
+            copies go live while a long run is still going. For a run started without that,
+            `apply --watch MIN [--until-pid PID]` re-applies every MIN minutes alongside it.
   stats     Counts.
 
   python3 -I pipeline/discover_versions.py list
   python3 -I pipeline/discover_versions.py existing [--prefill-results PATH]
   python3 -I pipeline/discover_versions.py plan
-  python3 -I pipeline/discover_versions.py copy [--limit N]
-  python3 -I pipeline/discover_versions.py apply
+  python3 -I pipeline/discover_versions.py copy [--limit N] [--apply-every SECONDS]
+  python3 -I pipeline/discover_versions.py apply [--all] [--watch MIN [--until-pid PID]]
   python3 -I pipeline/discover_versions.py stats
 """
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -46,12 +51,14 @@ from common import DATA_DIR, d1_exec_statements, d1_query, log, sql_lit  # noqa:
 
 os.environ.setdefault("CLOUDFLARE_ACCOUNT_ID", "f1a5c2273555ad714cc5911124e671a7")  # wrangler --remote
 HELPER = os.environ.get("VERSIONS_HELPER", "https://open-cryptology-versions.opencryptology.workers.dev")
-VDIR = os.path.join(DATA_DIR, "versions")
+VDIR = os.environ.get("VERSIONS_DIR", os.path.join(DATA_DIR, "versions"))  # override: another checkout's run
 KEY_FILE = os.path.join(VDIR, ".versions-key")
 CDX_ROWS = os.path.join(VDIR, "cdx-rows.json")
 PLAN = os.path.join(VDIR, "plan.json")
 EXISTING = os.path.join(VDIR, "existing-results.jsonl")
 COPY = os.path.join(VDIR, "copy-results.jsonl")
+APPLIED = os.path.join(VDIR, "applied-keys.txt")  # copies whose versions row is in D1
+APPLY_LOCK = os.path.join(VDIR, ".apply.lock")
 PDF_RE = re.compile(r"^https?://(?:www\.)?eprint\.iacr\.org(?::\d+)?/(\d{4})/(\d{3,5})\.pdf$")
 MAX_SIZE = 50 * 1024 * 1024
 WB_GAP = float(os.environ.get("WB_GAP", "2.0"))        # seconds between requests, per fetcher
@@ -81,10 +88,17 @@ def remote(sql):
 
 
 def read_jsonl(path):
+    """Records of a JSONL file. A last line still being written by a running `copy` is skipped."""
     if not os.path.exists(path):
         return []
+    out = []
     with open(path, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        for line in f:
+            if not line.endswith("\n"):
+                break
+            if line.strip():
+                out.append(json.loads(line))
+    return out
 
 
 class Throttled(Exception):
@@ -377,29 +391,28 @@ def cmd_copy(a):
     for p in wb:
         parts[hash(p["id"]) % WB_THREADS].append(p)
     threads = [threading.Thread(target=gh_all)] + [threading.Thread(target=wb_worker, args=(part,)) for part in parts]
+    finished = threading.Event()
+
+    def checkpoint():  # make stored copies live while the run goes on
+        while not finished.wait(a.apply_every):
+            apply_new(quiet=True)
+
+    if a.apply_every > 0:
+        threading.Thread(target=checkpoint, daemon=True).start()
     for t in threads:
         t.start()
     for t in threads:
         t.join()
+    finished.set()
     out.close()
+    if a.apply_every > 0:
+        apply_new()
     log(f"done: stored={st['stored']} dup={st['dup']} fail={st['fail']} {st['bytes'] / 1e9:.2f} GB")
 
 
 # --------------------------------------------------------------------------- apply
 
-def cmd_apply(_a):
-    recs = [j for j in read_jsonl(COPY) if j.get("ok") and j.get("stored")]
-    stmts = []
-    for j in recs:
-        stmts.append(
-            "INSERT OR IGNORE INTO versions (paper_id, stamp, r2_key, sha256, sha1, size, source, source_url, captured_at, added_at) "
-            f"VALUES ({sql_lit(j['id'])}, {sql_lit(stamp_of(j['captured_at']))}, {sql_lit(j['key'])}, {sql_lit(j['sha256'])}, "
-            f"{sql_lit(j['sha1'])}, {sql_lit(j['size'])}, {sql_lit(j['kind'])}, {sql_lit(j['url'])}, "
-            f"{sql_lit(j['captured_at'])}, {sql_lit(now_iso())});")
-    # Point papers.pdf_key at the newest version when it is newer than what pdf_key holds (or
-    # nothing is set, e.g. withdrawn papers). pdf_maybe_stale follows the OAI datestamp rule
-    # (not for withdrawn papers: their datestamp is the withdrawal).
-    stmts.append("""
+UPDATE_PDF_KEY = """
 UPDATE papers SET
   pdf_key = v.r2_key, pdf_sha256 = v.sha256, pdf_size = v.size, pdf_source = v.source,
   pdf_source_date = v.captured_at,
@@ -409,10 +422,63 @@ FROM (SELECT paper_id, r2_key, sha256, size, source, captured_at,
              row_number() OVER (PARTITION BY paper_id ORDER BY captured_at DESC, id DESC) AS rn
         FROM versions) AS v
 WHERE v.paper_id = papers.id AND v.rn = 1 AND v.r2_key IS NOT papers.pdf_key
-  AND (papers.pdf_key IS NULL OR papers.pdf_source_date IS NULL OR v.captured_at > papers.pdf_source_date);""")
-    log(f"recording {len(recs)} copied versions")
-    d1_exec_statements(stmts, "versions-apply", chunk=2000, remote=True)
+  AND (papers.pdf_key IS NULL OR papers.pdf_source_date IS NULL OR v.captured_at > papers.pdf_source_date);"""
+
+
+def apply_new(resend_all=False, quiet=False):
+    """Insert `versions` rows for stored copies not applied yet, then point papers.pdf_key at the
+    newest version where it is newer than what pdf_key holds (or nothing is set, e.g. withdrawn
+    papers). pdf_maybe_stale follows the OAI datestamp rule (not for withdrawn papers: their
+    datestamp is the withdrawal). Safe to run while `copy` is running, and from several
+    processes (serialised by a lock file; inserts are INSERT OR IGNORE). Returns rows sent."""
+    with open(APPLY_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        done = set() if resend_all or not os.path.exists(APPLIED) else set(open(APPLIED).read().split())
+        recs = [j for j in read_jsonl(COPY) if j.get("ok") and j.get("stored") and j["key"] not in done]
+        if not recs and not resend_all:
+            if not quiet:
+                log("apply: nothing new")
+            return 0
+        stmts = [
+            "INSERT OR IGNORE INTO versions (paper_id, stamp, r2_key, sha256, sha1, size, source, source_url, captured_at, added_at) "
+            f"VALUES ({sql_lit(j['id'])}, {sql_lit(stamp_of(j['captured_at']))}, {sql_lit(j['key'])}, {sql_lit(j['sha256'])}, "
+            f"{sql_lit(j['sha1'])}, {sql_lit(j['size'])}, {sql_lit(j['kind'])}, {sql_lit(j['url'])}, "
+            f"{sql_lit(j['captured_at'])}, {sql_lit(now_iso())});"
+            for j in recs]
+        try:
+            d1_exec_statements(stmts + [UPDATE_PDF_KEY], "versions-apply", chunk=2000, remote=True)
+        except Exception as e:  # noqa: BLE001 - a failed checkpoint is retried next time
+            log(f"apply failed ({len(recs)} copies stay pending): {str(e)[:300]}")
+            return 0
+        with open(APPLIED, "a") as f:
+            f.writelines(j["key"] + "\n" for j in recs)
+        log(f"{time.strftime('%H:%M:%S')} apply: {len(recs)} copied versions recorded")
+        return len(recs)
+
+
+def cmd_apply(a):
+    if not a.watch:
+        apply_new(resend_all=a.all)
+        cmd_stats(None)
+        return
+    # Checkpoint a running `copy` that was started without --apply-every.
+    while True:
+        alive = a.until_pid and pid_alive(a.until_pid)
+        apply_new(quiet=True)
+        if a.until_pid and not alive:
+            break
+        time.sleep(a.watch * 60)
     cmd_stats(None)
+
+
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
 
 
 def cmd_stats(_a):
@@ -434,6 +500,11 @@ def main():
                     help="prefill_via_worker.py results (source/url/date for objects whose D1 row isn't updated yet)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--kind", choices=["wayback", "github-mirror"])
+    ap.add_argument("--apply-every", type=int, default=900,
+                    help="copy: make stored copies live every N seconds during the run (0 = only at the end via apply)")
+    ap.add_argument("--all", action="store_true", help="apply: resend every stored copy, not only new ones")
+    ap.add_argument("--watch", type=float, default=0, help="apply: repeat every N minutes")
+    ap.add_argument("--until-pid", type=int, default=0, help="apply --watch: stop (after a last apply) once this process exits")
     a = ap.parse_args()
     os.makedirs(VDIR, exist_ok=True)
     {"list": cmd_list, "existing": cmd_existing, "plan": cmd_plan, "copy": cmd_copy,
