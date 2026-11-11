@@ -12,12 +12,16 @@ import { apiMissing, missingPage } from "./missing";
 import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
 import { supportPage } from "./support";
 import { llmsTxt, robotsTxt } from "./text";
+import { indexNowKeyFile, pingIndexNow } from "./indexnow";
+import { siteOrigin, siteSitemap, sitemapIndex, yearPage, yearSitemap } from "./seo";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
 const PAPER_RE = /^\/(\d{4})\/(\d{1,6})(\.pdf|\/upload|\/|\/versions\/(\d{8}T\d{6}Z)\.pdf|\/versions\/?)?$/;
 const API_PAPER_RE = /^\/api\/papers\/(\d{4})\/(\d{1,6})\/?$/;
 const API_UPLOAD_RE = /^\/api\/upload\/(\d{4})\/(\d{1,6})\/?$/;
+const YEAR_RE = /^\/(\d{4})\/?$/;
+const YEAR_SITEMAP_RE = /^\/sitemaps\/(\d{4})\.xml$/;
 
 function redirect(url: URL, path: string, status = 301): Response {
   const to = new URL(path, url);
@@ -89,8 +93,19 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
   if (!isGet) return methodNotAllowed("GET, HEAD");
 
+  const keyFile = indexNowKeyFile(env, path);
+  if (keyFile) return keyFile;
+
   const am = API_PAPER_RE.exec(path);
   if (am) return apiPaper(env, url, Number(am[1]), Number(am[2]));
+
+  const ym = YEAR_RE.exec(path);
+  if (ym) {
+    if (path !== `/${ym[1]}`) return redirect(url, `/${ym[1]}`);
+    return yearPage(env, url, Number(ym[1]));
+  }
+  const ys = YEAR_SITEMAP_RE.exec(path);
+  if (ys) return (await yearSitemap(env, url, Number(ys[1]))) ?? notFound(env);
 
   switch (path) {
     case "/":
@@ -113,7 +128,11 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     case "/llms.txt":
       return llmsTxt(env, url.origin);
     case "/robots.txt":
-      return robotsTxt(env, url.origin);
+      return robotsTxt(env, siteOrigin(env, url));
+    case "/sitemap.xml":
+      return sitemapIndex(env, url);
+    case "/sitemaps/site.xml":
+      return siteSitemap(env, url);
   }
   if (path.startsWith("/api/")) return json({ error: "not_found", path }, 404, "public, max-age=60");
   return notFound(env);
@@ -169,6 +188,13 @@ export default {
           (r) => console.log("harvest staleness", JSON.stringify(r)),
           (e) => console.error("harvest staleness check failed", e instanceof Error ? e.stack : String(e)),
         ),
+    );
+    // Tell search engines (IndexNow) about new and changed paper pages.
+    ctx.waitUntil(
+      pingIndexNow(env).then(
+        (r) => console.log("indexnow", JSON.stringify(r)),
+        (e) => console.error("indexnow failed", e instanceof Error ? e.stack : String(e)),
+      ),
     );
     // Review emails are throttled per upload; this sends one for uploads queued since the last.
     if (env.SITE_URL) ctx.waitUntil(notifyReview(env, env.SITE_URL));

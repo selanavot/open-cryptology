@@ -25,7 +25,7 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 | Site + API | Cloudflare Worker (`worker/`) | server-rendered HTML, JSON API, `llms.txt` |
 | Pipeline | `pipeline/` (Python, stdlib) | initial OAI harvest → D1; source discovery; local-dev PDF sample |
 | Updates | GitHub Actions every 4 h (`.github/workflows/harvest.yml`) | incremental OAI `from=` metadata harvest (30-day look-back) + RSS PDF sizes → D1 via the D1 HTTP API (`pipeline/harvest_remote.py`); PDFs prefilled separately |
-| Monitoring | Worker Cron Trigger every 4 h | emails the maintainer if the harvest hasn't succeeded for 26 h (`worker/src/staleness.ts`); failed workflow runs email via GitHub |
+| Monitoring | Worker Cron Trigger every 4 h | emails the maintainer if the harvest hasn't succeeded for 26 h (`worker/src/staleness.ts`); failed workflow runs email via GitHub; also pings IndexNow (`worker/src/indexnow.ts`) |
 
 ## Routes (Worker)
 
@@ -41,6 +41,19 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 - `/review`, `/review/<uploadId>` — maintainer review of quarantined uploads (Cloudflare Access)
 - `/api/papers/YYYY/NNNN` — JSON metadata; `/api/search?q=` — JSON search
 - `/llms.txt`, `/robots.txt`, `/about` (license guidance for humans and agents)
+- `/YYYY` — every paper of a year (indexable; search and `/missing` are `noindex`)
+- `/sitemap.xml` → `/sitemaps/site.xml` + `/sitemaps/YYYY.xml`; `/<INDEXNOW_KEY>.txt` (IndexNow key file)
+
+## Search engines and agents
+
+Paper pages are their own canonical (`https://opencryptology.org/YYYY/NNN`), so search engines and
+AI search (Bing feeds ChatGPT search and Copilot) can send people and agents to a page where the
+PDF is reachable. ePrint stays the original everywhere else: the JSON-LD `ScholarlyArticle`
+names it (`isBasedOn`, `isPartOf`), the Google Scholar `citation_*` tags give it as the report's
+institution and number, and the BibTeX cites it. Older stored PDF versions point to the paper's
+current PDF (`Link: rel="canonical"`). The Worker cron pings IndexNow with new and changed paper
+pages when the `INDEXNOW_KEY` secret is set (`worker/src/indexnow.ts`; the first run only records
+watermarks). All of this is in `worker/src/seo.ts` and `worker/src/indexnow.ts`.
 
 ## License handling
 

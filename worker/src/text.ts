@@ -27,6 +27,8 @@ export function llmsTxt(env: Env, origin: string): Response {
   you get a 404 with a plain-text explanation, or JSON if you send Accept: application/json)
   This is the latest copy we hold. Other stored copies: ${origin}/YYYY/NNN/versions/YYYYMMDDThhmmssZ.pdf
   (listed in the JSON "versions"; the stamp is when the public copy was captured).
+- All papers of a year (HTML): ${origin}/YYYY   e.g. ${origin}/2024
+- Sitemap of every paper page: ${origin}/sitemap.xml
 - Search (JSON): ${origin}/api/search?q=QUERY&page=1&sort=relevance|new
   Supports "phrases", prefix*, and author:/title:/abstract: filters. An ID query like "2024/123" is
   reported in "id_match".
@@ -119,5 +121,7 @@ export function robotsTxt(env: Env, origin: string): Response {
 User-agent: *
 Allow: /
 Crawl-delay: 5
+
+Sitemap: ${origin}/sitemap.xml
 `);
 }

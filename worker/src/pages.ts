@@ -1,8 +1,9 @@
 import { contactForm } from "./contact";
 import { homeData, parseAuthors, search, toFtsQuery, type Env, type ListItem, type SearchHit } from "./db";
 import { highlighted, html, stripMarks, type Html } from "./html";
-import { categoryBadge, hasTex, messagePage, page } from "./layout";
+import { card, categoryBadge, hasTex, messagePage, page } from "./layout";
 import { missingCard } from "./missing";
+import { ogImage, siteOrigin, yearLinks } from "./seo";
 
 export const day = (iso: string | null | undefined): string => (iso ? iso.slice(0, 10) : "");
 export const fmtInt = (n: number): string => n.toLocaleString("en-US");
@@ -76,6 +77,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
   </article>
   <aside class="home-side">
     ${missing.card}
+    ${card("Browse by year", yearLinks(), "home-years")}
   </aside>
 </div>`;
   return page(env, {
@@ -83,6 +85,8 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     description:
       "Unofficial mirror of the Cryptology ePrint Archive: fast search and easy access to papers for humans and AI assistants.",
     body,
+    canonical: `${siteOrigin(env, url)}/`,
+    ogImage: ogImage(siteOrigin(env, url)),
     katex: missing.tex,
     cache: "public, max-age=300",
   });
