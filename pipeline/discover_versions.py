@@ -244,9 +244,25 @@ def cmd_plan(_a):
 
 # --------------------------------------------------------------------------- copy
 
+def retryable(r):
+    """Per-item failures worth retrying in a later run: Wayback storage node unreachable
+    (Cloudflare 520-524 seen from the Worker) or the connection dropped mid-transfer."""
+    e = str(r.get("error"))
+    return not r.get("ok") and (r.get("status") in (500, 520, 521, 522, 523, 524) or "connection lost" in e.lower())
+
+
+def throttled(r):
+    """Throttling: pause every fetcher."""
+    e = str(r.get("error"))
+    return not r.get("ok") and (r.get("status") in (429, 502, 503, 504) or (
+        r.get("status") is None and not retryable(r)
+        and not any(x in e for x in ("rejected", "not a PDF", "too large"))))
+
+
 def cmd_copy(a):
     plan = json.load(open(PLAN))
-    done = {j["key"] for j in read_jsonl(COPY) if j.get("ok") or j.get("final")}
+    done = {j["key"] for j in read_jsonl(COPY)
+            if j.get("ok") or (j.get("final") and not retryable(j))}
     todo = [p for p in plan if p["key"] not in done]
     if a.kind:
         todo = [p for p in todo if p["kind"] == a.kind]
@@ -301,35 +317,59 @@ def cmd_copy(a):
     # Throttling (429/5xx/lost connections) pauses ALL fetchers, doubling up to 15 min.
     shared = {"pause_until": 0.0, "backoff": 30.0}
 
-    def transient(r):
-        e = str(r.get("error"))
-        return not r.get("ok") and (r.get("status") in (429, 502, 503, 504) or (
-            r.get("status") is None and not any(x in e for x in ("rejected", "not a PDF", "too large"))))
+    # Some Wayback crawls sit on storage that is unreachable for a while (e.g. 2008 captures
+    # answered 521/522 from the Worker). Once a capture month has >= 8 such failures and no
+    # success, its remaining items are deferred to the end of the run (and tried once) instead
+    # of each costing a timeout plus a retry.
+    cohort = {}
 
-    def wb_worker(items):
-        last = 0.0
-        for p in items:
-            for attempt in range(4):
-                while True:
-                    wait = max(shared["pause_until"], last + WB_GAP) - time.monotonic()
-                    if wait <= 0:
-                        break
-                    time.sleep(min(wait, 30))
-                last = time.monotonic()
-                r = helper("/copy", [{"id": p["id"], "url": p["url"], "key": p["key"],
-                                      "skip": sorted(known.get(p["id"], ()))}])[0]
-                if not transient(r):
+    def bad(p):
+        ok, fail = cohort.get(p["captured_at"][:7], (0, 0))
+        return fail >= 8 and ok == 0
+
+    def note(p, r):
+        if r.get("ok") or retryable(r):
+            with lock:
+                c = cohort.setdefault(p["captured_at"][:7], [0, 0])
+                c[0 if r.get("ok") else 1] += 1
+
+    def wb_one(p, tl):
+        r = {}
+        for attempt in range(4):
+            while True:
+                wait = max(shared["pause_until"], tl["last"] + WB_GAP) - time.monotonic()
+                if wait <= 0:
+                    break
+                time.sleep(min(wait, 30))
+            tl["last"] = time.monotonic()
+            r = helper("/copy", [{"id": p["id"], "url": p["url"], "key": p["key"],
+                                  "skip": sorted(known.get(p["id"], ()))}])[0]
+            note(p, r)
+            if retryable(r) and attempt == 0 and not bad(p):
+                continue  # one quick retry, then leave it for a later run
+            if not throttled(r):
+                if not retryable(r):
                     with lock:
                         shared["backoff"] = 30.0
-                    record(p, r)
-                    break
-                with lock:
-                    b = shared["backoff"]
-                    shared["pause_until"] = max(shared["pause_until"], time.monotonic() + b)
-                    shared["backoff"] = min(b * 2, 900.0)
-                log(f"  wayback error ({r.get('status') or r.get('error')}) on {p['id']}; all fetchers pause {b:.0f}s")
+                record(p, r, final=not retryable(r))
+                return
+            with lock:
+                b = shared["backoff"]
+                shared["pause_until"] = max(shared["pause_until"], time.monotonic() + b)
+                shared["backoff"] = min(b * 2, 900.0)
+            log(f"  wayback error ({r.get('status') or r.get('error')}) on {p['id']}; all fetchers pause {b:.0f}s")
+        record(p, r, final=False)  # give up on this one for now; a later run retries it
+
+    def wb_worker(items):
+        tl = {"last": 0.0}
+        deferred = []
+        for p in items:
+            if bad(p):
+                deferred.append(p)
             else:
-                record(p, r, final=False)  # give up on this one for now; a later run retries it
+                wb_one(p, tl)
+        for p in deferred:
+            wb_one(p, tl)
 
     parts = [[] for _ in range(WB_THREADS)]
     for p in wb:
