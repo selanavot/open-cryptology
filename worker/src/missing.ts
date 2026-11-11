@@ -262,7 +262,7 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
     <small class="ms-auto"><a href="/api/missing${sel ? `?year=${sel.year}` : ""}">JSON</a></small>
   </div>
   <p class="mt-3"><strong>${fmtInt(missing)}</strong> missing${outdated ? html` · <strong>${fmtInt(outdated)}</strong> may be outdated` : ""}.
-  Click a square to upload the PDF.</p>
+  Click a grey or yellow square to upload.</p>
   <h5 class="mt-4">By year</h5>
   ${yearTiles(years, sel?.year ?? null)}
   ${sel
