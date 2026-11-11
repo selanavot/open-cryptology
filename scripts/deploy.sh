@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy a Worker from this repo, safely when several sessions share it.
+# Deploy a Worker from this repo, safely when several checkouts may deploy at once.
 #
 #   scripts/deploy.sh                                  # the site (worker/wrangler.jsonc)
 #   scripts/deploy.sh -c versions-worker/wrangler.jsonc
@@ -9,10 +9,10 @@
 # It deploys only when:
 #   - this checkout's HEAD is exactly origin/main (just fetched), with no local changes;
 #   - the live version is older than HEAD. Each deploy is tagged with its commit, so a
-#     session that deploys a stale main finds a newer commit live and stops instead of
+#     checkout that deploys a stale main finds a newer commit live and stops instead of
 #     replacing it. A live version without a tag (deployed by hand) only warns.
 # After deploying it checks again: if a deploy of an older commit landed right after ours
-# (two sessions racing), it puts ours back; anything else that replaced ours, it reports.
+# (two deploys racing), it puts ours back; anything else that replaced ours, it reports.
 set -euo pipefail
 
 die() { printf '\ndeploy: %s\n' "$*" >&2; exit 1; }
@@ -100,7 +100,7 @@ ours=$(sed -n 's/.*Current Version ID: *\([0-9a-f-]*\).*/\1/p' "$out" | tail -1)
 rm -f "$out"
 [ -n "$ours" ] || die "could not find the new version ID in Wrangler's output"
 
-# 5. Did another session's deploy replace ours? Put ours back only if theirs is an older commit.
+# 5. Did another deploy replace ours? Put ours back only if theirs is an older commit.
 sleep 15
 now=$(live_version || true)
 if [ "$now" = "$ours" ]; then
