@@ -60,7 +60,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     speed up your research workflow by giving agents access to the information they need.</p>
     <p><strong>New papers</strong> appear here within days of being accepted on ePrint. We don’t
     take submissions; <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</p>
-    <p><strong>PDFs</strong> come from existing public copies, and readers <a href="/missing">fill in the gaps</a>: if one is
+    <p><strong>PDFs</strong> come from existing public copies, and readers <a href="/${missing.gapsYear}">fill in the gaps</a>: if one is
     missing, download it from ePrint and upload it anonymously here.</p>
     <p><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the
     original. Please respect it: credit the authors, no commercial use for NC papers, unmodified

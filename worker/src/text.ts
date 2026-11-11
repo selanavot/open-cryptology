@@ -33,10 +33,6 @@ export function llmsTxt(env: Env, origin: string): Response {
   Supports "phrases", prefix*, and author:/title:/abstract: filters. An ID query like "2024/123" is
   reported in "id_match".
 - Search (HTML): ${origin}/search?q=QUERY
-- Papers we have no PDF for yet (JSON): ${origin}/api/missing?page=1&year=YYYY   (50 per page, newest
-  first; fields: id, title, year, url, original_url, upload_url; plus total, total_pages, next).
-  HTML: the year pages (${origin}/YYYY: grey squares are missing). Uploads are made by people through
-  the form on each paper page.
 - Search result fields: id, title, authors, category, license, submitted, withdrawn, withdrawn_on,
   has_pdf, pdf_url (null if we have no PDF), upload_url (where a person can upload a missing PDF),
   snippet, url, api_url.

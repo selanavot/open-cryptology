@@ -1,10 +1,9 @@
-// Papers by year: the homepage card, the year pages (/YYYY) and /api/missing. Each year page shows
-// how much of the year we have as squares, then lists every paper of the year; it is also how
-// crawlers reach the paper pages (search is noindex). /missing redirects to a year page.
+// Papers by year: the homepage card and the year pages (/YYYY). Each year page shows how much of
+// the year we have as squares, then lists every paper of the year; it is also how crawlers reach
+// the paper pages (search is noindex).
 //
 // A paper counts as missing while it has no mirrored PDF and no upload waiting for review.
-// Withdrawn papers count too: ePrint no longer offers them, but a saved copy can be uploaded. The
-// partial index papers_missing (db/schema.sql) serves the API queries.
+// Withdrawn papers count too: ePrint no longer offers them, but a saved copy can be uploaded.
 //
 // Coverage is shown as squares: one tile per year, filled in green up to the share of its papers we
 // have up to date, then yellow for those that may be outdated, and its percentage counts the green
@@ -14,48 +13,13 @@
 import { canonicalId, parseAuthors, type Env } from "./db";
 import { esc, html, raw, type Html } from "./html";
 import { card, hasTex, messagePage, page } from "./layout";
-import { originalUrl } from "./license";
-import { fmtInt, json } from "./pages";
+import { fmtInt } from "./pages";
 import { ogImage, siteOrigin } from "./seo";
 
-export interface MissingItem {
-  id: string;
-  year: number;
-  num: number;
-  title: string;
-  withdrawn: number;
-}
-
 const PENDING = `EXISTS (SELECT 1 FROM uploads u WHERE u.paper_id = papers.id AND u.status = 'pending')`;
-const MISSING_WHERE = `pdf_key IS NULL AND NOT ${PENDING}`;
 /** We have a PDF, but ePrint changed the paper after it was captured (papers.pdf_maybe_stale, set
  *  by the harvest): a newer version may exist. Withdrawn papers are never "outdated". */
 const STALE = `(pdf_key IS NOT NULL AND pdf_maybe_stale = 1 AND withdrawn = 0)`;
-
-const PER_PAGE = 50;
-
-/** Missing papers, newest first, plus the total (optionally for one year). */
-export async function missingPapers(
-  env: Env,
-  limit: number,
-  offset = 0,
-  year: number | null = null,
-): Promise<{ total: number; items: MissingItem[] }> {
-  const where = year === null ? MISSING_WHERE : `${MISSING_WHERE} AND year = ?3`;
-  const bind = (s: D1PreparedStatement, ...a: unknown[]) => (year === null ? s.bind(...a) : s.bind(...a, year));
-  const [count, rows] = await env.DB.batch([
-    bind(env.DB.prepare(`SELECT count(*) AS n FROM papers WHERE ${where.replace("?3", "?1")}`)),
-    bind(
-      env.DB.prepare(`SELECT id, year, num, title, withdrawn FROM papers WHERE ${where} ORDER BY year DESC, num DESC LIMIT ?1 OFFSET ?2`),
-      limit,
-      offset,
-    ),
-  ]);
-  return {
-    total: Number((count.results?.[0] as { n?: number } | undefined)?.n ?? 0),
-    items: (rows.results ?? []) as unknown as MissingItem[],
-  };
-}
 
 // ---------------------------------------------------------------------------- data
 
@@ -106,7 +70,7 @@ async function cached<T>(origin: string, key: string, ttl: number, fn: () => Pro
 }
 
 /** Drop the cached counts after a paper's PDF or upload state changes, so this colo's homepage and
- *  /missing show it on the next view (other colos catch up within the 5-minute TTL). */
+ *  year pages show it on the next view (other colos catch up within the 5-minute TTL). */
 export async function coverageChanged(origin: string, paperId: string): Promise<void> {
   const year = paperId.slice(0, 4);
   try {
@@ -228,7 +192,8 @@ const legend = (cells: Cell[]) => {
 };
 
 /** Homepage side card. */
-export async function missingCard(env: Env, origin: string): Promise<{ card: Html; tex: boolean }> {
+/** Homepage side card, and the year page to send people who want to fill gaps to. */
+export async function missingCard(env: Env, origin: string): Promise<{ card: Html; tex: boolean; gapsYear: number }> {
   const years = await yearStats(env, origin);
   const total = years.reduce((s, y) => s + y.total, 0);
   const have = years.reduce((s, y) => s + y.have, 0);
@@ -243,20 +208,7 @@ export async function missingCard(env: Env, origin: string): Promise<{ card: Htm
   ${paperGrid(focus.year, cells, true)}
   ${legend(cells)}
   <p class="mt-2 mb-0"><a href="/${focus.year}">See all papers from ${focus.year} →</a></p>`}`;
-  return { card: card("Papers by year", content, "home-missing"), tex: false };
-}
-
-function missingYearParam(url: URL): number | null {
-  const y = parseInt(url.searchParams.get("year") ?? "", 10);
-  return y >= 1990 && y <= 2200 ? y : null;
-}
-
-/** /missing (the old gaps page): the year with the most papers missing, or the one asked for. */
-export async function missingRedirect(env: Env, url: URL): Promise<Response> {
-  const asked = missingYearParam(url);
-  const years = asked === null ? await yearStats(env, url.origin) : [];
-  const year = asked ?? (focusYear(years) ?? years[0])?.year ?? new Date().getUTCFullYear();
-  return new Response(null, { status: 301, headers: { location: `/${year}`, "cache-control": "public, max-age=300" } });
+  return { card: card("Papers by year", content, "home-missing"), tex: false, gapsYear: (focus ?? years[0])?.year ?? new Date().getUTCFullYear() };
 }
 
 /** A year's papers, newest first, with what the grid needs. */
@@ -291,10 +243,7 @@ export async function yearPage(env: Env, url: URL, year: number): Promise<Respon
   const listed = rows.filter((p) => !p.withdrawn || p.title).reverse();
   const origin = siteOrigin(env, url);
   const body = html`<section class="year-page">
-  <div class="results-bar">
-    <h3 class="results-h">Papers from ${year}</h3>
-    ${missing > 0 && html`<small class="ms-auto"><a href="/api/missing?year=${year}">Missing (JSON)</a></small>`}
-  </div>
+  <h3 class="mb-3">Papers from ${year}</h3>
   ${yearTiles(years, year)}
   <h5 class="mt-4">${fmtInt(sel.have)} of ${papersWord(sel.total)} have a PDF here${missing ? html`, ${fmtInt(missing)} missing` : ""}${sel.outdated ? html`, ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
   <p class="small mb-2">Each square is a paper, in number order.${missing || sel.outdated
@@ -327,52 +276,4 @@ export async function yearPage(env: Env, url: URL, year: number): Promise<Respon
     katex: hasTex(...listed.map((p) => p.title)),
     cache: "public, max-age=300",
   });
-}
-
-// ---------------------------------------------------------------------------- API
-
-interface MissingParams {
-  page: number;
-  year: number | null;
-}
-
-function missingParams(url: URL): MissingParams {
-  const page = Math.min(10_000, Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1));
-  return { page, year: missingYearParam(url) };
-}
-
-function missingHref(path: string, mp: MissingParams, page: number): string {
-  const u = new URLSearchParams();
-  if (mp.year !== null) u.set("year", String(mp.year));
-  if (page > 1) u.set("page", String(page));
-  const q = u.toString();
-  return q ? `${path}?${q}` : path;
-}
-
-export async function apiMissing(env: Env, url: URL): Promise<Response> {
-  const mp = missingParams(url);
-  const origin = url.origin;
-  const { total, items } = await missingPapers(env, PER_PAGE, (mp.page - 1) * PER_PAGE, mp.year);
-  const totalPages = Math.ceil(total / PER_PAGE);
-  return json(
-    {
-      total,
-      page: mp.page,
-      per_page: PER_PAGE,
-      total_pages: totalPages,
-      next: mp.page < totalPages ? `${origin}${missingHref("/api/missing", mp, mp.page + 1)}` : null,
-      year: mp.year,
-      results: items.map((p) => ({
-        id: p.id,
-        title: p.title,
-        year: p.year,
-        withdrawn: !!p.withdrawn,
-        url: `${origin}/${p.id}`,
-        original_url: originalUrl(env.ORIGIN_BASE, p.id),
-        upload_url: `${origin}/${p.id}#upload`,
-      })),
-    },
-    200,
-    "public, max-age=300",
-  );
 }

@@ -42,8 +42,7 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 - `/api/papers/YYYY/NNNN` — JSON metadata; `/api/search?q=` — JSON search
 - `/llms.txt`, `/robots.txt`, `/about` (license guidance for humans and agents)
 - `/YYYY` — a year: coverage tiles and one square per paper (green = PDF here, grey = missing), then
-  every paper of the year (indexable: search is `noindex`, so this is how crawlers reach papers);
-  `/missing` redirects to the year with the most gaps; `/api/missing` lists missing papers as JSON
+  every paper of the year (indexable: search is `noindex`, so this is how crawlers reach papers)
 - `/sitemap.xml` (homepage, year pages, every paper page); `/<INDEXNOW_KEY>.txt` (IndexNow key file)
 
 ## Search engines and agents
