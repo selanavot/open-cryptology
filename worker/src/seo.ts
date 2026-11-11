@@ -2,17 +2,11 @@
 // and Copilot) and AI agents:
 //   - paperHead: Google Scholar citation_* tags and a link to the paper's JSON.
 //   - /sitemap.xml: the homepage, the year pages and every paper page.
-//   - /YYYY: every paper of a year. Search and /missing are noindex, so this is how crawlers
-//     reach the paper pages.
+//   (The year pages, /YYYY, are in years.ts.)
 // Attribution to ePrint is for people and lives on the page itself (link, BibTeX, footer).
 import { parseAuthors, type Env, type Paper } from "./db";
 import { html, type Html } from "./html";
-import { hasTex, messagePage, page } from "./layout";
 import { day } from "./pages";
-
-/** ePrint's first year. */
-export const FIRST_YEAR = 1996;
-export const lastYear = (): number => new Date().getUTCFullYear();
 
 /** The public origin for canonical URLs: SITE_URL (https://opencryptology.org) when set, so a
  *  copy reached through workers.dev or a preview still points search engines at the real site. */
@@ -78,60 +72,4 @@ ${[
 ].join("\n")}
 </urlset>
 `);
-}
-
-// ---------------------------------------------------------------------------- year pages
-
-interface YearItem {
-  id: string;
-  title: string;
-  authors: string;
-  withdrawn: number;
-  has_pdf: number;
-}
-
-/** Links to every year page, newest first ("Browse by year"). */
-export function yearLinks(selected: number | null = null): Html {
-  const years: number[] = [];
-  for (let y = lastYear(); y >= FIRST_YEAR; y--) years.push(y);
-  return html`<nav class="year-links" aria-label="Browse by year">${years.map(
-    (y) => html`<a href="/${y}"${y === selected ? html` aria-current="page"` : ""}>${y}</a> `,
-  )}</nav>`;
-}
-
-/** /YYYY: all papers of a year, newest first. */
-export async function yearPage(env: Env, url: URL, year: number): Promise<Response> {
-  const r = await env.DB.prepare(
-    `SELECT id, title, authors, withdrawn, (pdf_key IS NOT NULL) AS has_pdf
-       FROM papers WHERE year = ?1 AND ${LISTED} ORDER BY num DESC`,
-  )
-    .bind(year)
-    .all<YearItem>();
-  const items = r.results ?? [];
-  if (!items.length) {
-    return messagePage(env, 404, `No papers from ${year}`, html`<p>The mirror has no papers from ${year}.</p>${yearLinks()}`);
-  }
-  const origin = siteOrigin(env, url);
-  const n = items.length;
-  const body = html`<section class="year-page">
-  <h3>Papers from ${year}</h3>
-  <p class="text-muted">${n.toLocaleString("en-US")} paper${n === 1 ? "" : "s"}, newest first.</p>
-  ${yearLinks(year)}
-  <ol class="year-list" reversed>
-    ${items.map((p) => {
-      const authors = parseAuthors(p.authors);
-      return html`<li><a class="paperlink" href="/${p.id}">${p.id}</a>${p.has_pdf ? html` <a href="/${p.id}.pdf">(PDF)</a>` : ""}${p.withdrawn ? html` <span class="badge bg-secondary">withdrawn</span>` : ""}
-      <div><a class="result-title tex" href="/${p.id}">${p.title || "Withdrawn paper"}</a>${authors.length ? html`<span class="year-authors"> · ${authors.length > 6 ? `${authors.slice(0, 6).join(", ")}, and ${authors.length - 6} more` : authors.join(", ")}</span>` : ""}</div></li>\n`;
-    })}
-  </ol>
-</section>`;
-  return page(env, {
-    title: `Papers from ${year}`,
-    description: `All ${n.toLocaleString("en-US")} papers from the Cryptology ePrint Archive in ${year}, with abstracts and PDFs where available, on Open Cryptology.`,
-    body,
-    canonical: `${origin}/${year}`,
-    ogImage: ogImage(origin),
-    katex: hasTex(...items.map((p) => p.title)),
-    cache: "public, max-age=600",
-  });
 }

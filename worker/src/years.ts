@@ -1,17 +1,22 @@
-// Papers we don't have a PDF for yet ("help us fill the gaps"): the homepage card, /missing and
-// /api/missing. A paper counts as missing while it has no mirrored PDF and no upload waiting for
-// review. Withdrawn papers count too: ePrint no longer offers them, but a saved copy can be uploaded. The partial index papers_missing (db/schema.sql) serves the API queries.
+// Papers by year: the homepage card, the year pages (/YYYY) and /api/missing. Each year page shows
+// how much of the year we have as squares, then lists every paper of the year; it is also how
+// crawlers reach the paper pages (search is noindex). /missing redirects to a year page.
 //
-// The pages show coverage as squares rather than lists: one tile per year, filled in green up to
-// the share of its papers we have up to date, then yellow for those that may be outdated, and its
-// percentage counts the green ones only; and one small square per paper of a year (green = PDF here,
-// grey = missing, yellow = may be outdated (ePrint changed the paper after our copy was captured),
-// blue = upload in review; grey and yellow ones link to the upload box).
-import { canonicalId, type Env } from "./db";
+// A paper counts as missing while it has no mirrored PDF and no upload waiting for review.
+// Withdrawn papers count too: ePrint no longer offers them, but a saved copy can be uploaded. The
+// partial index papers_missing (db/schema.sql) serves the API queries.
+//
+// Coverage is shown as squares: one tile per year, filled in green up to the share of its papers we
+// have up to date, then yellow for those that may be outdated, and its percentage counts the green
+// ones only; and one small square per paper of a year (green = PDF here, grey = missing, yellow =
+// may be outdated (ePrint changed the paper after our copy was captured), blue = upload in review;
+// grey and yellow ones link to the upload box).
+import { canonicalId, parseAuthors, type Env } from "./db";
 import { esc, html, raw, type Html } from "./html";
-import { card, page } from "./layout";
+import { card, hasTex, messagePage, page } from "./layout";
 import { originalUrl } from "./license";
 import { fmtInt, json } from "./pages";
+import { ogImage, siteOrigin } from "./seo";
 
 export interface MissingItem {
   id: string;
@@ -184,7 +189,7 @@ function yearTiles(years: YearStat[], selected: number | null = null): Html {
     const p = pct(current, y.total);
     const m = missingOf(y);
     const tip = `${y.year}: ${fmtInt(y.have)} of ${papersWord(y.total)} have a PDF here${m ? ` · ${fmtInt(m)} missing` : ""}${y.gone ? ` (${fmtInt(y.gone)} withdrawn)` : ""}${y.outdated ? ` · ${fmtInt(y.outdated)} may be outdated` : ""}${y.pending ? ` · ${fmtInt(y.pending)} in review` : ""}`;
-    return html`<a class="year-tile${p === 100 ? " full" : ""}${y.year === selected ? " sel" : ""}" href="/missing?year=${y.year}" style="--cur:${share(current, y.total)};--fill:${share(y.have, y.total)}" title="${tip}"${y.year === selected ? html` aria-current="page"` : ""}><span class="yt-year">${y.year}</span>${p < 100 ? html`<span class="yt-pct">${p}%</span>` : ""}</a>`;
+    return html`<a class="year-tile${p === 100 ? " full" : ""}${y.year === selected ? " sel" : ""}" href="/${y.year}" style="--cur:${share(current, y.total)};--fill:${share(y.have, y.total)}" title="${tip}"${y.year === selected ? html` aria-current="page"` : ""}><span class="yt-year">${y.year}</span>${p < 100 ? html`<span class="yt-pct">${p}%</span>` : ""}</a>`;
   })}</div>`;
 }
 
@@ -237,8 +242,8 @@ export async function missingCard(env: Env, origin: string): Promise<{ card: Htm
     Each square is a paper; grey ones are missing${focus.outdated ? ", yellow ones may be outdated" : ""}.</p>
   ${paperGrid(focus.year, cells, true)}
   ${legend(cells)}
-  <p class="mt-2 mb-0"><a href="/missing?year=${focus.year}">See the gaps by year →</a></p>`}`;
-  return { card: card("Help us fill the gaps", content, "home-missing"), tex: false };
+  <p class="mt-2 mb-0"><a href="/${focus.year}">See all papers from ${focus.year} →</a></p>`}`;
+  return { card: card("Papers by year", content, "home-missing"), tex: false };
 }
 
 function missingYearParam(url: URL): number | null {
@@ -246,43 +251,80 @@ function missingYearParam(url: URL): number | null {
   return y >= 1990 && y <= 2200 ? y : null;
 }
 
-export async function missingPage(env: Env, url: URL): Promise<Response> {
-  const cachedYears = await yearStats(env, url.origin);
+/** /missing (the old gaps page): the year with the most papers missing, or the one asked for. */
+export async function missingRedirect(env: Env, url: URL): Promise<Response> {
   const asked = missingYearParam(url);
-  const pick = cachedYears.find((y) => y.year === asked) ?? (asked === null ? (focusYear(cachedYears) ?? cachedYears[0]) : undefined);
-  const cells = pick ? await yearCells(env, pick.year) : [];
-  // The selected year's grid is read fresh; take its tile, heading and the total from the same
-  // read, so they agree right after an upload even while the other years come from the cache.
-  const sel = pick && statOf(pick.year, cells);
-  const years = sel ? cachedYears.map((y) => (y.year === sel.year ? sel : y)) : cachedYears;
-  const missing = years.reduce((s, y) => s + missingOf(y), 0);
-  const outdated = years.reduce((s, y) => s + y.outdated, 0);
-  const body = html`<section class="missing-page">
+  const years = asked === null ? await yearStats(env, url.origin) : [];
+  const year = asked ?? (focusYear(years) ?? years[0])?.year ?? new Date().getUTCFullYear();
+  return new Response(null, { status: 301, headers: { location: `/${year}`, "cache-control": "public, max-age=300" } });
+}
+
+/** A year's papers, newest first, with what the grid needs. */
+interface YearRow extends Cell {
+  id: string;
+  authors: string;
+}
+
+/** /YYYY: coverage of the year (tiles, squares), then every paper of the year. */
+export async function yearPage(env: Env, url: URL, year: number): Promise<Response> {
+  const [cachedYears, r] = await Promise.all([
+    yearStats(env, url.origin),
+    env.DB.prepare(
+      `SELECT id, num, title, authors, pdf_key IS NOT NULL AS have, withdrawn,
+         ((pdf_key IS NULL OR ${STALE}) AND ${PENDING}) AS pending,
+         (${STALE} AND NOT ${PENDING}) AS outdated
+       FROM papers WHERE year = ?1 ORDER BY num`,
+    )
+      .bind(year)
+      .all<YearRow>(),
+  ]);
+  const rows = r.results ?? [];
+  if (!rows.length) {
+    return messagePage(env, 404, `No papers from ${year}`, html`<p>The mirror has no papers from ${year}. Pick a year:</p>${yearTiles(cachedYears)}`);
+  }
+  // The selected year is read fresh; its tile and heading come from the same read, so they agree
+  // right after an upload even while the other years come from the cache.
+  const sel = statOf(year, rows);
+  const years = cachedYears.map((y) => (y.year === year ? sel : y));
+  const missing = missingOf(sel);
+  // Withdrawn papers we know nothing about have no page worth listing (still a square in the grid).
+  const listed = rows.filter((p) => !p.withdrawn || p.title).reverse();
+  const origin = siteOrigin(env, url);
+  const body = html`<section class="year-page">
   <div class="results-bar">
-    <h4 class="results-h">Help us fill the gaps</h4>
-    <small class="ms-auto"><a href="/api/missing${sel ? `?year=${sel.year}` : ""}">JSON</a></small>
+    <h3 class="results-h">Papers from ${year}</h3>
+    ${missing > 0 && html`<small class="ms-auto"><a href="/api/missing?year=${year}">Missing (JSON)</a></small>`}
   </div>
-  <p class="mt-3"><strong>${papersWord(missing)}</strong> ${missing === 1 ? "doesn’t" : "don’t"} have a PDF here yet${outdated
-    ? html`, and <strong>${fmtInt(outdated)}</strong> more may be outdated: ePrint changed ${outdated === 1 ? "it" : "them"} after we saved our copy`
-    : ""}.
-  Grab the latest version from ePrint and upload it on the paper’s page: it’s anonymous, and a matching file appears right away.
-</p>
-  <h5 class="mt-4">By year</h5>
-  ${yearTiles(years, sel?.year ?? null)}
-  ${sel
-    ? html`<h5 class="mt-4">${sel.year}: ${fmtInt(sel.have)} of ${papersWord(sel.total)} have a PDF here${missingOf(sel)
-        ? html`, ${fmtInt(missingOf(sel))} missing`
-        : ""}${sel.outdated ? html`, ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
-  <p class="small mb-2">Each square is a paper, in number order. Hover for its ID; click a grey one to upload its PDF${sel.outdated ? ", or a yellow one to upload its latest version" : ""}.</p>
-  ${paperGrid(sel.year, cells)}
-  ${legend(cells)}`
-    : html`<p class="mt-4">No papers from ${asked} here. Pick a year above.</p>`}
+  ${yearTiles(years, year)}
+  <h5 class="mt-4">${fmtInt(sel.have)} of ${papersWord(sel.total)} have a PDF here${missing ? html`, ${fmtInt(missing)} missing` : ""}${sel.outdated ? html`, ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
+  <p class="small mb-2">Each square is a paper, in number order.${missing || sel.outdated
+    ? html` Click a grey one to upload its PDF${sel.outdated ? ", or a yellow one to upload its latest version" : ""}: download it from ePrint and upload it on the paper’s page. It’s anonymous, and a matching file appears right away.`
+    : ""}</p>
+  ${paperGrid(year, rows)}
+  ${legend(rows)}
+  <h5 class="mt-4">All ${papersWord(listed.length)}, newest first</h5>
+  <ol class="year-list">
+    ${listed.map((p) => {
+      const authors = parseAuthors(p.authors);
+      const status = p.pending
+        ? html` <span class="text-muted small">upload in review</span>`
+        : p.outdated
+        ? html` <a class="small" href="/${p.id}#upload">may be outdated: upload the latest</a>`
+        : p.have
+        ? html` <a href="/${p.id}.pdf">(PDF)</a>`
+        : html` <a class="small" href="/${p.id}#upload">no PDF yet: upload it</a>`;
+      return html`<li><a class="paperlink" href="/${p.id}">${p.id}</a>${status}${p.withdrawn ? html` <span class="badge bg-secondary">withdrawn</span>` : ""}
+      <div><a class="result-title tex" href="/${p.id}">${p.title || "Withdrawn paper"}</a>${authors.length ? html`<span class="year-authors"> · ${authors.length > 6 ? `${authors.slice(0, 6).join(", ")}, and ${authors.length - 6} more` : authors.join(", ")}</span>` : ""}</div></li>\n`;
+    })}
+  </ol>
 </section>`;
   return page(env, {
-    title: asked === null ? "Papers missing a PDF" : `Papers from ${asked} missing a PDF`,
-    description: "Papers that don’t have a PDF on the mirror yet. Upload one to help fill the gaps.",
+    title: `Papers from ${year}`,
+    description: `All ${fmtInt(listed.length)} papers from the Cryptology ePrint Archive in ${year}, with abstracts and PDFs, on Open Cryptology.`,
     body,
-    noindex: true,
+    canonical: `${origin}/${year}`,
+    ogImage: ogImage(origin),
+    katex: hasTex(...listed.map((p) => p.title)),
     cache: "public, max-age=300",
   });
 }

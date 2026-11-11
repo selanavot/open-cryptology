@@ -1,5 +1,5 @@
 import { type Env } from "./db";
-import { coverageChanged } from "./missing";
+import { coverageChanged } from "./years";
 
 // Uploads that couldn't be verified automatically wait in R2 under quarantine/ (and in `uploads`
 // with status 'pending') until the maintainer approves or rejects them at /review (review.ts).

@@ -8,12 +8,12 @@ import { canonicalId, type Env } from "./db";
 import { html } from "./html";
 import { messagePage } from "./layout";
 import { apiPaper, handleUpload, paperPage, servePdf } from "./paper";
-import { apiMissing, missingPage } from "./missing";
+import { apiMissing, missingRedirect, yearPage } from "./years";
 import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
 import { supportPage } from "./support";
 import { llmsTxt, robotsTxt } from "./text";
 import { indexNowKeyFile, pingIndexNow } from "./indexnow";
-import { siteOrigin, sitemap, yearPage } from "./seo";
+import { siteOrigin, sitemap } from "./seo";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
@@ -112,7 +112,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     case "/api/search":
       return apiSearch(env, url);
     case "/missing":
-      return missingPage(env, url);
+      return missingRedirect(env, url);
     case "/api/missing":
       return apiMissing(env, url);
     case "/api":

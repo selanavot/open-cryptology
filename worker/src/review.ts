@@ -1,5 +1,5 @@
 import { getPaper, parseAuthors, STALE_AFTER_UPLOAD, type Env } from "./db";
-import { coverageChanged } from "./missing";
+import { coverageChanged } from "./years";
 import { html } from "./html";
 import { messagePage } from "./layout";
 

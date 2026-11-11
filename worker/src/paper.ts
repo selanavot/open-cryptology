@@ -3,7 +3,7 @@ import { activeContentScan, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
 import { canonicalId, confirmCurrent, eprintSize, getPaper, getSources, getVersion, getVersions, knownCopy, parseAuthors, STALE_AFTER_UPLOAD, type Env, type Paper } from "./db";
-import { coverageChanged } from "./missing";
+import { coverageChanged } from "./years";
 import { versionJson, versionsList } from "./versions";
 import { html, safeUrl, type Html } from "./html";
 import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
