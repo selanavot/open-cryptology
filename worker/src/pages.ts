@@ -44,6 +44,12 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 export async function homePage(env: Env, url: URL): Promise<Response> {
   const missing = await missingCard(env, 12);
   const body = html`<div class="home-layout">
+  <form method="get" action="/search" role="search" class="home-search">
+    <div class="input-group">
+      <input type="text" name="q" class="form-control" placeholder="Search, or go to 2024/123" aria-label="Search titles, authors and abstracts, or enter a paper ID">
+      <button class="btn btn-outline-dark" type="submit">Search</button>
+    </div>
+  </form>
   <article class="home-letter">
     <p>Hello cryptographers!</p>
     <p>This is an unofficial, non-commercial mirror of the
@@ -69,12 +75,6 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     </details>
   </article>
   <aside class="home-side">
-    <form method="get" action="/search" role="search" class="mb-3">
-      <div class="input-group">
-        <input type="text" name="q" class="form-control" placeholder="Search, or go to 2024/123" aria-label="Search titles, authors and abstracts, or enter a paper ID">
-        <button class="btn btn-outline-dark" type="submit">Search</button>
-      </div>
-    </form>
     ${missing.card}
   </aside>
 </div>`;
