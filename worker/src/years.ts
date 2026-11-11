@@ -130,12 +130,8 @@ async function yearCells(env: Env, year: number): Promise<Cell[]> {
   return r.results ?? [];
 }
 
-/** The year to show first: the one with the most papers still missing (newest on ties). */
-function focusYear(years: YearStat[]): YearStat | undefined {
-  let best: YearStat | undefined;
-  for (const y of years) if (missingOf(y) > 0 && (!best || missingOf(y) > missingOf(best))) best = y;
-  return best;
-}
+/** The year to show first: the most recent one with papers still missing (`years` is newest first). */
+const focusYear = (years: YearStat[]): YearStat | undefined => years.find((y) => missingOf(y) > 0);
 
 // ---------------------------------------------------------------------------- rendering
 
