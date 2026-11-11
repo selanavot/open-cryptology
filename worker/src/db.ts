@@ -25,6 +25,8 @@ export interface Env {
   /** Rate limit for the agent upload API (POST /api/upload/YYYY/NNNN). */
   API_UPLOAD_LIMITER?: RateLimit;
   /** Cloudflare Access (maintainer login) for /review: team domain + allowed application audience tags (comma-separated). */
+  /** Cloudflare Web Analytics beacon token (public; cookieless page-view analytics for browsers). */
+  CF_BEACON_TOKEN?: string;
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
   /** Public origin (https://...), for links in emails sent from the cron (review reminders). */

@@ -1,6 +1,6 @@
 import { TURNSTILE_JS, turnstileOn } from "./turnstile";
 import type { Env } from "./db";
-import { html, type Html, type Val } from "./html";
+import { html, raw, type Html, type Val } from "./html";
 
 const KATEX = "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.19.1";
 const KATEX_SRI = {
@@ -13,13 +13,13 @@ const ASSET_VER = "10";
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
     "default-src 'none'",
-    "script-src 'self' https://cdnjs.cloudflare.com https://challenges.cloudflare.com",
+    "script-src 'self' https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://static.cloudflareinsights.com",
     "frame-src https://challenges.cloudflare.com",
     // KaTeX writes inline style attributes.
     "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
     "font-src https://cdnjs.cloudflare.com",
     "img-src 'self' data:",
-    "connect-src 'self' https://challenges.cloudflare.com",
+    "connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com",
     "form-action 'self'",
     "base-uri 'none'",
     "frame-ancestors 'none'",
@@ -71,6 +71,7 @@ html`<link rel="stylesheet" href="${KATEX}/katex.min.css" integrity="${KATEX_SRI
 <script defer src="${KATEX}/katex.min.js" integrity="${KATEX_SRI.js}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script defer src="${KATEX}/contrib/auto-render.min.js" integrity="${KATEX_SRI.autoRender}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>`}
 <script defer src="/static/app.js?v=${ASSET_VER}"></script>
+${/^[0-9a-f]{32}$/.test(env.CF_BEACON_TOKEN ?? "") && raw(`<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "${env.CF_BEACON_TOKEN}"}'></script>`)}
 ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
 </head>
 <body>
