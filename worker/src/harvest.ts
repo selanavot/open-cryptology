@@ -4,7 +4,9 @@ import { parseGetRecord, upsert } from "./oai";
 // Scheduled metadata harvest: incremental OAI-PMH ListRecords from ePrint (metadata is CC0),
 // starting at meta.last_harvest. Metadata only — this never fetches PDFs. Polite: one client,
 // a few pages per run, >= 3 s between pages, stops at the first 403/429 and tries again next run.
-// Kill switch: HARVEST_ENABLED != "1".
+// Kill switch: HARVEST_ENABLED != "1". OFF in production: ePrint's Cloudflare challenges requests
+// from Workers, so the harvest runs on GitHub Actions instead (pipeline/harvest_remote.py). Kept
+// for the day that changes.
 
 const USER_AGENT =
   "open-cryptology-worker/0.1 (unofficial non-commercial ePrint mirror; incremental OAI-PMH metadata harvest)";
@@ -60,6 +62,11 @@ export async function runHarvest(env: Env): Promise<Record<string, unknown>> {
     }
     const xml = await res.text();
     summary.pages++;
+    // ePrint's Cloudflare answers Workers with a 200 challenge page; never count that as "0 records".
+    if (!xml.includes("<OAI-PMH")) {
+      summary.status = "blocked or unexpected response (not OAI-PMH XML)";
+      break;
+    }
     if (/<error\b[^>]*code="noRecordsMatch"/.test(xml)) break;
     const err = /<error\b[^>]*code="([^"]*)"/.exec(xml);
     if (err) {

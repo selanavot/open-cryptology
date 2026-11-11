@@ -15,8 +15,10 @@
   ],
   // Contact form email (Cloudflare Email Routing). CONTACT_TO is a secret (.dev.vars locally,
   // `wrangler secret put CONTACT_TO` in production) and must be a verified destination address.
-  // Metadata harvest every 4 hours (src/harvest.ts), kept rare to be polite to IACR.
-  // Disable with HARVEST_ENABLED != "1".
+  // Cron every 4 hours: metadata-harvest staleness alarm (src/staleness.ts) and review reminders.
+  // The metadata harvest itself runs on GitHub Actions (.github/workflows/harvest.yml) because
+  // ePrint's Cloudflare challenges Workers; the Worker's own harvest (src/harvest.ts) runs only
+  // with HARVEST_ENABLED = "1".
   "routes": [
     { "pattern": "opencryptology.org", "custom_domain": true },
     { "pattern": "www.opencryptology.org", "custom_domain": true }
@@ -43,6 +45,6 @@
     "ACCESS_TEAM_DOMAIN": "fragrant-field-7a23.cloudflareaccess.com",
     "ACCESS_AUD": "bd600dd65d2bf3a6d35a8fc6100a53bbb8bcd4f920dee84d8422510ed839b911,5c5a332aefd1a1532265210b6452e66d78092dceca2034ebe44867464af87a26",
     "REQUIRE_ACCESS": "0",
-    "HARVEST_ENABLED": "1"
+    "HARVEST_ENABLED": "0"
   }
 }

@@ -7,12 +7,14 @@ by default) and to `gh` for GitHub listings.
 
 Nothing here writes data into git: generated SQL, caches and temp PDFs go under `data/`
 (gitignored) and are deleted after use. Nothing here fetches PDFs from eprint.iacr.org.
-In production, metadata stays current via the Worker cron (`worker/src/harvest.ts`); how PDFs get
+In production, metadata stays current via `harvest_remote.py` on GitHub Actions every 4 h
+(`.github/workflows/harvest.yml`, details in `docs/INGESTION.md`); how PDFs get
 into R2 is described in `docs/INGESTION.md`.
 
 | Script | Does | Network |
 |---|---|---|
 | `harvest_oai.py` | OAI-PMH ListRecords (oai_dc) -> `papers`, FTS rebuild, `meta.last_harvest` | eprint.iacr.org/oai, one client, >= 3 s/request, stops at first 403/429 |
+| `harvest_remote.py` | production harvest (run by GitHub Actions): OAI-PMH ListRecords from `meta.last_harvest` -> remote D1 via the D1 HTTP API (same upsert as `worker/src/oai.ts`), `meta.harvest_last_run` / `harvest_last_ok`; exits non-zero on block pages, HTTP != 200, OAI or D1 errors. Env: `CLOUDFLARE_API_TOKEN` (D1 Edit), optional `OAI_BASE` | eprint.iacr.org/oai, one client, >= 3 s/page, <= 30 pages/run |
 | `discover_sources.py` | where PDFs can be fetched -> `sources` (no downloads) + coverage table | `gh api`; web.archive.org CDX, >= 5 s/request |
 | `ingest_sample.py` | ~20 PDFs -> local R2 `pdf/YYYY/NNNN.pdf` + `papers.pdf_*` (local dev only: the only way to get PDFs into the emulated R2, to exercise the PDF route and paper pages with a mirrored copy) | raw.githubusercontent.com, web.archive.org |
 | `backfill_withdrawn.py` | metadata of withdrawn papers from archived ePrint abstract pages -> remote `papers` | web.archive.org, 2 clients >= 2 s apart (eprint.iacr.org with `--source eprint`: one client, >= 5 s) |

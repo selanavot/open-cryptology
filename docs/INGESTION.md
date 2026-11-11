@@ -6,12 +6,27 @@ pipeline against Wrangler's emulated D1/R2 instead (`pipeline/README.md`).
 ## Metadata (live)
 
 - **Initial load:** `pipeline/harvest_oai.py` (full OAI-PMH ListRecords, written to remote D1).
-- **Updates:** the site Worker's Cron Trigger runs every 4 hours (`17 */4 * * *`,
-  `worker/src/harvest.ts`): incremental `ListRecords&from=<meta.last_harvest>`, at most 3 pages
-  per run, >= 3 s between pages, descriptive User-Agent, stops at the first 403/429 and tries
-  again next run (no workarounds if blocked). Upserts touch metadata columns only, never move a
-  record backwards in time (`excluded.updated >= papers.updated`) and never touch `pdf_*`.
-  Kept rare to be polite to IACR. Kill switch: `HARVEST_ENABLED != "1"`.
+- **Updates:** GitHub Actions, every 4 hours (`.github/workflows/harvest.yml`, cron
+  `23 */4 * * *`, also runnable by hand) runs `pipeline/harvest_remote.py`: incremental
+  `ListRecords&from=<meta.last_harvest>`, following resumptionTokens (<= 30 pages per run,
+  >= 3 s between pages, one client, descriptive User-Agent), written straight to production D1
+  through the Cloudflare D1 HTTP API with the same parsing and upsert as `worker/src/oai.ts`.
+  Upserts touch metadata columns only, never move a record backwards in time
+  (`excluded.updated >= papers.updated`) and never touch `pdf_*`. On success it advances
+  `meta.last_harvest` and writes `meta.harvest_last_run` (JSON summary) and `meta.harvest_last_ok`.
+  It runs on GitHub because ePrint's Cloudflare challenges requests from Cloudflare Workers.
+  The Worker's own harvest (`worker/src/harvest.ts`) is kept but off (`HARVEST_ENABLED = "0"`).
+  - **Secret:** repository secret `CLOUDFLARE_API_TOKEN`, a Cloudflare API token with
+    *Account > D1 > Edit* on the maintainer's account (Settings > Secrets and variables > Actions).
+  - **Failure alerts:** the script exits non-zero (and the run fails) on any HTTP status other
+    than 200, a non-OAI body (Cloudflare challenge/block page: reported as "blocked"), an OAI error
+    other than `noRecordsMatch`, or a D1 API error. GitHub emails the repo owner about failed
+    scheduled runs only if *Settings > Notifications > Actions* is set to email with
+    "Send notifications for failed workflows only" checked (github.com/settings/notifications).
+    Note GitHub disables scheduled workflows after 60 days without repository activity.
+  - **Staleness alarm:** the Worker cron (every 4 h, `worker/src/staleness.ts`) emails
+    `CONTACT_TO` "[Open Cryptology] Metadata harvest is stale" when `meta.harvest_last_ok` is
+    missing or older than 26 h, at most once per 24 h (`meta.harvest_stale_alert_at`).
 - **On demand:** a paper page for an id not yet in D1 does a single OAI `GetRecord`
   (`worker/src/oai.ts`), so brand-new papers appear before the next cron run.
 
