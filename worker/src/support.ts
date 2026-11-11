@@ -6,18 +6,14 @@ import { page } from "./layout";
 export function supportPage(env: Env): Response {
   return page(env, {
     title: "Support hosting",
-    description: `${env.SITE_NAME} is free to use. Donations only pay for hosting.`,
+    description: `Help cover ${env.SITE_NAME}'s hosting costs.`,
     canonical: "https://opencryptology.org/support",
     cache: "public, max-age=3600",
     body: html`<section class="message">
   <h3>Support hosting</h3>
-  <p>${env.SITE_NAME} costs about $7 a month to run: Cloudflare Workers, storage for the PDFs, and the
-  domain. If the site is useful to you, you can chip in on GitHub Sponsors, once or monthly.</p>
-  <p>Donations only pay for hosting. Everything on the site stays free for everyone, and donors get
-  nothing extra: no early access, no higher limits.</p>
+  <p>${env.SITE_NAME} costs about $7 a month to run. If it's useful to you, you can help cover that
+  on GitHub Sponsors.</p>
   <p><a class="btn btn-outline-dark" href="${env.SPONSOR_URL}">Sponsor on GitHub</a></p>
-  <p>Other ways to help: <a href="/missing">upload a missing PDF</a>, send a pull request on
-  <a href="${env.REPO_URL}">GitHub</a>, or <a href="/#contact">get in touch</a>.</p>
 </section>`,
   });
 }
