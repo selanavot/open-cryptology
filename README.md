@@ -14,11 +14,11 @@
 
 ## Why
 
-AI agents are useful for research only if they can read prior work. The
-[Cryptology ePrint Archive](https://eprint.iacr.org) keeps its PDFs behind a bot challenge that
-blocks agents fetching a paper for a user, which [IACR's own AI policy](https://iacr.org/policy/AIPolicy.html)
-allows. Open Cryptology is an unofficial, non-commercial mirror that makes every paper easy to find
-and fetch.
+This is an unofficial, non-commercial mirror of the
+[Cryptology ePrint Archive](https://eprint.iacr.org). AI agents have become useful for research,
+from literature review to smarter search, but only if they can access prior work. ePrint's access
+control currently blocks them from fetching the PDFs. This mirror is meant to speed up your research
+workflow by giving agents access to the information they need.
 
 ## Vision
 
