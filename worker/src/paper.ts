@@ -42,7 +42,8 @@ export async function paperPage(
     </div>`}
     <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${title}</a></h3>
     ${authors.map((a, i) => html`<div class="author"><span class="authorName">${a}</span>${affs[i] && html`<span class="affiliation">, ${affs[i]}</span>`}</div>`)}
-    ${!pdfHref && !withdrawn && uploadForm(env, p, orig)}
+    ${pdfHref ? uploadNotice(url.searchParams.get("upload")) : ""}
+    ${!pdfHref && !withdrawn && uploadForm(env, p, orig, uploadNotice(url.searchParams.get("upload")))}
     <h5 class="mt-3">Abstract</h5>
     <p class="paper-abstract tex">${p.abstract || "No abstract available."}</p>
   </div>
@@ -86,7 +87,8 @@ export async function paperPage(
     original: orig,
     originalLabel: `View paper ${id} on the original ePrint`,
     canonical: orig, // search engines should prefer the original
-    cache: "public, max-age=600",
+    // Pages that can still change through an upload must not be served stale from a browser cache.
+    cache: url.searchParams.has("upload") ? "no-store" : pdfHref && !p.pdf_maybe_stale ? "public, max-age=600" : "no-cache",
     headers: lic.url ? { link: `<${lic.url}>; rel="license"` } : undefined,
   });
 }
@@ -101,8 +103,42 @@ function licenseBadge(lic: LicenseInfo): Html {
 
 
 
-function uploadForm(env: Env, p: Paper, orig: string): Html {
+
+// After an upload we redirect (303) back to the paper page with ?upload=<code>, so there's no
+// separate result page, Back works, and the page shows the new PDF straight away.
+const UPLOAD_NOTICES: Record<string, { ok: boolean; text: string }> = {
+  live: { ok: true, text: "Thank you! Your PDF matched this paper and is now live for everyone." },
+  review: { ok: true, text: "Thank you! We couldn’t automatically confirm the file is this paper, so it will be checked before it appears." },
+  have: { ok: true, text: "We already have that exact file. Thanks anyway!" },
+  cross_site: { ok: false, text: "Cross-site uploads aren’t accepted." },
+  withdrawn: { ok: false, text: "Withdrawn papers don’t accept uploads." },
+  not_needed: { ok: false, text: "This paper already has an up-to-date PDF here, so no upload is needed." },
+  too_large: { ok: false, text: "That file is too large: PDFs must be 95 MB or smaller." },
+  unreadable: { ok: false, text: "We couldn’t read that upload. Please try again." },
+  turnstile: { ok: false, text: "The anti-spam check didn’t pass. Please try again." },
+  rate: { ok: false, text: "Too many uploads right now. Please wait a bit and try again." },
+  no_file: { ok: false, text: "Please choose a PDF file to upload." },
+  empty: { ok: false, text: "That file is empty." },
+  not_pdf: { ok: false, text: "That file doesn’t look like a PDF." },
+  bad_pdf: { ok: false, text: "That PDF couldn’t be accepted: it looks truncated, or contains scripts or embedded files." },
+};
+
+function uploadNotice(code: string | null): Html | "" {
+  const n = code ? UPLOAD_NOTICES[code] : undefined;
+  if (!n) return "";
+  return html`<div class="upload-notice ${n.ok ? "upload-notice-ok" : "upload-notice-err"}" role="status">${n.text}</div>`;
+}
+
+function uploadRedirect(url: URL, id: string, code: keyof typeof UPLOAD_NOTICES): Response {
+  const to = new URL(`/${id}`, url);
+  to.searchParams.set("upload", code);
+  to.hash = UPLOAD_NOTICES[code].ok && code === "live" ? "" : "upload";
+  return new Response(null, { status: 303, headers: { location: to.pathname + to.search + to.hash, "cache-control": "no-store" } });
+}
+
+function uploadForm(env: Env, p: Paper, orig: string, notice: Html | "" = ""): Html {
   return html`<form id="upload" action="/${p.id}/upload" method="post" enctype="multipart/form-data" class="upload-form upload-cta">
+  ${notice}
   <p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
   <p>Help out: <a href="${orig}" target="_blank" rel="noopener">download it from ePrint ↗</a> and
   upload it here. Uploads are anonymous. A file that matches this paper’s title and authors
@@ -284,71 +320,52 @@ export async function handleUpload(
   // offline verifier matches them to the paper.
   const id = canonicalId(year, num);
   const back = html`<p><a class="btn btn-outline-dark" href="/${id}">Back to paper ${id}</a></p>`;
-  const fail = (status: number, title: string, msg: string) =>
-    messagePage(env, status, title, html`<p>${msg}</p>${back}`, { cache: "no-store" });
+  const fail = (_status: number, code: keyof typeof UPLOAD_NOTICES) => uploadRedirect(url, id, code);
 
   const origin = req.headers.get("origin");
-  if (origin && origin !== url.origin) return fail(403, "Upload rejected", "Cross-site uploads are not accepted.");
+  if (origin && origin !== url.origin) return fail(403, "cross_site");
 
   const p = await getPaper(env, id);
-  if (!p) return fail(404, "Paper not found", `Paper ${id} isn’t in the mirror.`);
-  if (p.withdrawn) return fail(410, "Paper withdrawn", "Withdrawn papers don’t accept uploads.");
+  if (!p) return messagePage(env, 404, "Paper not found", html`<p>Paper ${id} isn’t in the mirror.</p>${back}`, { cache: "no-store" });
+  if (p.withdrawn) return fail(410, "withdrawn");
   if (p.pdf_key && !p.pdf_maybe_stale)
-    return fail(409, "We already have this paper", "This paper already has an up-to-date PDF here, so no upload is needed. Thank you!");
+    return fail(409, "not_needed");
 
   const len = Number(req.headers.get("content-length") ?? "0");
-  if (len > MAX_UPLOAD + 64 * 1024) return fail(413, "File too large", "PDFs must be 95 MB or smaller.");
+  if (len > MAX_UPLOAD + 64 * 1024) return fail(413, "too_large");
 
   let form: FormData;
   try {
     form = await req.formData();
   } catch {
-    return fail(400, "Upload failed", "We couldn’t read that upload. Please use the form on the paper page.");
+    return fail(400, "unreadable");
   }
-  const thanks = (dup: boolean) =>
-    messagePage(
-      env,
-      200,
-      "Thank you!",
-      html`<p>${dup
-        ? "We already received this exact file for this paper; it is waiting for verification."
-        : html`We received your PDF for paper <strong>${id}</strong>, but we couldn’t automatically confirm
-          it’s this paper (we look for the title and an author’s name on the first page), so a person will
-          review it before it appears.`}</p>
-      <p class="small muted">If you uploaded the wrong file, no harm done — just upload the right one.</p>${back}`,
-      { cache: "no-store", noindex: true },
-    );
+  const thanks = (_dup: boolean) => uploadRedirect(url, id, "review");
 
   // Honeypot: bots fill every field. Pretend success, store nothing.
   const hp = form.get("website");
   if (typeof hp === "string" && hp.trim() !== "") return thanks(false);
-  if (!(await turnstileOk(env, form, req))) return fail(403, "Please complete the check", "The anti-spam check didn’t pass. Go back and try again.");
+  if (!(await turnstileOk(env, form, req))) return fail(403, "turnstile");
   const ip = await ipHash(env, req);
   const limited = await overLimit(env, ip);
-  if (limited) return fail(429, "Slow down a little", limited);
+  if (limited) return fail(429, "rate");
 
   const file = form.get("file");
-  if (!file || typeof file === "string") return fail(400, "No file", "Please choose a PDF file to upload.");
-  if (file.size === 0) return fail(400, "Empty file", "That file is empty.");
-  if (file.size > MAX_UPLOAD) return fail(413, "File too large", "PDFs must be 95 MB or smaller.");
+  if (!file || typeof file === "string") return fail(400, "no_file");
+  if (file.size === 0) return fail(400, "empty");
+  if (file.size > MAX_UPLOAD) return fail(413, "too_large");
 
-  if (file.size > INLINE_MAX) return largeUpload(env, p, file, ip, back, thanks, fail);
+  if (file.size > INLINE_MAX) return largeUpload(env, url, p, file, ip, thanks, fail);
 
   const buf = await file.arrayBuffer();
   const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(5, buf.byteLength)));
-  if (head !== "%PDF-") return fail(415, "Not a PDF", "That file doesn’t look like a PDF (it must start with %PDF).");
+  if (head !== "%PDF-") return fail(415, "not_pdf");
   const bad = scanPdf(buf);
-  if (bad) return fail(422, "PDF not accepted", bad);
+  if (bad) return fail(422, "bad_pdf");
 
   const sha = toHex(await crypto.subtle.digest("SHA-256", buf));
   if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha) {
-    return messagePage(
-      env,
-      200,
-      "We already have it",
-      html`<p>That file is identical to the PDF already mirrored for paper ${id}. Thanks anyway!</p>${back}`,
-      { cache: "no-store", noindex: true },
-    );
+    return uploadRedirect(url, id, "have");
   }
   const dup = await env.DB.prepare(
     "SELECT id FROM uploads WHERE paper_id = ?1 AND sha256 = ?2 AND status = 'pending' LIMIT 1",
@@ -359,7 +376,7 @@ export async function handleUpload(
 
   // Instant verification: page 1-2 text must contain the title and an author surname.
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
-  if (report.active) return fail(422, "PDF not accepted", ACTIVE_MSG);
+  if (report.active) return fail(422, "bad_pdf");
   const now = new Date().toISOString();
   const uploadId = crypto.randomUUID();
   if (report.ok) {
@@ -380,16 +397,7 @@ export async function handleUpload(
          VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'accepted', ?7, ?8)`,
       ).bind(uploadId, id, key, sha, buf.byteLength, now, JSON.stringify(report), ip),
     ]);
-    return messagePage(
-      env,
-      200,
-      "Thank you, it’s live!",
-      html`<p>Your PDF matched paper <strong>${id}</strong> (title and authors found on the first page)
-      and is now available to everyone.</p>
-      <p><a class="btn btn-outline-dark" href="/${id}.pdf">Open the PDF</a>
-      <a class="btn btn-outline-dark" href="/missing">Upload another missing paper</a></p>${back}`,
-      { cache: "no-store", noindex: true },
-    );
+    return uploadRedirect(url, id, "live");
   }
 
   const key = `quarantine/${uploadId}.pdf`;
@@ -411,24 +419,22 @@ export async function handleUpload(
  *  memory limit). */
 async function largeUpload(
   env: Env,
+  url: URL,
   p: Paper,
   file: File,
   ip: string,
-  back: Html,
   thanks: (dup: boolean) => Response,
-  fail: (status: number, title: string, msg: string) => Response,
+  fail: (status: number, code: keyof typeof UPLOAD_NOTICES) => Response,
 ): Promise<Response> {
   const head = await file.slice(0, 5).text();
-  if (head !== "%PDF-") return fail(415, "Not a PDF", "That file doesn’t look like a PDF (it must start with %PDF).");
+  if (head !== "%PDF-") return fail(415, "not_pdf");
   const tail = await file.slice(Math.max(0, file.size - 2048)).text();
-  if (!tail.includes("%%EOF")) return fail(422, "PDF not accepted", "That PDF looks truncated (no end-of-file marker).");
+  if (!tail.includes("%%EOF")) return fail(422, "bad_pdf");
   const ds = new crypto.DigestStream("SHA-256");
   await file.stream().pipeTo(ds);
   const sha = toHex(await ds.digest);
   if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha) {
-    return messagePage(env, 200, "We already have it",
-      html`<p>That file is identical to the PDF already mirrored for paper ${p.id}. Thanks anyway!</p>${back}`,
-      { cache: "no-store", noindex: true });
+    return uploadRedirect(url, p.id, "have");
   }
   const dup = await env.DB.prepare("SELECT id FROM uploads WHERE paper_id = ?1 AND sha256 = ?2 AND status = 'pending' LIMIT 1")
     .bind(p.id, sha)
