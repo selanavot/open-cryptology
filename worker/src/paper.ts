@@ -94,13 +94,10 @@ export async function paperPage(
     katex: hasTex(p.title, p.abstract),
     original: orig,
     originalLabel: `View paper ${id} on the original ePrint`,
-    // This page is its own canonical, so search engines and AI search can send people and agents
-    // here, where the PDF is reachable. ePrint is named as the original in the JSON-LD and the
-    // Scholar tags (seo.ts), and the BibTeX cites ePrint.
     canonical: `${origin}/${id}`,
     ogType: "article",
     ogImage: ogImage(origin),
-    head: paperHead({ p, origin, orig, originBase: env.ORIGIN_BASE, title, pdfUrl: pdfHref && `${origin}${pdfHref}`, lic }),
+    head: paperHead(p, title, pdfHref && `${origin}${pdfHref}`),
     // Pages that can still change through an upload must not be served stale from a browser cache.
     cache: url.searchParams.has("upload") ? "no-store" : pdfHref && !p.pdf_maybe_stale ? "public, max-age=600" : "no-cache",
     headers: lic.url ? { link: `<${lic.url}>; rel="license"` } : undefined,
@@ -265,12 +262,7 @@ export async function servePdf(
     "x-content-type-options": "nosniff",
     "access-control-allow-origin": "*",
   });
-  // A stored older version points search engines at the paper's current PDF; the current PDF is
-  // its own canonical (no header needed).
-  const links: string[] = [];
-  if (lic.url) links.push(`<${lic.url}>; rel="license"`);
-  if (stamp) links.push(`<${siteOrigin(env, new URL(req.url))}/${id}.pdf>; rel="canonical"`);
-  if (links.length) headers.set("link", links.join(", "));
+  if (lic.url) headers.set("link", `<${lic.url}>; rel="license"`);
   if (lic.code) headers.set("x-license", lic.code);
   if (etag) headers.set("etag", etag);
   if (!stamp && p.pdf_maybe_stale) headers.set("x-mirror-note", "may-be-older-revision");

@@ -13,7 +13,7 @@ import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
 import { supportPage } from "./support";
 import { llmsTxt, robotsTxt } from "./text";
 import { indexNowKeyFile, pingIndexNow } from "./indexnow";
-import { siteOrigin, siteSitemap, sitemapIndex, yearPage, yearSitemap } from "./seo";
+import { siteOrigin, sitemap, yearPage } from "./seo";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
@@ -21,7 +21,6 @@ const PAPER_RE = /^\/(\d{4})\/(\d{1,6})(\.pdf|\/upload|\/|\/versions\/(\d{8}T\d{
 const API_PAPER_RE = /^\/api\/papers\/(\d{4})\/(\d{1,6})\/?$/;
 const API_UPLOAD_RE = /^\/api\/upload\/(\d{4})\/(\d{1,6})\/?$/;
 const YEAR_RE = /^\/(\d{4})\/?$/;
-const YEAR_SITEMAP_RE = /^\/sitemaps\/(\d{4})\.xml$/;
 
 function redirect(url: URL, path: string, status = 301): Response {
   const to = new URL(path, url);
@@ -104,8 +103,6 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (path !== `/${ym[1]}`) return redirect(url, `/${ym[1]}`);
     return yearPage(env, url, Number(ym[1]));
   }
-  const ys = YEAR_SITEMAP_RE.exec(path);
-  if (ys) return (await yearSitemap(env, url, Number(ys[1]))) ?? notFound(env);
 
   switch (path) {
     case "/":
@@ -130,9 +127,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     case "/robots.txt":
       return robotsTxt(env, siteOrigin(env, url));
     case "/sitemap.xml":
-      return sitemapIndex(env, url);
-    case "/sitemaps/site.xml":
-      return siteSitemap(env, url);
+      return sitemap(env, url);
   }
   if (path.startsWith("/api/")) return json({ error: "not_found", path }, 404, "public, max-age=60");
   return notFound(env);

@@ -42,18 +42,16 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 - `/api/papers/YYYY/NNNN` — JSON metadata; `/api/search?q=` — JSON search
 - `/llms.txt`, `/robots.txt`, `/about` (license guidance for humans and agents)
 - `/YYYY` — every paper of a year (indexable; search and `/missing` are `noindex`)
-- `/sitemap.xml` → `/sitemaps/site.xml` + `/sitemaps/YYYY.xml`; `/<INDEXNOW_KEY>.txt` (IndexNow key file)
+- `/sitemap.xml` (homepage, year pages, every paper page); `/<INDEXNOW_KEY>.txt` (IndexNow key file)
 
 ## Search engines and agents
 
 Paper pages are their own canonical (`https://opencryptology.org/YYYY/NNN`), so search engines and
-AI search (Bing feeds ChatGPT search and Copilot) can send people and agents to a page where the
-PDF is reachable. ePrint stays the original everywhere else: the JSON-LD `ScholarlyArticle`
-names it (`isBasedOn`, `isPartOf`), the Google Scholar `citation_*` tags give it as the report's
-institution and number, and the BibTeX cites it. Older stored PDF versions point to the paper's
-current PDF (`Link: rel="canonical"`). The Worker cron pings IndexNow with new and changed paper
-pages when the `INDEXNOW_KEY` secret is set (`worker/src/indexnow.ts`; the first run only records
-watermarks). All of this is in `worker/src/seo.ts` and `worker/src/indexnow.ts`.
+AI search (Bing feeds ChatGPT search and Copilot) send people and agents to a page where the PDF is
+reachable. Credit to ePrint is for people and lives on the page (link to the original, BibTeX,
+footer). Paper pages carry Google Scholar `citation_*` tags and Open Graph tags (`worker/src/seo.ts`).
+The Worker cron pings IndexNow with new and changed paper pages when the `INDEXNOW_KEY` secret is
+set (`worker/src/indexnow.ts`; the first run only records watermarks).
 
 ## License handling
 
