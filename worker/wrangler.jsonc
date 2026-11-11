@@ -4,7 +4,7 @@
   "name": "open-cryptology",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "workers_dev": true,
+  "workers_dev": false,
   "preview_urls": false,
   "assets": { "directory": "./public", "binding": "ASSETS" },
   "d1_databases": [
@@ -34,7 +34,7 @@
     // Cloudflare Access for /review (maintainer only). ACCESS_AUD lists allowed Access app audience tags.
     "ACCESS_TEAM_DOMAIN": "fragrant-field-7a23.cloudflareaccess.com",
     "ACCESS_AUD": "bd600dd65d2bf3a6d35a8fc6100a53bbb8bcd4f920dee84d8422510ed839b911,5c5a332aefd1a1532265210b6452e66d78092dceca2034ebe44867464af87a26",
-    "REQUIRE_ACCESS": "1",
+    "REQUIRE_ACCESS": "0",
     "HARVEST_ENABLED": "1"
   }
 }
