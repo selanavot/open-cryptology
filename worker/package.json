@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "bash ../scripts/dev.sh",
+    "deploy": "bash ../scripts/deploy.sh",
     "db:init": "wrangler d1 execute DB --local --file ../db/schema.sql",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bash ../scripts/worker-deps.sh && tsc --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261110.1",
