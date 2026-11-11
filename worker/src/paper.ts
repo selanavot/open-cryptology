@@ -1,3 +1,4 @@
+import { notifyReview } from "./review";
 import { ACTIVE_MSG, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
@@ -396,6 +397,10 @@ export async function handleUpload(
         `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)
          VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'accepted', ?7, ?8)`,
       ).bind(uploadId, id, key, sha, buf.byteLength, now, JSON.stringify(report), ip),
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO versions (paper_id, stamp, r2_key, sha256, size, source, source_url, captured_at, added_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'upload', NULL, ?6, ?6)`,
+      ).bind(id, stamp, key, sha, buf.byteLength, now),
     ]);
     return uploadRedirect(url, id, "live");
   }
@@ -411,6 +416,7 @@ export async function handleUpload(
   )
     .bind(uploadId, id, key, sha, buf.byteLength, now, JSON.stringify(report), ip)
     .run();
+  await notifyReview(env, url.origin, uploadId, id, p.title, JSON.stringify(report));
   return thanks(false);
 }
 
@@ -452,6 +458,7 @@ async function largeUpload(
   )
     .bind(uploadId, p.id, key, sha, file.size, new Date().toISOString(), JSON.stringify({ ok: false, skipped: "large file, needs review" }), ip)
     .run();
+  await notifyReview(env, url.origin, uploadId, p.id, p.title, "large file (over 30 MB), needs a person to check it");
   return thanks(false);
 }
 

@@ -1,3 +1,4 @@
+import { handleReview, isReviewPath } from "./review";
 import { handleContact } from "./contact";
 import { runHarvest } from "./harvest";
 import { canonicalId, type Env } from "./db";
@@ -66,6 +67,10 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
         "access-control-max-age": "86400",
       },
     });
+  }
+  if (isReviewPath(path)) {
+    if (req.method !== "GET" && req.method !== "POST") return methodNotAllowed("GET, POST");
+    return handleReview(req, env, url);
   }
   if (path === "/contact") {
     if (req.method === "POST") return handleContact(env, req, url);
