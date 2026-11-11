@@ -5,6 +5,7 @@ export interface Env {
   PDFS: R2Bucket;
   ASSETS: Fetcher;
   SITE_NAME: string;
+  REPO_URL: string;
   ISSUES_URL: string;
   ORIGIN_BASE: string;
   /** Contact form (optional): send_email binding + addresses. CONTACT_TO is a secret. */
