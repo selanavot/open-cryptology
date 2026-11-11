@@ -4,7 +4,8 @@
 //          it; if its sha256 is in `skip` (content we already hold) nothing is written, else it
 //          is stored at `key` (which must be pdf/<id>/<stamp>.pdf).
 //   /check [{ id, key }]                       -> is the object in R2 a complete PDF? (pdfcheck.ts;
-//                                                 exactly 1 MiB never counts as complete)
+//                                                 exactly 1 MiB never counts as complete; also
+//                                                 the sha256 of its first 1 MiB)
 // /copy with probe: true fetches and checks but stores nothing (repair_truncated.py dry runs).
 // Every copy must be a complete PDF: some Wayback captures are cut off at 1 MiB (pdfcheck.ts).
 // Only the community GitHub mirror and Wayback `id_` replays of eprint.iacr.org PDFs are fetched.
@@ -83,10 +84,13 @@ export default {
           const buf = await obj.arrayBuffer();
           // The size rule is reported separately (one_mib) so callers can tell a cut-off file
           // from a complete one that happens to be exactly 1 MiB.
+          // prefix_sha256 (first 1 MiB): equal to a truncated capture's sha256 means that capture
+          // was a cut-off copy of this same file, not a different (newer) revision.
           const c = await completePdf(buf);
           const oneMiB = buf.byteLength === TRUNCATED_CAPTURE_SIZE;
+          const prefix = hex(await crypto.subtle.digest("SHA-256", buf.slice(0, TRUNCATED_CAPTURE_SIZE)));
           out.push({ id: it.id, key: it.key, ok: true, complete: !c.problem && !oneMiB, problem: c.problem ?? null,
-                     one_mib: oneMiB, pages: c.pages, size: buf.byteLength });
+                     one_mib: oneMiB, pages: c.pages, size: buf.byteLength, prefix_sha256: prefix });
         } catch (e) {
           out.push({ id: it.id, key: it.key, ok: false, error: err(e) });
         }
@@ -132,7 +136,8 @@ export default {
           }
           const h = await hashes(buf);
           if (it.probe) {
-            out.push({ id: it.id, key: it.key, ok: true, probe: true, pages: c.pages, ...h });
+            const prefix = hex(await crypto.subtle.digest("SHA-256", buf.slice(0, TRUNCATED_CAPTURE_SIZE)));
+            out.push({ id: it.id, key: it.key, ok: true, probe: true, pages: c.pages, prefix_sha256: prefix, ...h });
             continue;
           }
           if (it.skip?.includes(h.sha256)) {

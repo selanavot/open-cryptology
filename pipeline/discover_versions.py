@@ -417,7 +417,8 @@ UPDATE_PDF_KEY = """
 UPDATE papers SET
   pdf_key = v.r2_key, pdf_sha256 = v.sha256, pdf_size = v.size, pdf_source = v.source,
   pdf_source_date = v.captured_at,
-  pdf_maybe_stale = CASE WHEN papers.withdrawn = 0 AND papers.updated IS NOT NULL AND v.captured_at < papers.updated
+  pdf_maybe_stale = CASE WHEN papers.withdrawn = 0 AND papers.updated IS NOT NULL
+                              AND julianday(v.captured_at) < julianday(papers.updated)
                          THEN 1 ELSE 0 END
 FROM (SELECT paper_id, r2_key, sha256, size, source, captured_at,
              row_number() OVER (PARTITION BY paper_id ORDER BY captured_at DESC, id DESC) AS rn

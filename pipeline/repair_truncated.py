@@ -13,7 +13,13 @@ Stages (state in data/repair-truncated/, gitignored):
               2. the GitHub community mirror copy (probed: fetched and checked, not stored);
               3. other Wayback captures with a different digest (newest first, up to
                  --max-wayback per paper; probed one at a time, >= 3 s apart).
-            Papers with none go back to /missing.
+            Papers with none lose their PDF (live papers show in /missing; withdrawn ones show as
+            withdrawn without a copy, where uploads are accepted too).
+            "May be outdated" (pdf_maybe_stale, see worker/src/oai.ts): a repaired paper is flagged
+            if it already was, if ePrint's datestamp is after the replacement's capture (the
+            harvest's rule), or if the truncated capture was a different, later file (its bytes are
+            not the first 1 MiB of the replacement), so the paper asks for an upload. Withdrawn
+            papers are never flagged. Flags are only ever added, never cleared.
             -> plan.json, report.md
   apply     Carry out plan.json: store the probed replacements (helper /copy), then in D1 point
             each affected paper at its replacement (or clear pdf_* so it shows in /missing) and
@@ -39,6 +45,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import discover_versions as dv  # noqa: E402  (helper(), remote(), stamp_of(), CDX rows, account id)
@@ -51,6 +58,11 @@ REPORT = os.path.join(RDIR, "report.md")
 APPLY_OUT = os.path.join(RDIR, "apply-results.jsonl")
 DELETE_KEYS = os.path.join(RDIR, "r2-delete-keys.txt")
 WB_GAP = 3.0
+
+
+def jd(iso):
+    """ISO date -> comparable datetime (the harvest compares with julianday(), not as strings)."""
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")) if iso else None
 
 
 def chunks(xs, n):
@@ -97,10 +109,10 @@ class Prober:
 
 def cmd_plan(a):
     os.makedirs(RDIR, exist_ok=True)
-    bad = dv.remote(f"SELECT id, paper_id, r2_key, sha1, size, source, source_url, captured_at FROM versions WHERE size = {ONE_MIB}")
+    bad = dv.remote(f"SELECT id, paper_id, r2_key, sha256, sha1, size, source, source_url, captured_at FROM versions WHERE size = {ONE_MIB}")
     bad_keys = {v["r2_key"] for v in bad}
     affected = dv.remote(
-        "SELECT id, withdrawn, updated, pdf_key, pdf_size, pdf_source, pdf_source_date FROM papers "
+        "SELECT id, withdrawn, updated, pdf_key, pdf_sha256, pdf_size, pdf_source, pdf_source_date, pdf_maybe_stale FROM papers "
         f"WHERE pdf_size = {ONE_MIB} OR pdf_key IN (SELECT r2_key FROM versions WHERE size = {ONE_MIB})")
     log(f"{len(bad)} truncated versions ({len({v['paper_id'] for v in bad})} papers); "
         f"{len(affected)} papers serve one as their default PDF")
@@ -137,7 +149,8 @@ def cmd_plan(a):
                                "problem": r.get("problem") or r.get("error")})
             if r.get("complete"):
                 choice[pid] = {"action": "repoint", "key": v["r2_key"], "sha256": v["sha256"], "size": v["size"],
-                               "source": v["source"], "url": v["source_url"], "captured_at": v["captured_at"], "pages": r.get("pages")}
+                               "source": v["source"], "url": v["source_url"], "captured_at": v["captured_at"], "pages": r.get("pages"),
+                               "prefix_sha256": r.get("prefix_sha256")}
         rnd += 1
     log(f"held versions: {len(choice)} papers have a complete one")
 
@@ -176,18 +189,30 @@ def cmd_plan(a):
             if r.get("ok"):
                 choice[pid] = {"action": "fetch", "kind": c["kind"], "key": c["key"], "url": c["url"],
                                "captured_at": c["captured_at"], "sha256": r.get("sha256"), "sha1": r.get("sha1"),
-                               "size": r.get("size"), "pages": r.get("pages"), "source": c["kind"]}
+                               "size": r.get("size"), "pages": r.get("pages"), "source": c["kind"],
+                               "prefix_sha256": r.get("prefix_sha256")}
                 break
         log(f"  fetch candidates {n}/{len(rest)} {pid}: {choice.get(pid, {}).get('kind', 'none')} "
             f"({len(cands)} candidates)")
 
+    bad_by_key = {v["r2_key"]: v for v in bad}
     papers = []
     for p in affected:
         c = choice.get(p["id"], {"action": "missing"})
-        stale = 0
-        if c["action"] != "missing" and not p["withdrawn"] and p["updated"] and c["captured_at"] < p["updated"]:
-            stale = 1
-        papers.append({**p, **{"target": c, "action": c["action"], "stale": stale, "tried": tried[p["id"]]}})
+        why = []
+        if c["action"] != "missing" and not p["withdrawn"]:
+            cut = bad_by_key.get(p["pdf_key"], {})
+            cut_sha = (cut.get("sha256") or p["pdf_sha256"] or "").lower()
+            cut_date = cut.get("captured_at") or p["pdf_source_date"]
+            if p["pdf_maybe_stale"]:
+                why.append("already flagged")
+            if p["updated"] and jd(c["captured_at"]) < jd(p["updated"]):
+                why.append("ePrint updated after the replacement's capture")
+            if (cut_date and jd(cut_date) > jd(c["captured_at"]) and cut_sha and c.get("prefix_sha256")
+                    and c["prefix_sha256"].lower() != cut_sha):
+                why.append("the truncated capture was a different, later file")
+        papers.append({**p, **{"target": c, "action": c["action"], "stale": 1 if why else 0, "stale_why": why,
+                               "tried": tried[p["id"]]}})
     plan = {"created": dv.now_iso(), "bad_versions": bad, "bad_check": bad_check, "papers": papers}
     with open(PLAN, "w") as f:
         json.dump(plan, f, indent=1)
@@ -202,7 +227,10 @@ def write_report(plan):
     src = collections.Counter(p["target"]["source"] for p in papers if p["action"] == "repoint")
     older = sum(1 for p in papers if p["action"] != "missing" and p["pdf_source_date"] and p["target"]["captured_at"] < p["pdf_source_date"])
     stale = sum(p["stale"] for p in papers)
-    stale_before = sum(1 for p in papers if not p["withdrawn"] and p["updated"] and p["pdf_source_date"] and p["pdf_source_date"] < p["updated"])
+    stale_before = sum(p["pdf_maybe_stale"] for p in papers)
+    why = collections.Counter(w for p in papers if p["stale"] and not p["pdf_maybe_stale"] for w in p["stale_why"])
+    newly = [p for p in papers if p["stale"] and not p["pdf_maybe_stale"]]
+    lost = sum(1 for p in papers if p["pdf_maybe_stale"] and p["action"] == "missing")
     cut = collections.Counter(
         "missing from R2" if not r.get("ok") else "cut off (no %%EOF / startxref)" if r.get("problem") else "ends properly"
         for r in plan["bad_check"].values())
@@ -221,10 +249,16 @@ def write_report(plan):
         f"| point at a complete version we already hold | {by['repoint']} |",
         f"| fetch a complete copy (GitHub mirror) | {fetch_kind['github-mirror']} |",
         f"| fetch a complete copy (another Wayback capture) | {fetch_kind['wayback']} |",
-        f"| **no complete copy: clear the PDF, back to /missing** | **{by['missing']}** |", "",
+        f"| **no complete copy: clear the PDF** (live papers go to /missing; withdrawn ones show as withdrawn, uploads accepted) | **{by['missing']}** |", "",
         f"Held versions used, by source: {', '.join(f'{k} {n}' for k, n in src.most_common()) or 'none'}.",
-        f"{older} of the repaired papers get a copy captured earlier than the truncated one; "
-        f"{stale} would be marked 'may be outdated' (vs {stale_before} of these papers today).", "",
+        f"{older} of the repaired papers get a copy captured earlier than the truncated one.", "",
+        "### 'May be outdated' (#35)", "",
+        f"- Today {stale_before} of these {len(papers)} papers are flagged; after the repair {stale} are "
+        f"({len(newly)} newly flagged{', ' + str(lost) + ' flagged ones lose their PDF' if lost else ''}). No flag is cleared.",
+        *(f"  - {n} newly flagged because {w}" for w, n in why.most_common()),
+        "- A flagged paper shows the upload box; an upload of exactly the copy we serve clears the flag (`confirmCurrent`).",
+        "- The truncated copies' version rows are deleted, so an upload of a complete newer file is never refused as "
+        "`older_version` because of them (a truncated file's sha256 can't match a complete upload anyway).", "",
         "In D1 (`apply`): each paper's `pdf_*` columns move to the replacement (only if `pdf_key` is still the truncated key), "
         f"and all {len(bad)} truncated `versions` rows are deleted, so they leave the version lists too.", "",
         "## Needs your approval separately: deleting from R2", "",
@@ -232,7 +266,7 @@ def write_report(plan):
         f"(~{len(bad) * ONE_MIB / 1e9:.1f} GB) once nothing in D1 points to them. Nothing is deleted before you approve it.", "",
     ]
     if missing:
-        lines += ["## Papers that go back to /missing", ""]
+        lines += ["## Papers left without a PDF", ""]
         for p in missing:
             why = "; ".join(f"{t['kind']}: {t['problem'] or 'ok'}" for t in p["tried"]) or "no other copy known"
             lines.append(f"- [{p['id']}](https://opencryptology.org/{p['id']}){' (withdrawn)' if p['withdrawn'] else ''}: {why}")
@@ -285,8 +319,9 @@ def cmd_apply(a):
                  else f"sha256 = {sql_lit(done[p['id']]['sha256'])}")
         stmts.append(
             "UPDATE papers SET pdf_key = v.r2_key, pdf_sha256 = v.sha256, pdf_size = v.size, pdf_source = v.source, "
-            "pdf_source_date = v.captured_at, pdf_maybe_stale = CASE WHEN papers.withdrawn = 0 AND papers.updated IS NOT NULL "
-            "AND v.captured_at < papers.updated THEN 1 ELSE 0 END "
+            "pdf_source_date = v.captured_at, pdf_maybe_stale = CASE WHEN papers.withdrawn = 0 AND "
+            f"({int(p['stale'])} = 1 OR papers.pdf_maybe_stale = 1 OR (papers.updated IS NOT NULL "
+            "AND julianday(v.captured_at) < julianday(papers.updated))) THEN 1 ELSE 0 END "
             f"FROM (SELECT * FROM versions WHERE paper_id = {pid} AND {where} LIMIT 1) AS v "
             f"WHERE papers.id = {pid} AND papers.pdf_key = {old};")
     bad_keys = sorted({v["r2_key"] for v in plan["bad_versions"]}
