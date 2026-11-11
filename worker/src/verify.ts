@@ -1,5 +1,6 @@
 import { getDocumentProxy } from "unpdf";
 import { joinItems, matchPaper, type TextItem } from "./match";
+import { pdfIntegrity } from "./pdfcheck";
 
 // Instant upload verification: does this PDF look like the paper it was uploaded for?
 // Extract the text of the first two pages and require most of the title's words together near the
@@ -7,6 +8,8 @@ import { joinItems, matchPaper, type TextItem } from "./match";
 // pipeline/verify_bench.mjs). Passing uploads are published immediately; others stay in quarantine
 // for review. The same parse also looks for active content (scripts, attachments) that the
 // raw-byte scan in uploadguard.ts can't see inside compressed object streams.
+// Only pages 1-2 are read, so pdf.js would happily verify a file that is cut off after them (it
+// rebuilds a damaged cross-reference table): the end of the file is checked first (pdfcheck.ts).
 
 export interface VerifyReport {
   ok: boolean;
@@ -34,11 +37,14 @@ async function activeContent(pdf: Doc): Promise<string | null> {
 }
 
 export async function verifyPdf(buf: ArrayBuffer, title: string, authors: string[]): Promise<VerifyReport> {
+  const incomplete = pdfIntegrity(buf);
+  if (incomplete) return { ok: false, titleScore: 0, authorHit: null, pages: 0, error: incomplete };
   let pdf: Doc | null = null;
   try {
     // pdf.js takes ownership of (detaches) the buffer it is given, so hand it a copy.
     pdf = await getDocumentProxy(new Uint8Array(buf.slice(0)));
     const pages = pdf.numPages;
+    if (pages < 1) return { ok: false, titleScore: 0, authorHit: null, pages, error: "no pages" };
     const active = await activeContent(pdf);
     if (active) return { ok: false, titleScore: 0, authorHit: null, pages, active };
 
