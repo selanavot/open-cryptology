@@ -372,13 +372,11 @@ a.year-tile.sel { outline: 3px solid var(--link); outline-offset: 1px; }
 .paper-grid.small > * { border-radius: 1px; }
 .paper-grid .m { background: #d0d4d9; }
 .paper-grid .p { background: #ffc72c; }
-.paper-grid .w { background: #f3f4f6; box-shadow: inset 0 0 0 1px #d0d4d9; }
 .paper-grid a.m:hover, .paper-grid a.p:hover, .paper-grid a:focus-visible { background: var(--link-hover); outline: none; }
 .grid-legend { display: flex; flex-wrap: wrap; gap: .25rem 1rem; list-style: none; margin: .5rem 0 0; padding: 0; color: var(--muted); }
 .grid-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; background: #40c463; }
 .grid-legend i.m { background: #d0d4d9; }
 .grid-legend i.p { background: #ffc72c; }
-.grid-legend i.w { background: #f3f4f6; box-shadow: inset 0 0 0 1px #d0d4d9; }
 
 /* ---------- withdrawn papers, version history */
 .withdrawn-notice { margin: .25rem 0 1rem; }
