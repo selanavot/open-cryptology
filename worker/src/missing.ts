@@ -3,7 +3,8 @@
 // review. Withdrawn papers count too: ePrint no longer offers them, but a saved copy can be uploaded. The partial index papers_missing (db/schema.sql) serves the API queries.
 //
 // The pages show coverage as squares rather than lists: one tile per year, filled in green up to
-// the share of its papers we have, and one small square per paper of a year (green = PDF here,
+// the share of its papers we have up to date, then yellow for those that may be outdated, and its
+// percentage counts the green ones only; and one small square per paper of a year (green = PDF here,
 // grey = missing, yellow = may be outdated (ePrint changed the paper after our copy was captured),
 // blue = upload in review; grey and yellow ones link to the upload box).
 import { canonicalId, type Env } from "./db";
@@ -172,13 +173,18 @@ function focusYear(years: YearStat[]): YearStat | undefined {
 const papersWord = (n: number) => `${fmtInt(n)} paper${n === 1 ? "" : "s"}`;
 const pct = (have: number, total: number) => (total ? Math.floor((100 * have) / total) : 100);
 
-/** One tile per year, filled in green up to the share of papers with a PDF here. */
+/** Share of a year's papers as a CSS length for the tile gradient (unrounded, so a sliver still shows). */
+const share = (n: number, total: number) => `${total ? ((100 * n) / total).toFixed(2) : 100}%`;
+
+/** One tile per year, filled from the bottom: green for papers with an up-to-date PDF here, then
+ *  yellow for those whose PDF may be outdated, light grey for the rest. The label is the green share. */
 function yearTiles(years: YearStat[], selected: number | null = null): Html {
   return html`<div class="year-tiles">${years.map((y) => {
-    const p = pct(y.have, y.total);
+    const current = y.have - y.outdated;
+    const p = pct(current, y.total);
     const m = missingOf(y);
     const tip = `${y.year}: ${fmtInt(y.have)} of ${papersWord(y.total)} have a PDF here${m ? ` · ${fmtInt(m)} missing` : ""}${y.gone ? ` (${fmtInt(y.gone)} withdrawn)` : ""}${y.outdated ? ` · ${fmtInt(y.outdated)} may be outdated` : ""}${y.pending ? ` · ${fmtInt(y.pending)} in review` : ""}`;
-    return html`<a class="year-tile${p === 100 ? " full" : ""}${y.year === selected ? " sel" : ""}" href="/missing?year=${y.year}" style="--fill:${p}%" title="${tip}"${y.year === selected ? html` aria-current="page"` : ""}><span class="yt-year">${y.year}</span>${p < 100 ? html`<span class="yt-pct">${p}%</span>` : ""}</a>`;
+    return html`<a class="year-tile${p === 100 ? " full" : ""}${y.year === selected ? " sel" : ""}" href="/missing?year=${y.year}" style="--cur:${share(current, y.total)};--fill:${share(y.have, y.total)}" title="${tip}"${y.year === selected ? html` aria-current="page"` : ""}><span class="yt-year">${y.year}</span>${p < 100 ? html`<span class="yt-pct">${p}%</span>` : ""}</a>`;
   })}</div>`;
 }
 
