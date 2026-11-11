@@ -7,7 +7,9 @@ import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
 import { bibtex, licenseInfo, originalUrl, type LicenseInfo } from "./license";
 import { day, json } from "./pages";
 
-export const MAX_UPLOAD = 20 * 1024 * 1024;
+export const MAX_UPLOAD = 95 * 1024 * 1024; // Workers accept request bodies up to 100 MB
+/** Above this, the upload is streamed (no in-memory copy) and sent to review instead of auto-verified. */
+const INLINE_MAX = 30 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------- paper page
 
@@ -268,7 +270,7 @@ export async function handleUpload(
     return fail(409, "We already have this paper", "This paper already has an up-to-date PDF here, so no upload is needed. Thank you!");
 
   const len = Number(req.headers.get("content-length") ?? "0");
-  if (len > MAX_UPLOAD + 64 * 1024) return fail(413, "File too large", "PDFs must be 20 MB or smaller.");
+  if (len > MAX_UPLOAD + 64 * 1024) return fail(413, "File too large", "PDFs must be 95 MB or smaller.");
 
   let form: FormData;
   try {
@@ -301,7 +303,9 @@ export async function handleUpload(
   const file = form.get("file");
   if (!file || typeof file === "string") return fail(400, "No file", "Please choose a PDF file to upload.");
   if (file.size === 0) return fail(400, "Empty file", "That file is empty.");
-  if (file.size > MAX_UPLOAD) return fail(413, "File too large", "PDFs must be 20 MB or smaller.");
+  if (file.size > MAX_UPLOAD) return fail(413, "File too large", "PDFs must be 95 MB or smaller.");
+
+  if (file.size > INLINE_MAX) return largeUpload(env, p, file, ip, back, thanks, fail);
 
   const buf = await file.arrayBuffer();
   const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(5, buf.byteLength)));
@@ -371,6 +375,49 @@ export async function handleUpload(
      VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'pending', ?7, ?8)`,
   )
     .bind(uploadId, id, key, sha, buf.byteLength, now, JSON.stringify(report), ip)
+    .run();
+  return thanks(false);
+}
+
+/** Large uploads (30–95 MB): streamed into quarantine without buffering a second copy, hashed with
+ *  a DigestStream, and queued for a person to review (parsing them in the Worker risks its 128 MB
+ *  memory limit). */
+async function largeUpload(
+  env: Env,
+  p: Paper,
+  file: File,
+  ip: string,
+  back: Html,
+  thanks: (dup: boolean) => Response,
+  fail: (status: number, title: string, msg: string) => Response,
+): Promise<Response> {
+  const head = await file.slice(0, 5).text();
+  if (head !== "%PDF-") return fail(415, "Not a PDF", "That file doesn’t look like a PDF (it must start with %PDF).");
+  const tail = await file.slice(Math.max(0, file.size - 2048)).text();
+  if (!tail.includes("%%EOF")) return fail(422, "PDF not accepted", "That PDF looks truncated (no end-of-file marker).");
+  const ds = new crypto.DigestStream("SHA-256");
+  await file.stream().pipeTo(ds);
+  const sha = toHex(await ds.digest);
+  if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha) {
+    return messagePage(env, 200, "We already have it",
+      html`<p>That file is identical to the PDF already mirrored for paper ${p.id}. Thanks anyway!</p>${back}`,
+      { cache: "no-store", noindex: true });
+  }
+  const dup = await env.DB.prepare("SELECT id FROM uploads WHERE paper_id = ?1 AND sha256 = ?2 AND status = 'pending' LIMIT 1")
+    .bind(p.id, sha)
+    .first();
+  if (dup) return thanks(true);
+  const uploadId = crypto.randomUUID();
+  const key = `quarantine/${uploadId}.pdf`;
+  await env.PDFS.put(key, file, {
+    httpMetadata: { contentType: "application/pdf" },
+    customMetadata: { paper_id: p.id, sha256: sha, original_name: file.name.slice(0, 200) },
+  });
+  await env.DB.prepare(
+    `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)
+     VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 'pending', ?7, ?8)`,
+  )
+    .bind(uploadId, p.id, key, sha, file.size, new Date().toISOString(), JSON.stringify({ ok: false, skipped: "large file, needs review" }), ip)
     .run();
   return thanks(false);
 }
