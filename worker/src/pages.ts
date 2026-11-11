@@ -53,20 +53,17 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
   <article class="home-letter">
     <p>Hello cryptographers!</p>
     <p>This is an unofficial, non-commercial mirror of the
-    <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>. AI agents have become useful for
-    research, from literature review to smarter search, but only if they can access prior work.
-    ePrint’s access control currently blocks them from fetching the PDFs. This mirror is meant to
-    speed up your research workflow by giving agents access to the information they need.</p>
+    <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>. ePrint’s access control blocks AI
+    agents from fetching PDFs; this mirror lets them read prior work for literature review, search
+    and more.</p>
     <p><strong>New papers</strong> appear here within days of being accepted on ePrint. We don’t
     take submissions; <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</p>
-    <p><strong>PDFs</strong> come from existing public copies, and readers <a href="/missing">fill in the gaps</a>: if one is
-    missing, download it from ePrint and upload it anonymously here.</p>
+    <p><strong>PDFs</strong> come from public copies; readers <a href="/missing">fill in the gaps</a>.</p>
     <p><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the
     original. Please respect it: credit the authors, no commercial use for NC papers, unmodified
     copies only for ND.</p>
-    <p><strong>What’s next.</strong> The vision is a one-stop place for everything known about each
-    paper, kept up to date as cryptography moves on: discussion, links between papers and the
-    protocols they build on, and known attacks on each construction.</p>
+    <p><strong>What’s next.</strong> One place for everything known about each paper: discussion,
+    the protocols it builds on, and known attacks.</p>
     <p>Something wrong or missing? <a href="#contact">Write to us</a> or
     <a href="${env.ISSUES_URL}">open an issue</a>. Want to help? Get in touch!</p>
     <details id="contact" class="contact-panel"${url.searchParams.has("paper") ? html` open` : ""}>
