@@ -96,6 +96,15 @@ def parse_page(xml_bytes):
     return out, token or None, None
 
 
+# ePrint changed the paper after our copy was captured -> the PDF may be outdated (see
+# harvest_remote.py; same expression in worker/src/oai.ts).
+STALE_SET = (
+    "pdf_maybe_stale=CASE WHEN papers.pdf_key IS NOT NULL "
+    "AND (papers.updated IS NULL OR excluded.updated > papers.updated) "
+    "AND (papers.pdf_source_date IS NULL OR julianday(papers.pdf_source_date) < julianday(excluded.updated)) "
+    "THEN 1 ELSE papers.pdf_maybe_stale END")
+
+
 def upsert_sql(r):
     # Only overwrite when the incoming datestamp is not older than what we have.
     guard = "WHERE papers.updated IS NULL OR excluded.updated >= papers.updated"
@@ -115,8 +124,8 @@ def upsert_sql(r):
     # list is unchanged.
     return (f"INSERT INTO papers ({','.join(cols)}) VALUES ({vals}) "
             f"ON CONFLICT(id) DO UPDATE SET {sets}, withdrawn_on=NULL, "
-            "affiliations=CASE WHEN excluded.authors = papers.authors THEN papers.affiliations ELSE NULL END "
-            f"{guard};")
+            "affiliations=CASE WHEN excluded.authors = papers.authors THEN papers.affiliations ELSE NULL END, "
+            f"{STALE_SET} {guard};")
 
 
 def iter_dir(d):

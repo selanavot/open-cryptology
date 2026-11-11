@@ -136,6 +136,25 @@ export async function getVersions(env: Env, id: string): Promise<Version[]> {
   return r.results ?? [];
 }
 
+/** Is an uploaded file (by sha256) one we already hold? "current" = the default PDF, "older" = an
+ *  earlier version. Used so an upload for an outdated paper never makes an old copy the default. */
+export async function knownCopy(env: Env, p: Paper, sha: string): Promise<"current" | "older" | null> {
+  if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha) return "current";
+  const v = await env.DB.prepare("SELECT 1 FROM versions WHERE paper_id = ?1 AND lower(sha256) = ?2 LIMIT 1")
+    .bind(p.id, sha)
+    .first();
+  return v ? "older" : null;
+}
+
+/** Someone uploaded exactly the copy we serve for a paper flagged "may be outdated": take it as
+ *  confirmation that ePrint's latest version is the one we have (the flag is set on any ePrint
+ *  change, including metadata-only edits, so most flags clear this way). Returns true if cleared. */
+export async function confirmCurrent(env: Env, p: Paper): Promise<boolean> {
+  if (!p.pdf_maybe_stale) return false;
+  await env.DB.prepare("UPDATE papers SET pdf_maybe_stale = 0 WHERE id = ?1").bind(p.id).run();
+  return true;
+}
+
 export async function getVersion(env: Env, id: string, stamp: string): Promise<Version | null> {
   return env.DB.prepare("SELECT * FROM versions WHERE paper_id = ?1 AND stamp = ?2")
     .bind(id, stamp)

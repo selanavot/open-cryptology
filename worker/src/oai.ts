@@ -103,6 +103,15 @@ const META_COLS = [
   "retro_license", "submitted", "updated", "withdrawn",
 ] as const;
 
+/** ePrint changed the paper after our copy was captured, so the PDF may be an older revision
+ *  ("may be outdated": yellow on /missing, uploads accepted). Only when the datestamp moves
+ *  forward, so re-reading the same record never re-flags a copy an upload confirmed since.
+ *  Same expression in pipeline/harvest_remote.py (the harvester that runs) and harvest_oai.py. */
+const STALE_SET = `pdf_maybe_stale=CASE WHEN papers.pdf_key IS NOT NULL
+  AND (papers.updated IS NULL OR excluded.updated > papers.updated)
+  AND (papers.pdf_source_date IS NULL OR julianday(papers.pdf_source_date) < julianday(excluded.updated))
+  THEN 1 ELSE papers.pdf_maybe_stale END`;
+
 export async function upsert(env: Env, r: OaiRecord): Promise<void> {
   const guard = "WHERE papers.updated IS NULL OR excluded.updated >= papers.updated";
   let stmt: D1PreparedStatement;
@@ -126,7 +135,8 @@ export async function upsert(env: Env, r: OaiRecord): Promise<void> {
     stmt = env.DB.prepare(
       `INSERT INTO papers (${cols.join(",")}) VALUES (${cols.map((_, i) => `?${i + 1}`).join(",")})
        ON CONFLICT(id) DO UPDATE SET ${sets}, withdrawn_on=NULL,
-         affiliations=CASE WHEN excluded.authors = papers.authors THEN papers.affiliations ELSE NULL END ${guard}`,
+         affiliations=CASE WHEN excluded.authors = papers.authors THEN papers.affiliations ELSE NULL END,
+         ${STALE_SET} ${guard}`,
     ).bind(...vals);
   }
   // External-content FTS: drop the old index entry (if the row exists), then index the row as

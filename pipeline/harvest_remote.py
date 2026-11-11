@@ -130,6 +130,15 @@ WITHDRAWN_SQL = (
     "withdrawn_on=CASE WHEN papers.withdrawn = 1 AND papers.withdrawn_on IS NOT NULL "
     f"THEN papers.withdrawn_on ELSE excluded.withdrawn_on END {GUARD}")
 LIVE_COLS = ["id", "year", "num"] + META_COLS
+# ePrint changed the paper after our copy was captured -> our PDF may be an older revision
+# ("may be outdated": yellow on /missing, upload accepted). Only when the datestamp actually
+# moves forward, so re-fetching the same record (OAI from= is inclusive) never re-flags a copy an
+# upload has confirmed since. Same expression in worker/src/oai.ts and harvest_oai.py.
+STALE_SET = (
+    "pdf_maybe_stale=CASE WHEN papers.pdf_key IS NOT NULL "
+    "AND (papers.updated IS NULL OR excluded.updated > papers.updated) "
+    "AND (papers.pdf_source_date IS NULL OR julianday(papers.pdf_source_date) < julianday(excluded.updated)) "
+    "THEN 1 ELSE papers.pdf_maybe_stale END")
 LIVE_SQL = (
     # A live record clears any withdrawal; affiliations (not in OAI) survive only while the
     # author list is unchanged.
@@ -137,7 +146,8 @@ LIVE_SQL = (
     f"VALUES ({','.join(f'?{i + 1}' for i in range(len(LIVE_COLS)))}) "
     f"ON CONFLICT(id) DO UPDATE SET {', '.join(f'{c}=excluded.{c}' for c in META_COLS)}, "
     "withdrawn_on=NULL, "
-    "affiliations=CASE WHEN excluded.authors = papers.authors THEN papers.affiliations ELSE NULL END "
+    "affiliations=CASE WHEN excluded.authors = papers.authors THEN papers.affiliations ELSE NULL END, "
+    f"{STALE_SET} "
     f"{GUARD}")
 
 

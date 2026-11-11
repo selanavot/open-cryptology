@@ -46,9 +46,11 @@ The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
   once; any other well-formed PDF lands in `quarantine/` until the maintainer approves it at
   `/review` (behind Cloudflare Access; at most one summary email per 15 minutes).
 - **Staleness:** `pdf_maybe_stale = 1` when the stored copy predates the paper's OAI `updated`
-  datestamp (conservative: the datestamp also moves on some metadata-only edits). The page and
-  the PDF response then say the copy may be an older revision; the upload endpoint accepts a
-  newer copy for such papers.
+  datestamp (conservative: the datestamp also moves on some metadata-only edits). The harvest
+  sets it whenever a record's datestamp moves past our copy's capture date. Such papers are
+  "may be outdated": yellow on `/missing`, and the paper page asks for the latest version (the
+  upload endpoints accept one). An upload of exactly the copy we serve clears the flag (that's
+  how metadata-only edits get resolved); an upload of a copy we hold as an older version is refused.
 
 ## Lessons and numbers
 

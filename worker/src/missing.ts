@@ -4,7 +4,8 @@
 //
 // The pages show coverage as squares rather than lists: one tile per year, filled in green up to
 // the share of its papers we have, and one small square per paper of a year (green = PDF here,
-// grey = missing, linking to the upload box).
+// grey = missing, yellow = may be outdated (ePrint changed the paper after our copy was captured),
+// blue = upload in review; grey and yellow ones link to the upload box).
 import { canonicalId, type Env } from "./db";
 import { esc, html, raw, type Html } from "./html";
 import { card, page } from "./layout";
@@ -21,6 +22,9 @@ export interface MissingItem {
 
 const PENDING = `EXISTS (SELECT 1 FROM uploads u WHERE u.paper_id = papers.id AND u.status = 'pending')`;
 const MISSING_WHERE = `pdf_key IS NULL AND NOT ${PENDING}`;
+/** We have a PDF, but ePrint changed the paper after it was captured (papers.pdf_maybe_stale, set
+ *  by the harvest): a newer version may exist. Withdrawn papers are never "outdated". */
+const STALE = `(pdf_key IS NOT NULL AND pdf_maybe_stale = 1 AND withdrawn = 0)`;
 
 const PER_PAGE = 50;
 
@@ -49,22 +53,26 @@ export async function missingPapers(
 
 // ---------------------------------------------------------------------------- data
 
-/** All papers of one year: how many have a PDF here, how many wait for review, and how many of the
- *  missing ones were withdrawn (ePrint no longer offers those; only a saved copy fills them). */
+/** All papers of one year: how many have a PDF here, how many wait for review, how many of the
+ *  missing ones were withdrawn (ePrint no longer offers those; only a saved copy fills them), and
+ *  how many we have but may be outdated (counted in `have` too; none with an upload in review). */
 interface YearStat {
   year: number;
   total: number;
   have: number;
   pending: number;
   gone: number;
+  outdated: number;
 }
 const missingOf = (y: YearStat) => y.total - y.have - y.pending;
 
-/** One paper of a year's grid. `title` is only selected for papers without a PDF (the tooltip). */
+/** One paper of a year's grid. `title` is only selected for the papers that ask for an upload
+ *  (the tooltip). `pending`: an upload waits for review (for a missing or an outdated PDF). */
 interface Cell {
   num: number;
   have: number;
   pending: number;
+  outdated: number;
   withdrawn: number;
   title: string | null;
 }
@@ -103,15 +111,17 @@ export async function coverageChanged(origin: string, paperId: string): Promise<
     /* no cache */
   }
 }
-const YEARS_KEY = "years-v4";
-const CELLS_KEY = "cells-v4";
+const YEARS_KEY = "years-v5";
+const CELLS_KEY = "cells-v5";
 
 /** A year's counts from its (fresh) cells, the same way yearStats counts them. */
 function statOf(year: number, cells: Cell[]): YearStat {
-  const s = { year, total: cells.length, have: 0, pending: 0, gone: 0 };
+  const s = { year, total: cells.length, have: 0, pending: 0, gone: 0, outdated: 0 };
   for (const c of cells) {
-    if (c.have) s.have++;
-    else if (c.pending) s.pending++;
+    if (c.have) {
+      s.have++;
+      if (c.outdated) s.outdated++;
+    } else if (c.pending) s.pending++;
     else if (c.withdrawn) s.gone++;
   }
   return s;
@@ -122,7 +132,8 @@ async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
     const r = await env.DB.prepare(
       `SELECT year, count(*) AS total, sum(pdf_key IS NOT NULL) AS have,
          sum(pdf_key IS NULL AND ${PENDING}) AS pending,
-         sum(pdf_key IS NULL AND withdrawn = 1 AND NOT ${PENDING}) AS gone
+         sum(pdf_key IS NULL AND withdrawn = 1 AND NOT ${PENDING}) AS gone,
+         sum(${STALE} AND NOT ${PENDING}) AS outdated
        FROM papers GROUP BY year ORDER BY year DESC`,
     ).all<YearStat>();
     return (r.results ?? []).map((y) => ({
@@ -131,6 +142,7 @@ async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
       have: Number(y.have),
       pending: Number(y.pending),
       gone: Number(y.gone),
+      outdated: Number(y.outdated),
     }));
   });
 }
@@ -138,8 +150,9 @@ async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
 async function yearCells(env: Env, year: number): Promise<Cell[]> {
   const r = await env.DB.prepare(
     `SELECT num, pdf_key IS NOT NULL AS have, withdrawn,
-       (pdf_key IS NULL AND ${PENDING}) AS pending,
-       CASE WHEN pdf_key IS NULL THEN title END AS title
+       ((pdf_key IS NULL OR ${STALE}) AND ${PENDING}) AS pending,
+       (${STALE} AND NOT ${PENDING}) AS outdated,
+       CASE WHEN pdf_key IS NULL OR ${STALE} THEN title END AS title
      FROM papers WHERE year = ?1 ORDER BY num`,
   )
     .bind(year)
@@ -164,13 +177,13 @@ function yearTiles(years: YearStat[], selected: number | null = null): Html {
   return html`<div class="year-tiles">${years.map((y) => {
     const p = pct(y.have, y.total);
     const m = missingOf(y);
-    const tip = `${y.year}: ${fmtInt(y.have)} of ${papersWord(y.total)} have a PDF here${m ? ` · ${fmtInt(m)} missing` : ""}${y.pending ? ` · ${fmtInt(y.pending)} in review` : ""}${y.gone ? ` (${fmtInt(y.gone)} withdrawn)` : ""}`;
+    const tip = `${y.year}: ${fmtInt(y.have)} of ${papersWord(y.total)} have a PDF here${m ? ` · ${fmtInt(m)} missing` : ""}${y.gone ? ` (${fmtInt(y.gone)} withdrawn)` : ""}${y.outdated ? ` · ${fmtInt(y.outdated)} may be outdated` : ""}${y.pending ? ` · ${fmtInt(y.pending)} in review` : ""}`;
     return html`<a class="year-tile${p === 100 ? " full" : ""}${y.year === selected ? " sel" : ""}" href="/missing?year=${y.year}" style="--fill:${p}%" title="${tip}"${y.year === selected ? html` aria-current="page"` : ""}><span class="yt-year">${y.year}</span>${p < 100 ? html`<span class="yt-pct">${p}%</span>` : ""}</a>`;
   })}</div>`;
 }
 
-/** One square per paper of a year, in number order. Missing papers link to their upload box and
- *  are the only ones in the tab order; the rest are decoration for assistive tech. Built as one
+/** One square per paper of a year, in number order. Missing and outdated papers link to their
+ *  upload box and are the only ones in the tab order; the rest are decoration for assistive tech. Built as one
  *  string: a year has thousands of cells. The small (homepage) grid keeps the markup light: plain
  *  squares for papers we have, and no titles in the tooltips. */
 function paperGrid(year: number, cells: Cell[], small = false): Html {
@@ -178,11 +191,13 @@ function paperGrid(year: number, cells: Cell[], small = false): Html {
   for (const c of cells) {
     const id = canonicalId(year, c.num);
     if (small) {
-      if (c.have) out += `<i></i>`;
-      else if (c.pending) out += `<i class="p"></i>`;
+      if (c.pending) out += `<i class="p"></i>`;
+      else if (c.outdated) out += `<a class="o" href="/${id}#upload" title="${id} · may be outdated"></a>`;
+      else if (c.have) out += `<i></i>`;
       else out += `<a class="m" href="/${id}#upload" title="${id} · ${c.withdrawn ? "withdrawn, " : ""}no PDF yet"></a>`;
-    } else if (c.have) out += `<a href="/${id}" title="${id}${c.withdrawn ? " · withdrawn" : ""}" tabindex="-1" aria-hidden="true"></a>`;
-    else if (c.pending) out += `<a class="p" href="/${id}" title="${esc(`${id} · upload in review · ${c.title ?? ""}`)}"></a>`;
+    } else if (c.pending) out += `<a class="p" href="/${id}" title="${esc(`${id} · upload in review · ${c.title ?? ""}`)}"></a>`;
+    else if (c.outdated) out += `<a class="o" href="/${id}#upload" title="${esc(`${id} · may be outdated: ePrint changed it after our copy · ${c.title ?? ""}`)}"></a>`;
+    else if (c.have) out += `<a href="/${id}" title="${id}${c.withdrawn ? " · withdrawn" : ""}" tabindex="-1" aria-hidden="true"></a>`;
     else {
       const what = c.withdrawn ? "withdrawn, no PDF yet" : "no PDF yet";
       out += `<a class="m" href="/${id}#upload" title="${esc(`${id} · ${what} · ${c.title || (c.withdrawn ? "title unknown" : "Untitled")}`)}"></a>`;
@@ -196,6 +211,7 @@ const legend = (cells: Cell[]) => {
   return html`<ul class="grid-legend small">
   <li><i></i>PDF here</li>
   <li><i class="m"></i>missing: click to upload</li>
+  ${any((c) => c.outdated) && html`<li><i class="o"></i>may be outdated: click to upload the latest version</li>`}
   ${any((c) => c.pending) && html`<li><i class="p"></i>upload in review</li>`}
 </ul>`;
 };
@@ -212,7 +228,7 @@ export async function missingCard(env: Env, origin: string): Promise<{ card: Htm
   ${yearTiles(years)}
   ${focus &&
   html`<p class="small mt-3 mb-1"><strong>${focus.year}</strong>: ${fmtInt(missingOf(focus))} of ${papersWord(focus.total)} still need a PDF.
-    Each square is a paper; grey ones are missing.</p>
+    Each square is a paper; grey ones are missing${focus.outdated ? ", yellow ones may be outdated" : ""}.</p>
   ${paperGrid(focus.year, cells, true)}
   ${legend(cells)}
   <p class="mt-2 mb-0"><a href="/missing?year=${focus.year}">See the gaps by year →</a></p>`}`;
@@ -234,21 +250,24 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
   const sel = pick && statOf(pick.year, cells);
   const years = sel ? cachedYears.map((y) => (y.year === sel.year ? sel : y)) : cachedYears;
   const missing = years.reduce((s, y) => s + missingOf(y), 0);
+  const outdated = years.reduce((s, y) => s + y.outdated, 0);
   const body = html`<section class="missing-page">
   <div class="results-bar">
     <h4 class="results-h">Help us fill the gaps</h4>
     <small class="ms-auto"><a href="/api/missing${sel ? `?year=${sel.year}` : ""}">JSON</a></small>
   </div>
-  <p class="mt-3"><strong>${papersWord(missing)}</strong> ${missing === 1 ? "doesn’t" : "don’t"} have a PDF here yet.
-  Grab one from ePrint and upload it on the paper’s page: it’s anonymous, and a matching file appears right away.
+  <p class="mt-3"><strong>${papersWord(missing)}</strong> ${missing === 1 ? "doesn’t" : "don’t"} have a PDF here yet${outdated
+    ? html`, and <strong>${fmtInt(outdated)}</strong> more may be outdated: ePrint changed ${outdated === 1 ? "it" : "them"} after we saved our copy`
+    : ""}.
+  Grab the latest version from ePrint and upload it on the paper’s page: it’s anonymous, and a matching file appears right away.
 </p>
   <h5 class="mt-4">By year</h5>
   ${yearTiles(years, sel?.year ?? null)}
   ${sel
     ? html`<h5 class="mt-4">${sel.year}: ${fmtInt(sel.have)} of ${papersWord(sel.total)} have a PDF here${missingOf(sel)
         ? html`, ${fmtInt(missingOf(sel))} missing`
-        : ""}</h5>
-  <p class="small mb-2">Each square is a paper, in number order. Hover for its ID; click a grey one to upload its PDF.</p>
+        : ""}${sel.outdated ? html`, ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
+  <p class="small mb-2">Each square is a paper, in number order. Hover for its ID; click a grey one to upload its PDF${sel.outdated ? ", or a yellow one to upload its latest version" : ""}.</p>
   ${paperGrid(sel.year, cells)}
   ${legend(cells)}`
     : html`<p class="mt-4">No papers from ${asked} here. Pick a year above.</p>`}
