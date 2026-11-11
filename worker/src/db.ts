@@ -20,6 +20,11 @@ export interface Env {
   TURNSTILE_SECRET?: string;
   /** Workers Rate Limiting binding for uploads (per salted IP). */
   UPLOAD_LIMITER?: RateLimit;
+  /** Cloudflare Access (maintainer login) for /review: team domain + allowed application audience tags (comma-separated). */
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
+  /** Local dev only: "1" skips the Access check on /review. */
+  REVIEW_DEV_BYPASS?: string;
 }
 
 export interface Paper {
