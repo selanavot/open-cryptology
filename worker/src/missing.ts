@@ -1,9 +1,13 @@
 // Papers we don't have a PDF for yet ("help us fill the gaps"): the homepage card, /missing and
 // /api/missing. A paper counts as missing while it is live, has no mirrored PDF and has no upload
-// waiting for review. The partial index papers_missing (db/schema.sql) serves these queries.
-import type { Env } from "./db";
-import { html, type Html } from "./html";
-import { card, hasTex, page } from "./layout";
+// waiting for review. The partial index papers_missing (db/schema.sql) serves the API queries.
+//
+// The pages show coverage as squares rather than lists: one tile per year, filled in green up to
+// the share of its papers we have, and one small square per paper of a year (green = PDF here,
+// grey = missing, linking to the upload box).
+import { canonicalId, type Env } from "./db";
+import { esc, html, raw, type Html } from "./html";
+import { card, page } from "./layout";
 import { originalUrl } from "./license";
 import { fmtInt, json } from "./pages";
 
@@ -14,8 +18,8 @@ export interface MissingItem {
   title: string;
 }
 
-const MISSING_WHERE = `pdf_key IS NULL AND withdrawn = 0
-  AND NOT EXISTS (SELECT 1 FROM uploads u WHERE u.paper_id = papers.id AND u.status = 'pending')`;
+const PENDING = `EXISTS (SELECT 1 FROM uploads u WHERE u.paper_id = papers.id AND u.status = 'pending')`;
+const MISSING_WHERE = `pdf_key IS NULL AND withdrawn = 0 AND NOT ${PENDING}`;
 
 const PER_PAGE = 50;
 
@@ -42,33 +46,182 @@ export async function missingPapers(
   };
 }
 
-async function missingByYear(env: Env): Promise<{ year: number; n: number }[]> {
+// ---------------------------------------------------------------------------- data
+
+/** Live (not withdrawn) papers of one year: how many we have a PDF for, and how many wait for review. */
+interface YearStat {
+  year: number;
+  total: number;
+  have: number;
+  pending: number;
+}
+const missingOf = (y: YearStat) => y.total - y.have - y.pending;
+
+/** One paper of a year's grid. `title` is only selected for papers without a PDF (the tooltip). */
+interface Cell {
+  num: number;
+  have: number;
+  pending: number;
+  withdrawn: number;
+  title: string | null;
+}
+
+/** Small JSON results kept in the colo's cache for a few minutes, so the homepage doesn't scan
+ *  every paper on each view. Falls back to computing when the Cache API isn't there. */
+async function cached<T>(origin: string, key: string, ttl: number, fn: () => Promise<T>): Promise<T> {
+  const req = new Request(`${origin}/__cache/missing/${key}`);
+  try {
+    const hit = await caches.default.match(req);
+    if (hit) return (await hit.json()) as T;
+  } catch {
+    /* no cache: compute */
+  }
+  const v = await fn();
+  try {
+    await caches.default.put(
+      req,
+      new Response(JSON.stringify(v), { headers: { "content-type": "application/json", "cache-control": `public, max-age=${ttl}` } }),
+    );
+  } catch {
+    /* ignore */
+  }
+  return v;
+}
+
+async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
+  return cached(origin, "years-v1", 300, async () => {
+    const r = await env.DB.prepare(
+      `SELECT year, count(*) AS total, sum(pdf_key IS NOT NULL) AS have,
+         sum(pdf_key IS NULL AND ${PENDING}) AS pending
+       FROM papers WHERE withdrawn = 0 GROUP BY year ORDER BY year DESC`,
+    ).all<YearStat>();
+    return (r.results ?? []).map((y) => ({ year: y.year, total: Number(y.total), have: Number(y.have), pending: Number(y.pending) }));
+  });
+}
+
+async function yearCells(env: Env, year: number): Promise<Cell[]> {
   const r = await env.DB.prepare(
-    `SELECT year, count(*) AS n FROM papers WHERE ${MISSING_WHERE} GROUP BY year ORDER BY year DESC`,
-  ).all<{ year: number; n: number }>();
+    `SELECT num, pdf_key IS NOT NULL AS have, withdrawn,
+       (pdf_key IS NULL AND withdrawn = 0 AND ${PENDING}) AS pending,
+       CASE WHEN pdf_key IS NULL AND withdrawn = 0 THEN title END AS title
+     FROM papers WHERE year = ?1 ORDER BY num`,
+  )
+    .bind(year)
+    .all<Cell>();
   return r.results ?? [];
 }
 
-/** One entry: id + title, linking to our paper page (which carries the upload box). */
-function missingItem(p: MissingItem): Html {
-  return html`<div class="recent-item">
-  <small><a href="/${p.id}">${p.id}</a></small>
-  <h6 class="recent-title tex"><a href="/${p.id}">${p.title || "Untitled"}</a></h6>
-</div>`;
+/** The year to show first: the one with the most papers still missing (newest on ties). */
+function focusYear(years: YearStat[]): YearStat | undefined {
+  let best: YearStat | undefined;
+  for (const y of years) if (missingOf(y) > 0 && (!best || missingOf(y) > missingOf(best))) best = y;
+  return best;
 }
+
+// ---------------------------------------------------------------------------- rendering
 
 const papersWord = (n: number) => `${fmtInt(n)} paper${n === 1 ? "" : "s"}`;
+const pct = (have: number, total: number) => (total ? Math.floor((100 * have) / total) : 100);
+
+/** One tile per year, filled in green up to the share of papers with a PDF here. */
+function yearTiles(years: YearStat[], selected: number | null = null): Html {
+  return html`<div class="year-tiles">${years.map((y) => {
+    const p = pct(y.have, y.total);
+    const m = missingOf(y);
+    const tip = `${y.year}: ${fmtInt(y.have)} of ${papersWord(y.total)} have a PDF here${m ? ` · ${fmtInt(m)} missing` : ""}${y.pending ? ` · ${fmtInt(y.pending)} in review` : ""}`;
+    return html`<a class="year-tile${p === 100 ? " full" : ""}${y.year === selected ? " sel" : ""}" href="/missing?year=${y.year}" style="--fill:${p}%" title="${tip}"${y.year === selected ? html` aria-current="page"` : ""}><span class="yt-year">${y.year}</span>${p < 100 ? html`<span class="yt-pct">${p}%</span>` : ""}</a>`;
+  })}</div>`;
+}
+
+/** One square per paper of a year, in number order. Missing papers link to their upload box and
+ *  are the only ones in the tab order; the rest are decoration for assistive tech. Built as one
+ *  string: a year has thousands of cells. The small (homepage) grid keeps the markup light: plain
+ *  squares for papers we have, and no titles in the tooltips. */
+function paperGrid(year: number, cells: Cell[], small = false): Html {
+  let out = `<div class="paper-grid${small ? " small" : ""}">`;
+  for (const c of cells) {
+    const id = canonicalId(year, c.num);
+    if (small) {
+      if (c.withdrawn) out += `<i class="w"></i>`;
+      else if (c.have) out += `<i></i>`;
+      else if (c.pending) out += `<i class="p"></i>`;
+      else out += `<a class="m" href="/${id}#upload" title="${id} · no PDF yet"></a>`;
+    } else if (c.withdrawn) out += `<a class="w" href="/${id}" title="${id} · withdrawn" tabindex="-1" aria-hidden="true"></a>`;
+    else if (c.have) out += `<a href="/${id}" title="${id}" tabindex="-1" aria-hidden="true"></a>`;
+    else if (c.pending) out += `<a class="p" href="/${id}" title="${esc(`${id} · upload in review · ${c.title ?? ""}`)}"></a>`;
+    else out += `<a class="m" href="/${id}#upload" title="${esc(`${id} · no PDF yet · ${c.title || "Untitled"}`)}"></a>`;
+  }
+  return raw(out + "</div>");
+}
+
+const legend = (cells: Cell[]) => {
+  const any = (f: (c: Cell) => unknown) => cells.some(f);
+  return html`<ul class="grid-legend small">
+  <li><i></i>PDF here</li>
+  <li><i class="m"></i>missing: click to upload</li>
+  ${any((c) => c.pending) && html`<li><i class="p"></i>upload in review</li>`}
+  ${any((c) => c.withdrawn) && html`<li><i class="w"></i>withdrawn</li>`}
+</ul>`;
+};
 
 /** Homepage side card. */
-export async function missingCard(env: Env, limit = 15): Promise<{ card: Html; tex: boolean }> {
-  const { total, items } = await missingPapers(env, limit);
-  const content = total
-    ? html`<p class="small mb-2">These papers don’t have a PDF here yet. Can you upload one?</p>
-      <div class="recent-list">${items.map((p) => missingItem(p))}</div>
-      <p class="mt-2 mb-0"><a href="/missing">See more papers missing a PDF →</a></p>`
-    : html`<p class="small mb-0">Every paper has a PDF here now. Thank you for helping!</p>`;
-  return { card: card("Help us fill the gaps", content, "home-missing"), tex: hasTex(...items.map((p) => p.title)) };
+export async function missingCard(env: Env, origin: string): Promise<{ card: Html; tex: boolean }> {
+  const years = await yearStats(env, origin);
+  const total = years.reduce((s, y) => s + y.total, 0);
+  const have = years.reduce((s, y) => s + y.have, 0);
+  const focus = focusYear(years);
+  const cells = focus ? await cached(origin, `cells-v1-${focus.year}`, 300, () => yearCells(env, focus.year)) : [];
+  const content = html`<p class="small mb-2"><strong>${fmtInt(have)} of ${papersWord(total)}</strong> have a PDF here.
+    ${focus ? "Can you upload a missing one?" : "Every paper has a PDF here now. Thank you for helping!"}</p>
+  ${yearTiles(years)}
+  ${focus &&
+  html`<p class="small mt-3 mb-1"><strong>${focus.year}</strong>: ${fmtInt(missingOf(focus))} of ${papersWord(focus.total)} still need a PDF.
+    Each square is a paper; grey ones are missing.</p>
+  ${paperGrid(focus.year, cells, true)}
+  ${legend(cells)}
+  <p class="mt-2 mb-0"><a href="/missing?year=${focus.year}">See the gaps by year →</a></p>`}`;
+  return { card: card("Help us fill the gaps", content, "home-missing"), tex: false };
 }
+
+function missingYearParam(url: URL): number | null {
+  const y = parseInt(url.searchParams.get("year") ?? "", 10);
+  return y >= 1990 && y <= 2200 ? y : null;
+}
+
+export async function missingPage(env: Env, url: URL): Promise<Response> {
+  const years = await yearStats(env, url.origin);
+  const asked = missingYearParam(url);
+  const sel = years.find((y) => y.year === asked) ?? (asked === null ? (focusYear(years) ?? years[0]) : undefined);
+  const cells = sel ? await yearCells(env, sel.year) : [];
+  const missing = years.reduce((s, y) => s + missingOf(y), 0);
+  const body = html`<section class="missing-page">
+  <div class="results-bar">
+    <h4 class="results-h">Help us fill the gaps</h4>
+    <small class="ms-auto"><a href="/api/missing${sel ? `?year=${sel.year}` : ""}">JSON</a></small>
+  </div>
+  <p class="mt-3"><strong>${papersWord(missing)}</strong> ${missing === 1 ? "doesn’t" : "don’t"} have a PDF here yet.
+  Grab one from ePrint and upload it on the paper’s page: it’s anonymous, and a matching file appears right away.</p>
+  <h5 class="mt-4">By year</h5>
+  ${yearTiles(years, sel?.year ?? null)}
+  ${sel
+    ? html`<h5 class="mt-4">${sel.year}: ${missingOf(sel)
+        ? html`${fmtInt(missingOf(sel))} of ${papersWord(sel.total)} missing a PDF`
+        : html`every paper has a PDF here`}</h5>
+  <p class="small mb-2">Each square is a paper, in number order. Hover for its ID; click a grey one to upload its PDF.</p>
+  ${paperGrid(sel.year, cells)}
+  ${legend(cells)}`
+    : html`<p class="mt-4">No papers from ${asked} here. Pick a year above.</p>`}
+</section>`;
+  return page(env, {
+    title: asked === null ? "Papers missing a PDF" : `Papers from ${asked} missing a PDF`,
+    description: "Papers that don’t have a PDF on the mirror yet. Upload one to help fill the gaps.",
+    body,
+    noindex: true,
+    cache: "public, max-age=300",
+  });
+}
+
+// ---------------------------------------------------------------------------- API
 
 interface MissingParams {
   page: number;
@@ -77,8 +230,7 @@ interface MissingParams {
 
 function missingParams(url: URL): MissingParams {
   const page = Math.min(10_000, Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1));
-  const y = parseInt(url.searchParams.get("year") ?? "", 10);
-  return { page, year: y >= 1990 && y <= 2200 ? y : null };
+  return { page, year: missingYearParam(url) };
 }
 
 function missingHref(path: string, mp: MissingParams, page: number): string {
@@ -87,50 +239,6 @@ function missingHref(path: string, mp: MissingParams, page: number): string {
   if (page > 1) u.set("page", String(page));
   const q = u.toString();
   return q ? `${path}?${q}` : path;
-}
-
-export async function missingPage(env: Env, url: URL): Promise<Response> {
-  const mp = missingParams(url);
-  const [{ total, items }, years] = await Promise.all([
-    missingPapers(env, PER_PAGE, (mp.page - 1) * PER_PAGE, mp.year),
-    missingByYear(env),
-  ]);
-  const all = years.reduce((s, y) => s + y.n, 0);
-  const pages = Math.ceil(total / PER_PAGE);
-  const body = html`<section class="missing-page">
-  <div class="results-bar">
-    <h4 class="results-h">Help us fill the gaps</h4>
-    <small class="ms-auto">${pages > 1 ? html`Page ${mp.page} of ${pages} · ` : ""}<a href="${missingHref("/api/missing", mp, mp.page)}">JSON</a></small>
-  </div>
-  <p class="mt-3">${mp.year === null
-    ? html`<strong>${papersWord(total)}</strong> ${total === 1 ? "doesn’t" : "don’t"} have a PDF here yet.`
-    : html`<strong>${papersWord(total)}</strong> from ${mp.year} ${total === 1 ? "doesn’t" : "don’t"} have a PDF here yet.`}
-  Grab one from ePrint and upload it on the paper’s page: it’s anonymous, and a matching file appears right away.</p>
-  <form class="missing-filter" method="get" action="/missing">
-    <label for="year" class="form-label mb-0">Year</label>
-    <select class="form-select form-select-sm" id="year" name="year">
-      <option value="">All years (${fmtInt(all)})</option>
-      ${years.map((y) => html`<option value="${y.year}"${y.year === mp.year ? html` selected` : ""}>${y.year} (${fmtInt(y.n)})</option>`)}
-    </select>
-    <button class="btn btn-outline-dark btn-sm" type="submit">Show</button>
-  </form>
-  <div class="results">${items.length
-    ? items.map((p) => missingItem(p))
-    : html`<p>${total ? html`No papers on this page. <a href="${missingHref("/missing", mp, 1)}">Back to page 1</a>.` : "Nothing missing here. Thank you!"}</p>`}</div>
-  ${pages > 1 &&
-  html`<nav class="pager" aria-label="Pagination">
-    ${mp.page > 1 ? html`<a class="btn btn-outline-dark btn-sm" href="${missingHref("/missing", mp, Math.min(mp.page - 1, pages))}" rel="prev">← Previous</a>` : html`<span></span>`}
-    ${mp.page < pages ? html`<a class="btn btn-outline-dark btn-sm" href="${missingHref("/missing", mp, mp.page + 1)}" rel="next">Next →</a>` : html`<span></span>`}
-  </nav>`}
-</section>`;
-  return page(env, {
-    title: mp.year === null ? "Papers missing a PDF" : `Papers from ${mp.year} missing a PDF`,
-    description: "Papers that don’t have a PDF on the mirror yet. Upload one to help fill the gaps.",
-    body,
-    noindex: true,
-    katex: hasTex(...items.map((p) => p.title)),
-    cache: "public, max-age=300",
-  });
 }
 
 export async function apiMissing(env: Env, url: URL): Promise<Response> {
