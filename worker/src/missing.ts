@@ -216,9 +216,9 @@ const legend = (cells: Cell[]) => {
   const any = (f: (c: Cell) => unknown) => cells.some(f);
   return html`<ul class="grid-legend small">
   <li><i></i>PDF here</li>
-  <li><i class="m"></i>missing: click to upload</li>
-  ${any((c) => c.outdated) && html`<li><i class="o"></i>may be outdated: click to upload the latest version</li>`}
-  ${any((c) => c.pending) && html`<li><i class="p"></i>upload in review</li>`}
+  <li><i class="m"></i>missing</li>
+  ${any((c) => c.outdated) && html`<li><i class="o"></i>may be outdated</li>`}
+  ${any((c) => c.pending) && html`<li><i class="p"></i>in review</li>`}
 </ul>`;
 };
 
@@ -233,8 +233,7 @@ export async function missingCard(env: Env, origin: string): Promise<{ card: Htm
     ${focus ? "Can you upload a missing one?" : "No paper is waiting for an upload now. Thank you for helping!"}</p>
   ${yearTiles(years)}
   ${focus &&
-  html`<p class="small mt-3 mb-1"><strong>${focus.year}</strong>: ${fmtInt(missingOf(focus))} of ${papersWord(focus.total)} still need a PDF.
-    Each square is a paper; grey ones are missing${focus.outdated ? ", yellow ones may be outdated" : ""}.</p>
+  html`<p class="small mt-3 mb-1"><strong>${focus.year}</strong> · ${fmtInt(missingOf(focus))} missing</p>
   ${paperGrid(focus.year, cells, true)}
   ${legend(cells)}
   <p class="mt-2 mb-0"><a href="/missing?year=${focus.year}">See the gaps by year →</a></p>`}`;
@@ -262,18 +261,14 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
     <h4 class="results-h">Help us fill the gaps</h4>
     <small class="ms-auto"><a href="/api/missing${sel ? `?year=${sel.year}` : ""}">JSON</a></small>
   </div>
-  <p class="mt-3"><strong>${papersWord(missing)}</strong> ${missing === 1 ? "doesn’t" : "don’t"} have a PDF here yet${outdated
-    ? html`, and <strong>${fmtInt(outdated)}</strong> more may be outdated: ePrint changed ${outdated === 1 ? "it" : "them"} after we saved our copy`
-    : ""}.
-  Grab the latest version from ePrint and upload it on the paper’s page: it’s anonymous, and a matching file appears right away.
-</p>
+  <p class="mt-3"><strong>${fmtInt(missing)}</strong> missing${outdated ? html` · <strong>${fmtInt(outdated)}</strong> may be outdated` : ""}.
+  Click a square to upload the PDF.</p>
   <h5 class="mt-4">By year</h5>
   ${yearTiles(years, sel?.year ?? null)}
   ${sel
-    ? html`<h5 class="mt-4">${sel.year}: ${fmtInt(sel.have)} of ${papersWord(sel.total)} have a PDF here${missingOf(sel)
-        ? html`, ${fmtInt(missingOf(sel))} missing`
-        : ""}${sel.outdated ? html`, ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
-  <p class="small mb-2">Each square is a paper, in number order. Hover for its ID; click a grey one to upload its PDF${sel.outdated ? ", or a yellow one to upload its latest version" : ""}.</p>
+    ? html`<h5 class="mt-4">${sel.year} · ${papersWord(sel.total)}${missingOf(sel)
+        ? html` · ${fmtInt(missingOf(sel))} missing`
+        : ""}${sel.outdated ? html` · ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
   ${paperGrid(sel.year, cells)}
   ${legend(cells)}`
     : html`<p class="mt-4">No papers from ${asked} here. Pick a year above.</p>`}
