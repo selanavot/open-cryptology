@@ -271,7 +271,7 @@ def throttled(r):
     e = str(r.get("error"))
     return not r.get("ok") and (r.get("status") in (429, 502, 503, 504) or (
         r.get("status") is None and not retryable(r)
-        and not any(x in e for x in ("rejected", "not a PDF", "too large"))))
+        and not any(x in e for x in ("rejected", "not a PDF", "incomplete", "too large"))))
 
 
 def cmd_copy(a):
@@ -412,15 +412,17 @@ def cmd_copy(a):
 
 # --------------------------------------------------------------------------- apply
 
+# Versions of exactly 1 MiB are truncated Wayback captures (worker/src/pdfcheck.ts): never chosen.
 UPDATE_PDF_KEY = """
 UPDATE papers SET
   pdf_key = v.r2_key, pdf_sha256 = v.sha256, pdf_size = v.size, pdf_source = v.source,
   pdf_source_date = v.captured_at,
-  pdf_maybe_stale = CASE WHEN papers.withdrawn = 0 AND papers.updated IS NOT NULL AND v.captured_at < papers.updated
+  pdf_maybe_stale = CASE WHEN papers.withdrawn = 0 AND papers.updated IS NOT NULL
+                              AND julianday(v.captured_at) < julianday(papers.updated)
                          THEN 1 ELSE 0 END
 FROM (SELECT paper_id, r2_key, sha256, size, source, captured_at,
              row_number() OVER (PARTITION BY paper_id ORDER BY captured_at DESC, id DESC) AS rn
-        FROM versions) AS v
+        FROM versions WHERE size IS NOT 1048576) AS v
 WHERE v.paper_id = papers.id AND v.rn = 1 AND v.r2_key IS NOT papers.pdf_key
   AND (papers.pdf_key IS NULL OR papers.pdf_source_date IS NULL OR v.captured_at > papers.pdf_source_date);"""
 

@@ -68,13 +68,19 @@ CDX digests), `size`, `source` (`github-mirror` | `wayback` | `upload`), `source
    for rows not updated yet). Also fills `papers.pdf_sha256` where NULL.
 3. `plan`: per paper, the distinct digests of 200 `application/pdf` captures, minus those we
    hold; plus the GitHub-mirror snapshot (from `sources`) unless GitHub is already a version.
-4. `copy`: the helper Worker fetches each planned copy inside Cloudflare, checks `%PDF-`, hashes
-   it, and stores it unless its sha256 is already held for that paper. GitHub items run in
+4. `copy`: the helper Worker fetches each planned copy inside Cloudflare, checks that it is a
+   complete PDF (`worker/src/pdfcheck.ts`: `%PDF-` header, `startxref` + `%%EOF` at the end, a
+   page count from pdf.js, and not exactly 1 MiB), hashes it, and stores it unless its sha256 is
+   already held for that paper. Many 2019-2025 Wayback captures were cut off at 1 MiB when they
+   were crawled (the archived payload itself is short, so its CDX digest matches the short bytes);
+   these are rejected as `not a PDF (incomplete: ...)`. GitHub items run in
    parallel batches; Wayback items with 2 fetchers, each >= 2 s apart. On 429/5xx, or when IA
    refuses the helper (521/522, dropped connections), all fetchers pause 2-5 min and the item is
    retried; items still failing are left for a later run (never recorded as permanent).
 5. `apply`: inserts version rows for stored copies and moves `papers.pdf_key` to the newest
    version where it is newer than the current one (or none was set, e.g. withdrawn papers).
+   Versions of exactly 1 MiB are never chosen. Truncated copies stored before the check existed
+   are cleaned up by `pipeline/repair_truncated.py`.
 
 ```sh
 # temporary helper Worker (own shared key, kept in data/versions/.versions-key)

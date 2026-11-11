@@ -1,6 +1,9 @@
 // TEMPORARY one-off prefill helper. POST /prefill with header x-prefill-key and a JSON body
 // [{ id: "YYYY/NNNN", url: "https://raw.githubusercontent.com/..." | "https://web.archive.org/..." }].
 // Only fetches from the community GitHub mirror and the Wayback Machine — never eprint.iacr.org.
+// Every copy must be a complete PDF: some Wayback captures are cut off at 1 MiB (pdfcheck.ts).
+import { completePdf } from "../../worker/src/pdfcheck";
+
 interface Env { PDFS: R2Bucket; PREFILL_KEY: string }
 const UA = "open-cryptology-prefill/0.1 (unofficial non-commercial ePrint mirror; copies public mirrors only)";
 const MAX = 25 * 1024 * 1024;
@@ -25,6 +28,8 @@ export default {
         if (buf.byteLength > MAX) { out.push({ id: it.id, ok: false, error: "too large" }); continue; }
         const m = new Uint8Array(buf, 0, Math.min(5, buf.byteLength));
         if (String.fromCharCode(...m) !== "%PDF-") { out.push({ id: it.id, ok: false, error: "not a PDF" }); continue; }
+        const c = await completePdf(buf, { suspectOneMiB: true });
+        if (c.problem) { out.push({ id: it.id, ok: false, error: `not a PDF (incomplete: ${c.problem})` }); continue; }
         const obj = await env.PDFS.put(`pdf/${it.id}.pdf`, buf, { httpMetadata: { contentType: "application/pdf" }, customMetadata: { source_url: it.url } });
         out.push({ id: it.id, ok: true, size: buf.byteLength, etag: obj?.etag });
       } catch (e) {

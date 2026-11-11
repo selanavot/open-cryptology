@@ -1,4 +1,5 @@
 import { type Env } from "./db";
+import { pdfIntegrity } from "./pdfcheck";
 
 // Layer-1 abuse checks for anonymous PDF uploads (run before anything is stored).
 // Limits are generous enough for one person to upload a batch of papers in one sitting.
@@ -66,13 +67,12 @@ export async function overLimit(
 
 /** Structural sanity scan of an uploaded PDF. Returns a reason to reject (truncated file), or null.
  *  Active content is not a rejection: see activeContentScan(), which flags the upload for review.
- *  Heuristic first filter on the raw bytes. Names inside compressed object streams aren't
- *  visible here; verifyPdf (verify.ts) checks the parsed document for scripts and attachments. */
+ *  Heuristic first filter on the raw bytes (pdfcheck.ts: %%EOF, startxref). Names inside
+ *  compressed object streams aren't visible here; verifyPdf (verify.ts) checks the parsed
+ *  document for scripts and attachments. */
 export function scanPdf(buf: ArrayBuffer): string | null {
-  const bytes = new Uint8Array(buf);
-  const tail = new TextDecoder("latin1").decode(bytes.subarray(Math.max(0, bytes.length - 2048)));
-  if (!tail.includes("%%EOF")) return "That PDF looks truncated (no end-of-file marker).";
-  return null;
+  const problem = pdfIntegrity(buf);
+  return problem ? `That PDF looks incomplete or damaged (${problem}).` : null;
 }
 
 /** Returns a short description if the PDF's raw bytes carry active content (scripts, attachments,

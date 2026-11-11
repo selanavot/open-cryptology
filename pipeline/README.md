@@ -19,6 +19,7 @@ into R2 is described in `docs/INGESTION.md`.
 | `ingest_sample.py` | ~20 PDFs -> local R2 `pdf/YYYY/NNNN.pdf` + `papers.pdf_*` (local dev only: the only way to get PDFs into the emulated R2, to exercise the PDF route and paper pages with a mirrored copy) | raw.githubusercontent.com, web.archive.org |
 | `backfill_withdrawn.py` | metadata of withdrawn papers from archived ePrint abstract pages -> remote `papers` | web.archive.org, 2 clients >= 2 s apart (eprint.iacr.org with `--source eprint`: one client, >= 5 s) |
 | `discover_versions.py` | every distinct PDF per paper -> R2 + `versions`, via the helper Worker `versions-worker/` | web.archive.org CDX >= 5 s/request; copies in Cloudflare, 2 Wayback fetchers >= 2 s apart, 2-5 min backoff |
+| `repair_truncated.py` | papers serving a Wayback capture cut off at 1 MiB -> a complete held version, a fresh complete copy, or back to /missing (`plan` is a dry run; R2 deletes need `--confirm`) | R2 checks in Cloudflare; probes GitHub mirror / web.archive.org one at a time >= 3 s apart |
 | `verify_bench.mjs` | benchmark for upload verification (`worker/src/match.ts`): false-reject / false-accept rates on ~300 sampled papers vs the previous matcher (Node >= 23; usage in the file header) | opencryptology.org PDFs, <= 4 at a time, deleted after text extraction |
 | `common.py` | polite HTTP GET (per-host spacing, backoff), SQL quoting, wrangler wrappers | |
 
