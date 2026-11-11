@@ -63,10 +63,9 @@ const papersWord = (n: number) => `${fmtInt(n)} paper${n === 1 ? "" : "s"}`;
 export async function missingCard(env: Env, limit = 15): Promise<{ card: Html; tex: boolean }> {
   const { total, items } = await missingPapers(env, limit);
   const content = total
-    ? html`<p class="small mb-2"><strong>${papersWord(total)}</strong> don’t have a PDF here yet.
-      If you can grab one from ePrint, please upload it on the paper’s page.</p>
+    ? html`<p class="small mb-2">These papers don’t have a PDF here yet. Can you upload one?</p>
       <div class="recent-list">${items.map((p) => missingItem(p))}</div>
-      <p class="mt-2 mb-0"><a href="/missing">See all ${papersWord(total)} missing a PDF →</a></p>`
+      <p class="mt-2 mb-0"><a href="/missing">See more papers missing a PDF →</a></p>`
     : html`<p class="small mb-0">Every paper has a PDF here now. Thank you for helping!</p>`;
   return { card: card("Help us fill the gaps", content, "home-missing"), tex: hasTex(...items.map((p) => p.title)) };
 }
@@ -106,8 +105,7 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
   <p class="mt-3">${mp.year === null
     ? html`<strong>${papersWord(total)}</strong> don’t have a PDF here yet.`
     : html`<strong>${papersWord(total)}</strong> from ${mp.year} don’t have a PDF here yet.`}
-  If you can grab one from ePrint, please upload it on the paper’s page. Uploads are anonymous, and
-  a file that matches the paper appears right away. Papers with an upload awaiting review aren’t listed.</p>
+  Grab one from ePrint and upload it on the paper’s page: it’s anonymous and appears right away.</p>
   <form class="missing-filter" method="get" action="/missing">
     <label for="year" class="form-label mb-0">Year</label>
     <select class="form-select form-select-sm" id="year" name="year">
