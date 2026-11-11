@@ -41,6 +41,8 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import DATA_DIR, d1_exec_statements, d1_query, log, sql_lit  # noqa: E402
 
+os.environ.setdefault("CLOUDFLARE_ACCOUNT_ID", "f1a5c2273555ad714cc5911124e671a7")  # wrangler --remote
+
 UA = "open-cryptology-metadata/0.1 (unofficial non-commercial ePrint mirror; withdrawn-paper metadata backfill)"
 OUT_DIR = os.path.join(DATA_DIR, "withdrawn")
 RESULTS = os.path.join(OUT_DIR, "results.jsonl")

@@ -44,6 +44,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import DATA_DIR, d1_exec_statements, d1_query, log, sql_lit  # noqa: E402
 
+os.environ.setdefault("CLOUDFLARE_ACCOUNT_ID", "f1a5c2273555ad714cc5911124e671a7")  # wrangler --remote
 HELPER = os.environ.get("VERSIONS_HELPER", "https://open-cryptology-versions.opencryptology.workers.dev")
 VDIR = os.path.join(DATA_DIR, "versions")
 KEY_FILE = os.path.join(VDIR, ".versions-key")
@@ -344,12 +345,14 @@ def cmd_apply(_a):
             f"{sql_lit(j['sha1'])}, {sql_lit(j['size'])}, {sql_lit(j['kind'])}, {sql_lit(j['url'])}, "
             f"{sql_lit(j['captured_at'])}, {sql_lit(now_iso())});")
     # Point papers.pdf_key at the newest version when it is newer than what pdf_key holds (or
-    # nothing is set, e.g. withdrawn papers). pdf_maybe_stale follows the OAI datestamp rule.
+    # nothing is set, e.g. withdrawn papers). pdf_maybe_stale follows the OAI datestamp rule
+    # (not for withdrawn papers: their datestamp is the withdrawal).
     stmts.append("""
 UPDATE papers SET
   pdf_key = v.r2_key, pdf_sha256 = v.sha256, pdf_size = v.size, pdf_source = v.source,
   pdf_source_date = v.captured_at,
-  pdf_maybe_stale = CASE WHEN papers.updated IS NOT NULL AND v.captured_at < papers.updated THEN 1 ELSE 0 END
+  pdf_maybe_stale = CASE WHEN papers.withdrawn = 0 AND papers.updated IS NOT NULL AND v.captured_at < papers.updated
+                         THEN 1 ELSE 0 END
 FROM (SELECT paper_id, r2_key, sha256, size, source, captured_at,
              row_number() OVER (PARTITION BY paper_id ORDER BY captured_at DESC, id DESC) AS rn
         FROM versions) AS v
