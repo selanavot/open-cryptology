@@ -15,7 +15,8 @@
   ],
   // Contact form email (Cloudflare Email Routing). CONTACT_TO is a secret (.dev.vars locally,
   // `wrangler secret put CONTACT_TO` in production) and must be a verified destination address.
-  // Cron every 4 hours: metadata-harvest staleness alarm (src/staleness.ts) and review reminders.
+  // Cron every 4 hours: metadata-harvest staleness alarm (src/staleness.ts), review reminders and
+  // IndexNow pings for new/changed papers (src/indexnow.ts; only with the INDEXNOW_KEY secret).
   // The metadata harvest itself runs on GitHub Actions (.github/workflows/harvest.yml) because
   // ePrint's Cloudflare challenges Workers; the Worker's own harvest (src/harvest.ts) runs only
   // with HARVEST_ENABLED = "1".

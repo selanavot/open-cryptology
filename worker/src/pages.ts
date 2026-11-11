@@ -2,7 +2,8 @@ import { contactForm } from "./contact";
 import { homeData, parseAuthors, search, toFtsQuery, type Env, type ListItem, type SearchHit } from "./db";
 import { highlighted, html, stripMarks, type Html } from "./html";
 import { categoryBadge, hasTex, messagePage, page } from "./layout";
-import { missingCard } from "./missing";
+import { missingCard } from "./years";
+import { ogImage, siteOrigin } from "./seo";
 
 export const day = (iso: string | null | undefined): string => (iso ? iso.slice(0, 10) : "");
 export const fmtInt = (n: number): string => n.toLocaleString("en-US");
@@ -58,7 +59,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     and more.</p>
     <p><strong>New papers</strong> appear here within days of being accepted on ePrint. We don’t
     take submissions; <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</p>
-    <p><strong>PDFs</strong> come from public copies; readers <a href="/missing">fill in the gaps</a>.</p>
+    <p><strong>PDFs</strong> come from public copies; readers <a href="/${missing.gapsYear}">fill in the gaps</a>.</p>
     <p><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the
     original. Please respect it: credit the authors, no commercial use for NC papers, unmodified
     copies only for ND.</p>
@@ -80,6 +81,8 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     description:
       "Unofficial mirror of the Cryptology ePrint Archive: fast search and easy access to papers for humans and AI assistants.",
     body,
+    canonical: `${siteOrigin(env, url)}/`,
+    ogImage: ogImage(siteOrigin(env, url)),
     katex: missing.tex,
     cache: "public, max-age=300",
   });

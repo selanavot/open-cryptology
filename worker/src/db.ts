@@ -32,6 +32,8 @@ export interface Env {
   ACCESS_AUD?: string;
   /** Public origin (https://...), for links in emails sent from the cron (review reminders). */
   SITE_URL?: string;
+  /** IndexNow key (secret; also served at /<key>.txt). Unset = no IndexNow pings (indexnow.ts). */
+  INDEXNOW_KEY?: string;
   /** Local dev only: "1" skips the Access check on /review. */
   REVIEW_DEV_BYPASS?: string;
 }

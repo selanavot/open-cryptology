@@ -27,13 +27,12 @@ export function llmsTxt(env: Env, origin: string): Response {
   you get a 404 with a plain-text explanation, or JSON if you send Accept: application/json)
   This is the latest copy we hold. Other stored copies: ${origin}/YYYY/NNN/versions/YYYYMMDDThhmmssZ.pdf
   (listed in the JSON "versions"; the stamp is when the public copy was captured).
+- All papers of a year, with which ones have a PDF (HTML): ${origin}/YYYY   e.g. ${origin}/2024
+- Sitemap of every paper page: ${origin}/sitemap.xml
 - Search (JSON): ${origin}/api/search?q=QUERY&page=1&sort=relevance|new
   Supports "phrases", prefix*, and author:/title:/abstract: filters. An ID query like "2024/123" is
   reported in "id_match".
 - Search (HTML): ${origin}/search?q=QUERY
-- Papers we have no PDF for yet (JSON): ${origin}/api/missing?page=1&year=YYYY   (50 per page, newest
-  first; fields: id, title, year, url, original_url, upload_url; plus total, total_pages, next).
-  HTML: ${origin}/missing. Uploads are made by people through the form on each paper page.
 - Search result fields: id, title, authors, category, license, submitted, withdrawn, withdrawn_on,
   has_pdf, pdf_url (null if we have no PDF), upload_url (where a person can upload a missing PDF),
   snippet, url, api_url.
@@ -119,5 +118,7 @@ export function robotsTxt(env: Env, origin: string): Response {
 User-agent: *
 Allow: /
 Crawl-delay: 5
+
+Sitemap: ${origin}/sitemap.xml
 `);
 }
