@@ -71,7 +71,8 @@ export function isReviewPath(path: string): boolean {
 function checkSummary(checks: string | null): string {
   if (!checks) return "no check";
   try {
-    const c = JSON.parse(checks) as { titleScore?: number; authorHit?: string | null; noText?: boolean; error?: string; skipped?: string };
+    const c = JSON.parse(checks) as { titleScore?: number; authorHit?: string | null; noText?: boolean; error?: string; skipped?: string; active?: string };
+    if (c.active) return `⚠ contains ${c.active}`;
     if (c.skipped) return c.skipped;
     if (c.error) return `couldn’t parse: ${c.error}`;
     const parts = [`title ${Math.round((c.titleScore ?? 0) * 100)}%`, c.authorHit ? `author found (${c.authorHit})` : "no author found"];

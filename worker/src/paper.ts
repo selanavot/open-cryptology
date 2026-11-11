@@ -1,5 +1,5 @@
 import { pendingDuplicate, queueForReview } from "./quarantine";
-import { ACTIVE_MSG, ipHash, overLimit, scanPdf } from "./uploadguard";
+import { activeContentScan, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
 import { canonicalId, getPaper, getSources, getVersion, getVersions, parseAuthors, type Env, type Paper } from "./db";
@@ -414,8 +414,11 @@ export async function handleUpload(
   if (await pendingDuplicate(env, id, sha)) return thanks(true);
 
   // Instant verification: page 1-2 text must contain the title and an author surname.
+  // PDFs with active content (scripts, attachments) are never auto-published: they go to review.
+  const rawActive = activeContentScan(buf);
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
-  if (report.active) return fail(422, "bad_pdf");
+  if (rawActive && !report.active) report.active = rawActive;
+  if (report.active) report.ok = false;
   const now = new Date().toISOString();
   const uploadId = crypto.randomUUID();
   if (report.ok) {
