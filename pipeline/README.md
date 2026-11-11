@@ -15,6 +15,8 @@ into R2 is described in `docs/INGESTION.md`.
 | `harvest_oai.py` | OAI-PMH ListRecords (oai_dc) -> `papers`, FTS rebuild, `meta.last_harvest` | eprint.iacr.org/oai, one client, >= 3 s/request, stops at first 403/429 |
 | `discover_sources.py` | where PDFs can be fetched -> `sources` (no downloads) + coverage table | `gh api`; web.archive.org CDX, >= 5 s/request |
 | `ingest_sample.py` | ~20 PDFs -> local R2 `pdf/YYYY/NNNN.pdf` + `papers.pdf_*` (local dev only: the only way to get PDFs into the emulated R2, to exercise the PDF route and paper pages with a mirrored copy) | raw.githubusercontent.com, web.archive.org |
+| `backfill_withdrawn.py` | metadata of withdrawn papers from archived ePrint abstract pages -> remote `papers` | web.archive.org, 2 clients >= 2 s apart (eprint.iacr.org with `--source eprint`: one client, >= 5 s) |
+| `discover_versions.py` | every distinct PDF per paper -> R2 + `versions`, via the helper Worker `versions-worker/` | web.archive.org CDX >= 5 s/request; copies in Cloudflare, 2 Wayback fetchers >= 2 s apart, 2-5 min backoff |
 | `common.py` | polite HTTP GET (per-host spacing, backoff), SQL quoting, wrangler wrappers | |
 
 ## Usage
@@ -65,7 +67,9 @@ Machine). They are not part of the regular pipeline and get deleted once the bac
 - Upserts change metadata columns only and never move a record backwards in time
   (`excluded.updated >= papers.updated`); `pdf_*` columns are never touched by the harvest.
 - OAI deleted records carry no metadata: a new one is inserted with `title=''`, `authors='[]'`,
-  `withdrawn=1`; an existing paper keeps its metadata and gets `withdrawn=1`.
+  `withdrawn=1`; an existing paper keeps its metadata and PDFs and gets `withdrawn=1` and
+  `withdrawn_on` (the record's datestamp, unless already known). `backfill_withdrawn.py` fills
+  empty withdrawn rows from archived abstract pages (see `docs/VERSIONS.md`).
 - `license_code` is derived from `dc:rights` (`CC BY`, `CC BY-SA`, `CC BY-NC`, `CC BY-NC-SA`,
   `CC BY-NC-ND`, `CC0`); `retro_license = year < 2022`.
 - `sources` (one row per paper and kind):

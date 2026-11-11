@@ -21,7 +21,7 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 | Piece | Where | Notes |
 |---|---|---|
 | Metadata | Cloudflare D1 (`db/schema.sql`) | papers, FTS5 search, candidate sources, uploads |
-| PDFs | Cloudflare R2 bucket `open-cryptology-pdfs` | `pdf/YYYY/NNNN.pdf`; uploads under `quarantine/` |
+| PDFs | Cloudflare R2 bucket `open-cryptology-pdfs` | `pdf/YYYY/NNNN.pdf`; more versions `pdf/YYYY/NNNN/<stamp>.pdf`; uploads under `quarantine/` |
 | Site + API | Cloudflare Worker (`worker/`) | server-rendered HTML, JSON API, `llms.txt` |
 | Pipeline | `pipeline/` (Python, stdlib) | initial OAI harvest → D1; source discovery; local-dev PDF sample |
 | Updates | Cron Trigger every 4 h | incremental OAI `from=` metadata harvest only; PDFs prefilled separately |
@@ -34,6 +34,7 @@ obtain and search for humans and AI assistants, while respecting each paper's li
   metadata (category, license, dates), PDF link if mirrored else upload form, link to the
   original ePrint page, BibTeX
 - `/YYYY/NNNN.pdf` — PDF from R2 with license headers (`Link: <license>; rel="license"`)
+- `/YYYY/NNNN/versions/<stamp>.pdf` — one stored version (see `docs/VERSIONS.md`)
 - `/YYYY/NNNN/upload` (POST) — upload into quarantine
 - `/api/papers/YYYY/NNNN` — JSON metadata; `/api/search?q=` — JSON search
 - `/llms.txt`, `/robots.txt`, `/about` (license guidance for humans and agents)
@@ -44,4 +45,5 @@ Every live ePrint paper lists a CC license in its metadata (~93% CC BY 4.0, plus
 BY-NC, BY-NC-SA, BY-NC-ND). Pages and API responses always show the license, the authors and a
 link to the original. Papers posted before 2022 had their license assigned retroactively by
 IACR; their pages say so. ND-licensed papers are served verbatim only (no derived text).
-Withdrawn papers are tombstoned.
+Withdrawn papers keep their page, like on ePrint: full metadata, a "withdrawn" notice and the
+last PDF we hold (served with `X-Withdrawn: 1`); see `docs/VERSIONS.md`.

@@ -1,7 +1,8 @@
 import { ACTIVE_MSG, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
-import { canonicalId, getPaper, getSources, parseAuthors, type Env, type Paper } from "./db";
+import { canonicalId, getPaper, getSources, getVersion, getVersions, parseAuthors, type Env, type Paper } from "./db";
+import { versionJson, versionsList } from "./versions";
 import { html, safeUrl, type Html } from "./html";
 import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
 import { bibtex, licenseInfo, originalUrl, type LicenseInfo } from "./license";
@@ -23,18 +24,25 @@ export async function paperPage(
   const orig = originalUrl(env.ORIGIN_BASE, id);
   const p = await getPaper(env, id);
   if (!p) return paperMissing(env, id, orig);
-  if (p.withdrawn) return tombstone(env, p, orig);
+  const withdrawn = !!p.withdrawn;
 
   const lic = licenseInfo(p, env.ORIGIN_BASE);
   const authors = parseAuthors(p.authors);
+  const affs = parseAffiliations(p.affiliations);
   const pdfHref = p.pdf_key ? `/${id}.pdf` : null;
+  const versions = await getVersions(env, id);
+  const title = p.title || `Withdrawn paper ${id}`;
 
   const body = html`<div class="paper-row">
   <div class="paper-main">
     <h4>Paper ${id}</h4>
-    <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${p.title}</a></h3>
-    ${authors.map((a) => html`<div class="author"><span class="authorName">${a}</span></div>`)}
-    ${!pdfHref && uploadForm(env, p, orig)}
+    ${withdrawn && html`<div class="alert alert-warning withdrawn-notice" role="note">
+      <strong>Withdrawn</strong> by the authors on ePrint${p.withdrawn_on ? html` on <time datetime="${p.withdrawn_on}">${day(p.withdrawn_on)}</time>` : ""}.
+      ${pdfHref ? "The last version we have is kept below for reference." : "We have no copy of the paper itself."}
+    </div>`}
+    <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${title}</a></h3>
+    ${authors.map((a, i) => html`<div class="author"><span class="authorName">${a}</span>${affs[i] && html`<span class="affiliation">, ${affs[i]}</span>`}</div>`)}
+    ${!pdfHref && !withdrawn && uploadForm(env, p, orig)}
     <h5 class="mt-3">Abstract</h5>
     <p class="paper-abstract tex">${p.abstract || "No abstract available."}</p>
   </div>
@@ -42,7 +50,11 @@ export async function paperPage(
     <h5>Metadata</h5>
     <dl>
       <dt id="pdf-status">Available format(s)</dt>
-      <dd>${pdfHref
+      <dd>${withdrawn
+        ? html`<div>-- withdrawn --</div>
+          ${pdfHref && html`<a class="btn btn-sm btn-outline-dark mt-1" href="${pdfHref}">${icons.pdf}PDF (withdrawn)</a>
+          <div class="small text-muted mt-1">Last version we have${p.pdf_source_date ? `, copy captured ${day(p.pdf_source_date)}` : ""}</div>`}`
+        : pdfHref
         ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF</a>
           ${p.pdf_maybe_stale ? html`<div class="small text-muted mt-1">May be an older revision</div>` : ""}`
         : html`<span class="text-muted">No PDF here yet.</span> <a href="#upload">Upload it</a>`}
@@ -51,8 +63,10 @@ export async function paperPage(
       <dt>License</dt>
       <dd>${licenseBadge(lic)}</dd>
       <dt>History</dt>
-      ${p.updated && p.updated !== p.submitted && html`<dd><time datetime="${p.updated}">${day(p.updated)}</time>: last updated</dd>`}
+      ${withdrawn && html`<dd>${p.withdrawn_on ? html`<time datetime="${p.withdrawn_on}">${day(p.withdrawn_on)}</time>: ` : ""}withdrawn</dd>`}
+      ${!withdrawn && p.updated && p.updated !== p.submitted && html`<dd><time datetime="${p.updated}">${day(p.updated)}</time>: last updated</dd>`}
       ${p.submitted && html`<dd><time datetime="${p.submitted}">${day(p.submitted)}</time>: submitted</dd>`}
+      ${versionsList(id, versions, p.pdf_key)}
       <dt>Original</dt>
       <dd><a href="${orig}" rel="noopener">View on ePrint ↗</a></dd>
     </dl>
@@ -65,8 +79,8 @@ export async function paperPage(
 <p class="small mb-0"><a href="/?paper=${p.id}#contact">Report a problem with this paper</a></p>`;
 
   return page(env, {
-    title: `${id}: ${p.title}`,
-    description: (p.abstract ?? "").replace(/\s+/g, " ").slice(0, 200),
+    title: `${id}: ${title}${withdrawn ? " (withdrawn)" : ""}`,
+    description: `${withdrawn ? "Withdrawn. " : ""}${(p.abstract ?? "").replace(/\s+/g, " ")}`.slice(0, 200),
     body,
     katex: hasTex(p.title, p.abstract),
     original: orig,
@@ -116,27 +130,26 @@ function paperMissing(env: Env, id: string, orig: string): Response {
   );
 }
 
-function tombstone(env: Env, p: Paper, orig: string): Response {
-  return messagePage(
-    env,
-    410,
-    p.title ? `Withdrawn: ${p.title}` : `Paper ${p.id} has been withdrawn`,
-    html`${p.title && html`<p class="text-muted mb-2">Paper ${p.id}</p>`}
-    <p>This paper has been withdrawn from the Cryptology ePrint Archive${p.updated ? ` (as of ${day(p.updated)})` : ""}.
-    The mirror keeps only this tombstone; no PDF or abstract is served.</p>
-    <p><a href="${orig}" rel="noopener">See the original entry on ePrint ↗</a></p>`,
-    { original: orig, originalLabel: `Paper ${p.id} on the original ePrint`, cache: "public, max-age=3600", noindex: true },
-  );
+function parseAffiliations(json: string | null): (string | null)[] {
+  if (!json) return [];
+  try {
+    const a = JSON.parse(json);
+    return Array.isArray(a) ? a.map((x) => (typeof x === "string" && x.trim() ? x.trim() : null)) : [];
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------- PDF
 
+/** /YYYY/NNNN.pdf (the default PDF = latest version), or with `stamp` one stored version. */
 export async function servePdf(
   env: Env,
   req: Request,
   year: number,
   num: number,
   ctx?: ExecutionContext,
+  stamp?: string,
 ): Promise<Response> {
   const id = canonicalId(year, num);
   const orig = originalUrl(env.ORIGIN_BASE, id);
@@ -151,15 +164,27 @@ export async function servePdf(
       { original: orig },
     );
   if (!p) return missing(404, "This paper isn’t in the mirror.");
-  if (p.withdrawn) return missing(410, "This paper has been withdrawn.");
-  if (!p.pdf_key) return missing(404, "We don’t have a mirrored copy of this PDF yet.");
+  // What to serve: the default PDF, or one stored version.
+  let obj0: { pdf_key: string | null; pdf_sha256: string | null; pdf_size: number | null; pdf_source_date: string | null } = p;
+  let filename = `${id.replace("/", "-")}.pdf`;
+  if (stamp) {
+    const v = await getVersion(env, id, stamp);
+    if (!v) return missing(404, "We don’t have a copy of this paper captured at that time.");
+    obj0 = { pdf_key: v.r2_key, pdf_sha256: v.sha256, pdf_size: v.size, pdf_source_date: v.captured_at };
+    filename = `${id.replace("/", "-")}-${stamp}.pdf`;
+  } else if (!p.pdf_key) {
+    return p.withdrawn
+      ? missing(410, "This paper was withdrawn by its authors, and we have no copy of it.")
+      : missing(404, "We don’t have a mirrored copy of this PDF yet.");
+  }
+  const pdfKey = obj0.pdf_key!;
 
   const lic = licenseInfo(p, env.ORIGIN_BASE);
-  const etag = p.pdf_sha256 ? `"${p.pdf_sha256}"` : null;
+  const etag = obj0.pdf_sha256 ? `"${obj0.pdf_sha256}"` : null;
   const headers = new Headers({
     "content-type": "application/pdf",
-    "content-disposition": `inline; filename="${id.replace("/", "-")}.pdf"`,
-    "cache-control": "public, max-age=86400",
+    "content-disposition": `inline; filename="${filename}"`,
+    "cache-control": stamp ? "public, max-age=604800" : "public, max-age=86400",
     "accept-ranges": "bytes",
     "x-content-type-options": "nosniff",
     "access-control-allow-origin": "*",
@@ -169,7 +194,9 @@ export async function servePdf(
   headers.set("link", links.join(", "));
   if (lic.code) headers.set("x-license", lic.code);
   if (etag) headers.set("etag", etag);
-  if (p.pdf_maybe_stale) headers.set("x-mirror-note", "may-be-older-revision");
+  if (!stamp && p.pdf_maybe_stale) headers.set("x-mirror-note", "may-be-older-revision");
+  if (p.withdrawn) headers.set("x-withdrawn", "1");
+  if (obj0.pdf_source_date) headers.set("x-captured-at", obj0.pdf_source_date);
 
   const inm = req.headers.get("if-none-match");
   if (etag && inm && inm.split(",").some((t) => t.trim().replace(/^W\//, "") === etag)) {
@@ -177,7 +204,7 @@ export async function servePdf(
   }
 
   if (req.method === "HEAD") {
-    const h = await env.PDFS.head(p.pdf_key);
+    const h = await env.PDFS.head(pdfKey);
     if (!h) return missing(404, "The mirrored file is missing from storage.");
     headers.set("content-length", String(h.size));
     if (!etag) headers.set("etag", h.httpEtag);
@@ -186,7 +213,7 @@ export async function servePdf(
 
   const hasRange = req.headers.has("range");
   if (!hasRange) {
-    const hit = await caches.default.match(pdfCacheKey(req, p));
+    const hit = await caches.default.match(pdfCacheKey(req, obj0));
     if (hit?.body) {
       headers.set("content-length", hit.headers.get("content-length") ?? "");
       if (!etag && hit.headers.get("etag")) headers.set("etag", hit.headers.get("etag")!);
@@ -196,10 +223,10 @@ export async function servePdf(
   }
   let obj: R2ObjectBody | null;
   try {
-    obj = await env.PDFS.get(p.pdf_key, hasRange ? { range: req.headers } : undefined);
+    obj = await env.PDFS.get(pdfKey, hasRange ? { range: req.headers } : undefined);
   } catch {
     // R2 rejects unsatisfiable/malformed ranges; answer like an origin server would.
-    const h = await env.PDFS.head(p.pdf_key);
+    const h = await env.PDFS.head(pdfKey);
     return new Response(null, { status: 416, headers: { "content-range": `bytes */${h?.size ?? "*"}` } });
   }
   if (!obj) return missing(404, "The mirrored file is missing from storage.");
@@ -226,7 +253,7 @@ export async function servePdf(
     const [a, b] = obj.body.tee();
     ctx.waitUntil(
       caches.default.put(
-        pdfCacheKey(req, p),
+        pdfCacheKey(req, obj0),
         new Response(b, { headers: { "content-type": "application/pdf", "content-length": String(size), "cache-control": "public, max-age=604800", etag: obj.httpEtag } }),
       ),
     );
@@ -441,20 +468,16 @@ export async function apiPaper(
       "public, max-age=60",
     );
   }
-  if (p.withdrawn) {
-    return json(
-      { id, withdrawn: true, title: p.title || null, original_url: orig, dates: { updated: p.updated } },
-      410,
-      "public, max-age=3600",
-    );
-  }
   const lic = licenseInfo(p, env.ORIGIN_BASE);
+  const [sources, versions] = await Promise.all([getSources(env, id), getVersions(env, id)]);
+  const affs = p.affiliations ? parseAffiliations(p.affiliations) : null;
   return json({
     id,
     url: `${origin}/${id}`,
     original_url: orig,
-    title: p.title,
+    title: p.title || null,
     authors: parseAuthors(p.authors),
+    affiliations: affs && affs.some(Boolean) ? affs : null,
     abstract: p.abstract,
     category: p.category,
     license: {
@@ -466,8 +489,9 @@ export async function apiPaper(
       redistribute_verbatim_only: lic.nd,
       non_commercial: lic.nc,
     },
-    dates: { submitted: p.submitted, updated: p.updated },
-    withdrawn: false,
+    dates: { submitted: p.submitted, updated: p.updated, withdrawn: p.withdrawn ? p.withdrawn_on : null },
+    withdrawn: !!p.withdrawn,
+    withdrawn_on: p.withdrawn ? p.withdrawn_on : null,
     pdf: p.pdf_key
       ? {
           url: `${origin}/${id}.pdf`,
@@ -476,9 +500,11 @@ export async function apiPaper(
           source: p.pdf_source,
           source_date: p.pdf_source_date,
           maybe_stale: !!p.pdf_maybe_stale,
+          withdrawn: !!p.withdrawn,
         }
       : null,
-    other_sources: (await getSources(env, id)).map((s) => ({ kind: s.kind, url: s.url, captured_at: s.captured_at, size: s.size })),
+    versions: versions.map((v) => versionJson(origin, id, v, p.pdf_key)),
+    other_sources: sources.map((s) => ({ kind: s.kind, url: s.url, captured_at: s.captured_at, size: s.size })),
     bibtex: bibtex(p, env.ORIGIN_BASE),
-  }, 200, "public, max-age=600");
+  }, 200, p.withdrawn ? "public, max-age=3600" : "public, max-age=600");
 }

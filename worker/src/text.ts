@@ -24,6 +24,8 @@ export function llmsTxt(env: Env, origin: string): Response {
 - Paper page (HTML): ${origin}/YYYY/NNN   e.g. ${origin}/2024/123 (IDs have at least 3 digits: 2024/007)
 - Paper metadata (JSON): ${origin}/api/papers/YYYY/NNN
 - PDF (when mirrored): ${origin}/YYYY/NNN.pdf   (404 if not mirrored; check "pdf" in the JSON first)
+  This is the latest copy we hold. Other stored copies: ${origin}/YYYY/NNN/versions/YYYYMMDDThhmmssZ.pdf
+  (listed in the JSON "versions"; the stamp is when the public copy was captured).
 - Search (JSON): ${origin}/api/search?q=QUERY&page=1&sort=relevance|new
   Supports "phrases", prefix*, and author:/title:/abstract: filters. An ID query like "2024/123" is
   reported in "id_match".
@@ -36,10 +38,21 @@ export function llmsTxt(env: Env, origin: string): Response {
 
 ## JSON paper fields
 
-id, title, authors[], abstract (may contain TeX: $...$), category, license {code, url, label,
-attribution, retroactive, redistribute_verbatim_only, non_commercial}, dates {submitted, updated},
-original_url, pdf {url, sha256, size, source, source_date, maybe_stale} | null, other_sources[],
-withdrawn, bibtex. Withdrawn papers return HTTP 410.
+id, title, authors[], affiliations[] | null, abstract (may contain TeX: $...$), category,
+license {code, url, label, attribution, retroactive, redistribute_verbatim_only, non_commercial},
+dates {submitted, updated, withdrawn}, original_url,
+pdf {url, sha256, size, source, source_date, maybe_stale, withdrawn} | null,
+versions[] {url, captured_at, label, source, source_url, size, sha256, is_default_pdf} (newest first),
+other_sources[], withdrawn, withdrawn_on, bibtex.
+
+Versions are the distinct PDF files we found in public copies (Wayback Machine, community GitHub
+mirror, verified uploads), labelled by capture date ("copy captured 2024-03-02"). They are not
+ePrint's own revision numbers; ePrint's own version list is on the original page.
+
+Withdrawn papers: like ePrint, the mirror keeps the full abstract page (HTTP 200) with
+"withdrawn": true and "withdrawn_on" (YYYY-MM-DD). If we hold a copy, the last available PDF is
+still served (HTTP 200, header X-Withdrawn: 1); please respect the authors' withdrawal: prefer
+not to rely on or redistribute a withdrawn paper without saying it was withdrawn.
 
 ## License obligations (apply to you too)
 
@@ -52,6 +65,7 @@ field and in the PDF's \`Link: <...>; rel="license"\` and \`X-License\` headers.
 - Papers posted before 2022 had their license assigned retroactively by the IACR.
 - When citing, cite the ePrint entry (see "bibtex"), not this mirror.
 - "maybe_stale": the mirrored PDF may be an older revision; the original may be newer.
+- PDF responses carry X-Captured-At (when the copy was captured) and, for withdrawn papers, X-Withdrawn: 1.
 
 ## Access policy
 

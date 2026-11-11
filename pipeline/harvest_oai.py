@@ -100,16 +100,23 @@ def upsert_sql(r):
     # Only overwrite when the incoming datestamp is not older than what we have.
     guard = "WHERE papers.updated IS NULL OR excluded.updated >= papers.updated"
     if r["withdrawn"]:
-        # Deleted records carry no metadata: keep whatever we had, just tombstone.
-        return ("INSERT INTO papers (id,year,num,title,authors,retro_license,updated,withdrawn) "
+        # Deleted records carry no metadata: keep whatever we had (metadata, PDFs), just flag it
+        # and record the withdrawal day (the deleted record's datestamp unless already known).
+        return ("INSERT INTO papers (id,year,num,title,authors,retro_license,updated,withdrawn,withdrawn_on) "
                 f"VALUES ({sql_lit(r['id'])},{r['year']},{r['num']},'','[]',{r['retro_license']},"
-                f"{sql_lit(r['updated'])},1) "
-                f"ON CONFLICT(id) DO UPDATE SET updated=excluded.updated, withdrawn=1 {guard};")
+                f"{sql_lit(r['updated'])},1,{sql_lit((r['updated'] or '')[:10] or None)}) "
+                "ON CONFLICT(id) DO UPDATE SET updated=excluded.updated, withdrawn=1, "
+                "withdrawn_on=CASE WHEN papers.withdrawn = 1 AND papers.withdrawn_on IS NOT NULL "
+                f"THEN papers.withdrawn_on ELSE excluded.withdrawn_on END {guard};")
     cols = ["id", "year", "num"] + META_COLS
     vals = ",".join(sql_lit(r.get(c)) for c in cols)
     sets = ", ".join(f"{c}=excluded.{c}" for c in META_COLS)
+    # A live record clears any withdrawal; affiliations (not in OAI) survive only while the author
+    # list is unchanged.
     return (f"INSERT INTO papers ({','.join(cols)}) VALUES ({vals}) "
-            f"ON CONFLICT(id) DO UPDATE SET {sets} {guard};")
+            f"ON CONFLICT(id) DO UPDATE SET {sets}, withdrawn_on=NULL, "
+            "affiliations=CASE WHEN excluded.authors = papers.authors THEN papers.affiliations ELSE NULL END "
+            f"{guard};")
 
 
 def iter_dir(d):

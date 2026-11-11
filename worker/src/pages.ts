@@ -23,7 +23,7 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
   return html`<div class="result">
   <div class="result-head"><a class="paperlink" href="/${p.id}">${p.id}</a>
     ${p.has_pdf ? html`<span><a href="/${p.id}.pdf">(PDF)</a></span>` : ""}
-    ${p.withdrawn ? html`<span class="badge bg-secondary">withdrawn</span>` : ""}
+    ${p.withdrawn ? html`<span class="badge bg-secondary" title="Withdrawn by the authors${p.withdrawn_on ? ` on ${day(p.withdrawn_on)}` : ""}">withdrawn</span>` : ""}
     ${p.submitted && html`<small class="ms-auto">Submitted: ${day(p.submitted)}</small>`}
   </div>
   <div class="result-body">
@@ -218,6 +218,7 @@ export async function apiSearch(env: Env, url: URL): Promise<Response> {
         license: h.license_code,
         submitted: h.submitted,
         withdrawn: !!h.withdrawn,
+        withdrawn_on: h.withdrawn_on ?? null,
         has_pdf: !!h.has_pdf,
         snippet: h.snip ? stripMarks(h.snip) : null,
         url: `${origin}/${h.id}`,
