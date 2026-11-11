@@ -118,13 +118,13 @@ function licenseBadge(lic: LicenseInfo): Html {
 // After an upload we redirect (303) back to the paper page with ?upload=<code>, so there's no
 // separate result page, Back works, and the page shows the new PDF straight away.
 const UPLOAD_NOTICES: Record<string, { ok: boolean; text: string }> = {
-  live: { ok: true, text: "Thank you! Your PDF matched this paper and is now live for everyone." },
-  review: { ok: true, text: "Thank you! We couldn’t automatically confirm the file is this paper, so it will be checked before it appears." },
-  have: { ok: true, text: "We already have that exact file. Thanks anyway!" },
-  confirmed: { ok: true, text: "That’s the copy we already have, so it’s now marked as the latest version. Thank you!" },
-  older: { ok: false, text: "We already have that file as an earlier version. Please upload the latest version from ePrint." },
+  live: { ok: true, text: "Thank you! The PDF is now live." },
+  review: { ok: true, text: "Thank you! It will appear after review." },
+  have: { ok: true, text: "We already have that exact file." },
+  confirmed: { ok: true, text: "Same file as ours: now marked as the latest. Thank you!" },
+  older: { ok: false, text: "That’s an earlier version. Please upload the latest from ePrint." },
   cross_site: { ok: false, text: "Cross-site uploads aren’t accepted." },
-  not_needed: { ok: false, text: "This paper already has an up-to-date PDF here, so no upload is needed." },
+  not_needed: { ok: false, text: "This paper already has an up-to-date PDF." },
   too_large: { ok: false, text: "That file is too large: PDFs must be 95 MB or smaller." },
   unreadable: { ok: false, text: "We couldn’t read that upload. Please try again." },
   turnstile: { ok: false, text: "The anti-spam check didn’t pass. Please try again." },
@@ -164,24 +164,17 @@ function uploadForm(env: Env, p: Paper, orig: string, notice: Html | "" = ""): H
   ${notice}
   ${p.withdrawn
     ? html`<p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
-  <p>Download the latest version from <a href="${versionsUrl(env.ORIGIN_BASE, p.id)}" target="_blank" rel="noopener">ePrint’s version list ↗</a>
+  <p>Download the latest from <a href="${versionsUrl(env.ORIGIN_BASE, p.id)}" target="_blank" rel="noopener">ePrint’s version list ↗</a>
   and upload it here.</p>`
     : p.pdf_key && eprintSize(p) != null
-    ? html`<p class="upload-cta-head"><strong>ePrint has a newer PDF.</strong></p>
-  <p>ePrint updated this paper’s PDF${p.updated ? html` on <time datetime="${p.updated}">${day(p.updated)}</time>` : ""};
-  our copy${p.pdf_source_date ? html` (saved ${day(p.pdf_source_date)})` : ""} is an earlier version. Help out:
-  <a href="${orig}" target="_blank" rel="noopener">download the latest version from ePrint ↗</a> and upload it here.</p>`
+    ? html`<p class="upload-cta-head"><strong>ePrint has a newer PDF${p.updated ? html` (<time datetime="${p.updated}">${day(p.updated)}</time>)` : ""}.</strong></p>
+  <p><a href="${orig}" target="_blank" rel="noopener">Download it from ePrint ↗</a> and upload it here.</p>`
     : p.pdf_key
     ? html`<p class="upload-cta-head"><strong>Our PDF may be outdated.</strong></p>
-  <p>ePrint updated this paper${p.updated ? html` on <time datetime="${p.updated}">${day(p.updated)}</time>` : ""}, after
-  our copy was saved${p.pdf_source_date ? html` (${day(p.pdf_source_date)})` : ""}. That may be a new PDF, or only new
-  details such as publication info. Help out:
-  <a href="${orig}" target="_blank" rel="noopener">download the latest version from ePrint ↗</a> and upload it here.
-  If it’s the same file we have, uploading it confirms our copy is current.</p>`
+  <p>ePrint updated this paper${p.updated ? html` on <time datetime="${p.updated}">${day(p.updated)}</time>` : ""}.
+  <a href="${orig}" target="_blank" rel="noopener">Download the latest PDF ↗</a> and upload it here.</p>`
     : html`<p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
-  <p>Help out: <a href="${orig}" target="_blank" rel="noopener">download it from ePrint ↗</a> and
-  upload it here. Uploads are anonymous. A file that matches this paper’s title and authors
-  appears right away; anything else is reviewed first.</p>`}
+  <p><a href="${orig}" target="_blank" rel="noopener">Download it from ePrint ↗</a> and upload it here (anonymous).</p>`}
   <label for="file" class="form-label mb-1">PDF file</label>
   <input type="file" id="file" name="file" class="form-control form-control-sm" accept="application/pdf,.pdf" required>
   <div class="hp" aria-hidden="true">
@@ -361,7 +354,7 @@ function noPdfYet(env: Env, req: Request, p: Paper, orig: string): Response {
         env,
         410,
         `We don’t have the PDF for ${p.id} yet`,
-        html`<p>Download the latest version from ePrint’s version list and upload it here.</p>
+        html`<p>Get the latest from ePrint’s version list and upload it here.</p>
         <p><a class="btn btn-outline-dark" href="${vers}" target="_blank" rel="noopener">ePrint version list ↗</a>
         <a class="btn btn-outline-dark" href="/${p.id}#upload">Upload it</a></p>`,
         { original: orig, cache: "no-cache", headers },
@@ -381,9 +374,7 @@ function noPdfYet(env: Env, req: Request, p: Paper, orig: string): Response {
       404,
       `We don’t have the PDF for ${p.id} yet`,
       html`<p><strong>${p.title}</strong></p>
-      <p>Help fill the gap: <a href="${orig}" target="_blank" rel="noopener">download it from ePrint ↗</a>,
-      then upload it here so everyone (people and AI agents) can get it. Uploads are anonymous, and a
-      file that matches the paper goes live right away; anything else is reviewed first.</p>
+      <p>Get it from ePrint and upload it here (anonymous).</p>
       <p><a class="btn btn-outline-dark" href="/${p.id}#upload">Upload the PDF</a>
       <a class="btn btn-outline-dark" href="${orig}" target="_blank" rel="noopener">Get it on ePrint ↗</a></p>`,
       { original: orig, cache: "no-cache", headers },

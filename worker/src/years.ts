@@ -181,9 +181,9 @@ const legend = (cells: Cell[]) => {
   const any = (f: (c: Cell) => unknown) => cells.some(f);
   return html`<ul class="grid-legend small">
   <li><i></i>PDF here</li>
-  <li><i class="m"></i>missing: click to upload</li>
-  ${any((c) => c.outdated) && html`<li><i class="o"></i>may be outdated: click to upload the latest version</li>`}
-  ${any((c) => c.pending) && html`<li><i class="p"></i>upload in review</li>`}
+  <li><i class="m"></i>missing</li>
+  ${any((c) => c.outdated) && html`<li><i class="o"></i>may be outdated</li>`}
+  ${any((c) => c.pending) && html`<li><i class="p"></i>in review</li>`}
 </ul>`;
 };
 
@@ -199,8 +199,7 @@ export async function missingCard(env: Env, origin: string): Promise<{ card: Htm
     ${focus ? "Can you upload a missing one?" : "No paper is waiting for an upload now. Thank you for helping!"}</p>
   ${yearTiles(years)}
   ${focus &&
-  html`<p class="small mt-3 mb-1"><strong>${focus.year}</strong>: ${fmtInt(missingOf(focus))} of ${papersWord(focus.total)} still need a PDF.
-    Each square is a paper; grey ones are missing${focus.outdated ? ", yellow ones may be outdated" : ""}.</p>
+  html`<p class="small mt-3 mb-1"><strong>${focus.year}</strong> · ${fmtInt(missingOf(focus))} missing</p>
   ${paperGrid(focus.year, cells, true)}
   ${legend(cells)}
   <p class="mt-2 mb-0"><a href="/${focus.year}">See all papers from ${focus.year} →</a></p>`}`;
@@ -241,10 +240,8 @@ export async function yearPage(env: Env, url: URL, year: number): Promise<Respon
   const body = html`<section class="year-page">
   <h3 class="mb-3">Papers from ${year}</h3>
   ${yearTiles(years, year)}
-  <h5 class="mt-4">${fmtInt(sel.have)} of ${papersWord(sel.total)} have a PDF here${missing ? html`, ${fmtInt(missing)} missing` : ""}${sel.outdated ? html`, ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
-  <p class="small mb-2">Each square is a paper, in number order.${missing || sel.outdated
-    ? html` Click a grey one to upload its PDF${sel.outdated ? ", or a yellow one to upload its latest version" : ""}: download it from ePrint and upload it on the paper’s page. It’s anonymous, and a matching file appears right away.`
-    : ""}</p>
+  <h5 class="mt-4">${papersWord(sel.total)}${missing ? html` · ${fmtInt(missing)} missing` : ""}${sel.outdated ? html` · ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
+  ${!!(missing || sel.outdated) && html`<p class="small mb-2">Click a grey or yellow square to upload.</p>`}
   ${paperGrid(year, rows)}
   ${legend(rows)}
   <h5 class="mt-4">All ${papersWord(listed.length)}, newest first</h5>

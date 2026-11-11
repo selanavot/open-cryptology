@@ -31,7 +31,7 @@ export function versionsList(id: string, versions: Version[], pdfKey: string | n
         (v) => html`<li><a href="${versionPath(id, v)}" rel="nofollow">copy captured <time datetime="${v.captured_at}">${day(v.captured_at)}</time></a>
           <small class="text-muted">${[SOURCE_SHORT[v.source] ?? v.source, fmtSize(v.size)].filter(Boolean).join(" · ")}${v.r2_key === pdfKey ? " · default PDF" : ""}</small></li>`,
       )}</ul>
-      ${versions.length > 1 && html`<div class="small text-muted">Distinct files found in public copies, dated by capture; not ePrint’s own version numbers.</div>`}</dd>`;
+      ${versions.length > 1 && html`<div class="small text-muted">Dated by capture, not ePrint version numbers.</div>`}</dd>`;
 }
 
 export function versionJson(origin: string, id: string, v: Version, pdfKey: string | null) {
