@@ -33,10 +33,12 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import DATA_DIR, d1_exec_statements, d1_query, log, sql_lit  # noqa: E402
@@ -53,15 +55,15 @@ class Blocked(Exception):
     pass
 
 
-_last = [0.0]
+_tl = threading.local()  # per-worker time of the last request
 
 
 def get(url, gap):
-    """GET with a fixed minimum gap between requests. Returns (status, bytes)."""
-    wait = _last[0] + gap - time.monotonic()
+    """GET with a fixed minimum gap between this worker's requests. Returns (status, bytes)."""
+    wait = getattr(_tl, "last", 0.0) + gap - time.monotonic()
     if wait > 0:
         time.sleep(wait)
-    _last[0] = time.monotonic()
+    _tl.last = time.monotonic()
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Encoding": "gzip"})
     try:
         with urllib.request.urlopen(req, timeout=90) as r:
@@ -320,7 +322,9 @@ def apply(results):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source", choices=["wayback", "eprint"], default="wayback")
-    ap.add_argument("--gap", type=float, default=None, help="seconds between requests (wayback 3, eprint 5)")
+    ap.add_argument("--gap", type=float, default=None,
+                    help="seconds between one worker's requests (wayback 1, eprint 5)")
+    ap.add_argument("--workers", type=int, default=3, help="parallel Wayback clients (eprint: always 1)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--ids", help="comma list of ids (default: all withdrawn papers without a title)")
     ap.add_argument("--retry-failed", action="store_true")
@@ -348,7 +352,7 @@ def main():
         apply(results)
         return
 
-    gap = a.gap or (5.0 if a.source == "eprint" else 3.0)
+    gap = max(a.gap or 5.0, 5.0) if a.source == "eprint" else (a.gap or 1.0)
     if a.ids:
         ids = a.ids.split(",")
     else:
@@ -357,23 +361,32 @@ def main():
     todo = [i for i in ids if i not in results or (a.retry_failed and not results[i].get("ok"))]
     if a.limit:
         todo = todo[:a.limit]
-    log(f"{len(ids)} withdrawn papers, {len(todo)} to fetch via {a.source} (gap {gap}s)")
-    ok = fail = 0
+    # eprint.iacr.org: always one client. Wayback: --workers clients, each >= gap s apart.
+    workers = 1 if a.source == "eprint" else max(1, a.workers)
+    log(f"{len(ids)} withdrawn papers, {len(todo)} to fetch via {a.source} ({workers} x gap {gap}s)")
+    st = {"ok": 0, "fail": 0, "n": 0, "stop": False}
+    lock = threading.Lock()
     with open(RESULTS, "a", encoding="utf-8") as out:
-        for i, pid in enumerate(todo, 1):
+        def one(pid):
+            if st["stop"]:
+                return
             try:
                 rec = fetch_wayback(pid, gap) if a.source == "wayback" else fetch_eprint(pid, gap)
             except Blocked as e:
                 log(f"STOP: {e}")
-                break
-            out.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            out.flush()
-            ok += rec["ok"]
-            fail += not rec["ok"]
-            if i % 25 == 0 or not rec["ok"]:
-                log(f"{time.strftime('%H:%M:%S')} {i}/{len(todo)} ok={ok} fail={fail}"
-                    + ("" if rec["ok"] else f"  {pid}: {rec.get('error')}"))
-    log(f"done: ok={ok} fail={fail}")
+                st["stop"] = True
+                return
+            with lock:
+                out.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                out.flush()
+                st["ok" if rec["ok"] else "fail"] += 1
+                st["n"] += 1
+                if st["n"] % 25 == 0 or not rec["ok"]:
+                    log(f"{time.strftime('%H:%M:%S')} {st['n']}/{len(todo)} ok={st['ok']} fail={st['fail']}"
+                        + ("" if rec["ok"] else f"  {pid}: {rec.get('error')}"))
+        with ThreadPoolExecutor(workers) as ex:
+            list(ex.map(one, todo))
+    log(f"done: ok={st['ok']} fail={st['fail']}")
 
 
 if __name__ == "__main__":

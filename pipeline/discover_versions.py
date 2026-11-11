@@ -54,7 +54,8 @@ EXISTING = os.path.join(VDIR, "existing-results.jsonl")
 COPY = os.path.join(VDIR, "copy-results.jsonl")
 PDF_RE = re.compile(r"^https?://(?:www\.)?eprint\.iacr\.org(?::\d+)?/(\d{4})/(\d{3,5})\.pdf$")
 MAX_SIZE = 50 * 1024 * 1024
-WB_GAP = 3.0
+WB_GAP = float(os.environ.get("WB_GAP", "1.0"))        # seconds between requests, per fetcher
+WB_THREADS = int(os.environ.get("WB_THREADS", "4"))    # parallel Wayback fetchers
 UA = "open-cryptology-versions-driver/0.1 (unofficial non-commercial ePrint mirror)"
 
 
@@ -295,36 +296,45 @@ def cmd_copy(a):
         with ThreadPoolExecutor(4) as ex:
             list(ex.map(gh_batch, [gh[i:i + 10] for i in range(0, len(gh), 10)]))
 
-    def wb_all():
-        backoff = 60
-        last = 0.0
-        i = 0
-        while i < len(wb):
-            p = wb[i]
-            wait = last + WB_GAP - time.monotonic()
-            if wait > 0:
-                time.sleep(wait)
-            last = time.monotonic()
-            r = helper("/copy", [{"id": p["id"], "url": p["url"], "key": p["key"],
-                                  "skip": sorted(known.get(p["id"], ()))}])[0]
-            transient = not r.get("ok") and (r.get("status") in (429, 502, 503, 504) or
-                                             (r.get("status") is None and "rejected" not in str(r.get("error"))
-                                              and "not a PDF" not in str(r.get("error"))
-                                              and "too large" not in str(r.get("error"))))
-            if transient:
-                log(f"  wayback throttling/error ({r.get('status') or r.get('error')}) on {p['id']}; backing off {backoff}s")
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 1800)
-                if backoff >= 1800:
-                    record(p, r, final=False)  # give up on this one for now; a later run retries it
-                    i += 1
-                    backoff = 600
-                continue
-            backoff = 60
-            record(p, r)
-            i += 1
+    # Wayback: WB_THREADS fetchers, each >= WB_GAP s between its requests. Items are partitioned
+    # by paper so one paper's versions are copied in order by one thread (dedup via `known`).
+    # Throttling (429/5xx/lost connections) pauses ALL fetchers, doubling up to 15 min.
+    shared = {"pause_until": 0.0, "backoff": 30.0}
 
-    threads = [threading.Thread(target=gh_all), threading.Thread(target=wb_all)]
+    def transient(r):
+        e = str(r.get("error"))
+        return not r.get("ok") and (r.get("status") in (429, 502, 503, 504) or (
+            r.get("status") is None and not any(x in e for x in ("rejected", "not a PDF", "too large"))))
+
+    def wb_worker(items):
+        last = 0.0
+        for p in items:
+            for attempt in range(4):
+                while True:
+                    wait = max(shared["pause_until"], last + WB_GAP) - time.monotonic()
+                    if wait <= 0:
+                        break
+                    time.sleep(min(wait, 30))
+                last = time.monotonic()
+                r = helper("/copy", [{"id": p["id"], "url": p["url"], "key": p["key"],
+                                      "skip": sorted(known.get(p["id"], ()))}])[0]
+                if not transient(r):
+                    with lock:
+                        shared["backoff"] = 30.0
+                    record(p, r)
+                    break
+                with lock:
+                    b = shared["backoff"]
+                    shared["pause_until"] = max(shared["pause_until"], time.monotonic() + b)
+                    shared["backoff"] = min(b * 2, 900.0)
+                log(f"  wayback error ({r.get('status') or r.get('error')}) on {p['id']}; all fetchers pause {b:.0f}s")
+            else:
+                record(p, r, final=False)  # give up on this one for now; a later run retries it
+
+    parts = [[] for _ in range(WB_THREADS)]
+    for p in wb:
+        parts[hash(p["id"]) % WB_THREADS].append(p)
+    threads = [threading.Thread(target=gh_all)] + [threading.Thread(target=wb_worker, args=(part,)) for part in parts]
     for t in threads:
         t.start()
     for t in threads:
