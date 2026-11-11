@@ -20,6 +20,8 @@ export interface Env {
   TURNSTILE_SECRET?: string;
   /** Workers Rate Limiting binding for uploads (per salted IP). */
   UPLOAD_LIMITER?: RateLimit;
+  /** Rate limit for the agent upload API (POST /api/upload/YYYY/NNNN). */
+  API_UPLOAD_LIMITER?: RateLimit;
   /** Cloudflare Access (maintainer login) for /review: team domain + allowed application audience tags (comma-separated). */
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
