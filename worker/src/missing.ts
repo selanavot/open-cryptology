@@ -103,8 +103,8 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
     <small class="ms-auto">${pages > 1 ? html`Page ${mp.page} of ${pages} · ` : ""}<a href="${missingHref("/api/missing", mp, mp.page)}">JSON</a></small>
   </div>
   <p class="mt-3">${mp.year === null
-    ? html`<strong>${papersWord(total)}</strong> don’t have a PDF here yet.`
-    : html`<strong>${papersWord(total)}</strong> from ${mp.year} don’t have a PDF here yet.`}
+    ? html`<strong>${papersWord(total)}</strong> ${total === 1 ? "doesn’t" : "don’t"} have a PDF here yet.`
+    : html`<strong>${papersWord(total)}</strong> from ${mp.year} ${total === 1 ? "doesn’t" : "don’t"} have a PDF here yet.`}
   Grab one from ePrint and upload it on the paper’s page: it’s anonymous and appears right away.</p>
   <form class="missing-filter" method="get" action="/missing">
     <label for="year" class="form-label mb-0">Year</label>
