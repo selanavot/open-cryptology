@@ -1,0 +1,45 @@
+# Metadata harvest: ePrint OAI-PMH -> production D1, every 4 hours.
+# Runs here (not in the Worker cron) because ePrint's Cloudflare challenges requests from Workers.
+# A failed run is the alert: GitHub emails the repo owner about failed scheduled runs when
+# Settings -> Notifications -> Actions -> "Send notifications for failed workflows only" is on.
+# The Worker also emails if meta.harvest_last_ok gets older than 26 h (worker/src/staleness.ts).
+name: Metadata harvest
+
+on:
+  schedule:
+    - cron: "23 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Max OAI pages this run"
+        required: false
+        default: "30"
+
+concurrency:
+  group: metadata-harvest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error title=Missing secret::Repository secret CLOUDFLARE_API_TOKEN is not set. Create a Cloudflare API token with Account > D1 > Edit and add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+      - name: Harvest
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: f1a5c2273555ad714cc5911124e671a7
+          D1_DATABASE_ID: 18ccadd9-a999-4b68-8ba6-8db45cd0d5a3
+          MAX_PAGES: ${{ inputs.max_pages || '30' }}
+        run: python3 -I pipeline/harvest_remote.py --max-pages "$MAX_PAGES"

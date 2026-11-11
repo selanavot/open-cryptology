@@ -15,7 +15,8 @@ export interface Env {
   CONTACT_FROM?: string;
   /** "1" = only serve requests that passed Cloudflare Access (pre-launch / maintenance mode). */
   REQUIRE_ACCESS?: string;
-  /** "1" = the cron harvests new/changed metadata from ePrint's OAI-PMH feed (see harvest.ts). */
+  /** "1" = the cron harvests new/changed metadata from ePrint's OAI-PMH feed (see harvest.ts).
+   *  Off in production: the harvest runs on GitHub Actions (pipeline/harvest_remote.py). */
   HARVEST_ENABLED?: string;
   /** Turnstile (CAPTCHA) on upload/contact forms; secret is a Worker secret. */
   TURNSTILE_SITEKEY?: string;
