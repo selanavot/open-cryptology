@@ -42,7 +42,7 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 // ---------------------------------------------------------------------------- home
 
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const missing = await missingCard(env, 12);
+  const missing = await missingCard(env, url.origin);
   const body = html`<div class="home-layout">
   <form method="get" action="/search" role="search" class="home-search">
     <div class="input-group">

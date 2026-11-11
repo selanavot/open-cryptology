@@ -348,12 +348,37 @@ span.authorName { font-style: italic; }
 .contact-panel { margin-top: 1.5rem; border-top: 1px solid #e9ecef; padding-top: .75rem; }
 .contact-panel summary { cursor: pointer; font-weight: 600; }
 
-/* Papers missing a PDF (/missing). */
-.missing-page { max-width: 48rem; padding: .5rem 1rem; }
-.missing-page .results-bar, .missing-page .results, .missing-page .pager { margin-left: 0; }
-.missing-page .recent-item { padding: .5rem 0; }
-.missing-filter { display: flex; align-items: center; gap: .5rem; }
-.missing-filter .form-select { width: auto; }
+/* Papers missing a PDF (/missing and the homepage card): one tile per year, filled in green up to
+   the share of papers with a PDF here, and one square per paper of a year. */
+.missing-page { max-width: 62rem; padding: .5rem 1rem; }
+.missing-page .results-bar { margin-left: 0; }
+.missing-page h5 { font-size: 1.1rem; margin-bottom: .5rem; }
+.year-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(3.1rem, 1fr)); gap: 4px; }
+.missing-page .year-tiles { grid-template-columns: repeat(auto-fill, minmax(3.6rem, 1fr)); }
+a.year-tile, a.year-tile:visited {
+  display: flex; flex-direction: column; justify-content: center; align-items: center; aspect-ratio: 1;
+  border-radius: 4px; color: #102a17; line-height: 1.1; border: 1px solid rgba(27, 31, 35, .06);
+  background: linear-gradient(to top, #40c463 var(--fill), #ebedf0 var(--fill));
+}
+a.year-tile.full { background: #30a14e; color: #fff; }
+a.year-tile:hover { outline: 2px solid var(--text); outline-offset: 1px; color: #102a17; }
+a.year-tile.full:hover { color: #fff; }
+a.year-tile.sel { outline: 3px solid var(--link); outline-offset: 1px; }
+.yt-year { font-size: .8rem; font-weight: 600; }
+.yt-pct { font-size: .7rem; }
+.paper-grid { --cell: 11px; display: grid; grid-template-columns: repeat(auto-fill, var(--cell)); gap: 2px; }
+.paper-grid.small { --cell: 6px; gap: 1px; }
+.paper-grid > * { display: block; width: var(--cell); height: var(--cell); border-radius: 2px; background: #40c463; }
+.paper-grid.small > * { border-radius: 1px; }
+.paper-grid .m { background: #d0d4d9; }
+.paper-grid .p { background: #ffc72c; }
+.paper-grid .w { background: #f3f4f6; box-shadow: inset 0 0 0 1px #d0d4d9; }
+.paper-grid a.m:hover, .paper-grid a.p:hover, .paper-grid a:focus-visible { background: var(--link-hover); outline: none; }
+.grid-legend { display: flex; flex-wrap: wrap; gap: .25rem 1rem; list-style: none; margin: .5rem 0 0; padding: 0; color: var(--muted); }
+.grid-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; background: #40c463; }
+.grid-legend i.m { background: #d0d4d9; }
+.grid-legend i.p { background: #ffc72c; }
+.grid-legend i.w { background: #f3f4f6; box-shadow: inset 0 0 0 1px #d0d4d9; }
 
 /* ---------- withdrawn papers, version history */
 .withdrawn-notice { margin: .25rem 0 1rem; }
