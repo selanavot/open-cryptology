@@ -54,6 +54,9 @@ download it there. Then either you or they can upload it:
     confirm automatically that it is this paper, so a person will review it. This is not a failure:
     do not upload it again (the same file again also gets 202, and isn't stored twice).
   - 200 {"status":"already_have_it"}: we already have this exact file.
+  - 200 {"status":"confirmed_current"}: the paper was marked "maybe_stale" and this is exactly the
+    copy we have, so it is now marked as the latest version.
+  - 409 {"error":"older_version"}: we already hold this file as an earlier version.
   - 409 if we already have an up-to-date PDF; 413 over 30 MB;
     415/422 if it isn't a readable PDF or contains scripts or attachments; 429 if rate-limited.
   No account or CAPTCHA needed.
@@ -94,7 +97,9 @@ field and in the PDF's \`Link: <...>; rel="license"\` and \`X-License\` headers.
 - ND (BY-NC-ND): redistribute verbatim only; do not distribute modified or derived versions.
 - Papers posted before 2022 had their license assigned retroactively by the IACR.
 - When citing, cite the ePrint entry (see "bibtex"), not this mirror.
-- "maybe_stale": the mirrored PDF may be an older revision; the original may be newer.
+- "maybe_stale": ePrint changed the paper after our copy was captured, so the mirrored PDF may be
+  an older revision. Uploads of the latest version are welcome for these papers, the same way as
+  for missing ones.
 - PDF responses carry X-Captured-At (when the copy was captured) and, for withdrawn papers, X-Withdrawn: 1.
 
 ## Access policy

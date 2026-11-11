@@ -1,4 +1,4 @@
-import { canonicalId, getPaper, parseAuthors, type Env } from "./db";
+import { canonicalId, confirmCurrent, getPaper, knownCopy, parseAuthors, type Env } from "./db";
 import { coverageChanged } from "./missing";
 import { pendingDuplicate, queueForReview } from "./quarantine";
 import { activeContentScan, API_LIMITS, ipHash, overLimit, reviewQueueFull, scanPdf } from "./uploadguard";
@@ -54,8 +54,18 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
   if (bad) return j(422, { error: "bad_pdf", message: bad });
 
   const sha = toHex(await crypto.subtle.digest("SHA-256", buf));
-  if (p.pdf_sha256 && p.pdf_sha256.toLowerCase() === sha)
-    return j(200, { status: "already_have_it", id, pdf_url: pdfUrl, sha256: sha });
+  const known = await knownCopy(env, p, sha);
+  if (known === "current") {
+    // The copy we serve: for an outdated paper, that confirms it is ePrint's latest version.
+    const confirmed = await confirmCurrent(env, p);
+    if (confirmed) await coverageChanged(url.origin, id);
+    return j(200, { status: confirmed ? "confirmed_current" : "already_have_it", id, pdf_url: pdfUrl, sha256: sha });
+  }
+  if (known === "older")
+    return j(409, {
+      error: "older_version", id, pdf_url: pdfUrl, sha256: sha,
+      message: "We already have this file as an earlier version of the paper. Please upload the latest version from ePrint.",
+    });
 
   const queuedMsg = (again: boolean) =>
     (again ? "We already received this exact file; it is waiting for review. " : "Received, thank you. ") +
