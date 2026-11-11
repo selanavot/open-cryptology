@@ -1,6 +1,6 @@
 import { canonicalId, getPaper, parseAuthors, type Env } from "./db";
 import { pendingDuplicate, queueForReview } from "./quarantine";
-import { API_LIMITS, ipHash, overLimit, reviewQueueFull, scanPdf } from "./uploadguard";
+import { activeContentScan, API_LIMITS, ipHash, overLimit, reviewQueueFull, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 
 // Upload API for AI agents: POST /api/upload/YYYY/NNNN with the PDF as the request body
@@ -70,8 +70,19 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
     return j(202, { status: "queued_for_review", id, sha256: sha, check, message: queuedMsg(true) });
   }
 
+  const rawActive = activeContentScan(buf);
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
-  if (report.active) return j(422, { error: "bad_pdf", message: "That PDF contains active content (scripts or embedded files)." });
+  if (rawActive && !report.active) report.active = rawActive;
+  if (report.active) {
+    // Active content (scripts, attachments): never auto-published, but kept for a person to review.
+    const full = await reviewQueueFull(env, ip);
+    if (full) return j(429, { error: "review_queue_full", id, check: report, message: full });
+    await queueForReview(env, url.origin, { paperId: id, body: buf, size: buf.byteLength, sha, checks: JSON.stringify({ ...report, ok: false }), ip, uploader: "api" });
+    return j(202, {
+      status: "queued_for_review", id, sha256: sha, size: buf.byteLength, check: report,
+      message: `Received, thank you. This PDF contains active content (${report.active}), so a person will review it before it goes live. There is no need to upload it again.`,
+    });
+  }
   if (report.error) return j(422, { error: "bad_pdf", message: `We couldn't read that PDF (${report.error.slice(0, 200)}).` });
   if (!report.ok) {
     const full = await reviewQueueFull(env, ip);

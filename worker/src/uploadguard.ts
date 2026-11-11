@@ -64,24 +64,38 @@ export async function overLimit(
   return null;
 }
 
-/** Structural sanity scan of an uploaded PDF. Returns a reason to reject, or null.
+/** Structural sanity scan of an uploaded PDF. Returns a reason to reject (truncated file), or null.
+ *  Active content is not a rejection: see activeContentScan(), which flags the upload for review.
  *  Heuristic first filter on the raw bytes. Names inside compressed object streams aren't
  *  visible here; verifyPdf (verify.ts) checks the parsed document for scripts and attachments. */
 export function scanPdf(buf: ArrayBuffer): string | null {
   const bytes = new Uint8Array(buf);
   const tail = new TextDecoder("latin1").decode(bytes.subarray(Math.max(0, bytes.length - 2048)));
   if (!tail.includes("%%EOF")) return "That PDF looks truncated (no end-of-file marker).";
+  return null;
+}
+
+/** Returns a short description if the PDF's raw bytes carry active content (scripts, attachments,
+ *  launch actions…), else null. Such uploads are queued for human review, never auto-published. */
+export function activeContentScan(buf: ArrayBuffer): string | null {
+  const bytes = new Uint8Array(buf);
   // Scan the raw bytes as latin1 for active-content features we never need for a paper.
   // PDF names may spell characters as #xx (/J#61vaScript), so decode those inside names first.
   const text = new TextDecoder("latin1")
     .decode(bytes)
     .replace(NAME_WITH_ESCAPE, (name) => name.replace(/#([0-9A-Fa-f]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16))));
-  if (ACTIVE.some((re) => re.test(text))) return ACTIVE_MSG;
-  return null;
+  const hit = ACTIVE.find((a) => a.re.test(text));
+  return hit ? hit.label : null;
 }
 
 /** A PDF name token (up to the next delimiter or whitespace) containing at least one #xx escape. */
 const NAME_WITH_ESCAPE = /\/[^\s\/<>\[\]()%{}]*#[0-9A-Fa-f]{2}[^\s\/<>\[\]()%{}]*/g;
-const ACTIVE = [/\/JavaScript\b/, /\/JS\s*[(<\[]/, /\/JS\s+\d+\s+\d+\s+R\b/, /\/Launch\b/, /\/EmbeddedFiles?\b/, /\/RichMedia\b/, /\/XFA\b/];
-export const ACTIVE_MSG =
-  "That PDF contains active content (scripts, embedded files or launch actions), which we don’t accept.";
+const ACTIVE = [
+  { re: /\/JavaScript\b/, label: "JavaScript" },
+  { re: /\/JS\s*[(<\[]/, label: "JavaScript" },
+  { re: /\/JS\s+\d+\s+\d+\s+R\b/, label: "JavaScript" },
+  { re: /\/Launch\b/, label: "launch action" },
+  { re: /\/EmbeddedFiles?\b/, label: "embedded files" },
+  { re: /\/RichMedia\b/, label: "rich media" },
+  { re: /\/XFA\b/, label: "XFA form" },
+];
