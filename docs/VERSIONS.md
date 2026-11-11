@@ -22,14 +22,14 @@ Data: `papers.withdrawn_on` (YYYY-MM-DD) and `papers.affiliations` (JSON array p
   already known); metadata and PDFs stay. A live record for a withdrawn row clears `withdrawn_on`.
 - `pipeline/backfill_withdrawn.py` filled the metadata of the rows that were already withdrawn
   when we first harvested (they were inserted empty). It reads the newest archived copy of the
-  abstract page from the Wayback Machine (CDX lookup + `id_` replay, >= 6 s apart, backs off on
-  throttling), parsing both the 2022+ layout and the older one. `--source eprint` reads ePrint
+  abstract page from the Wayback Machine (CDX lookup + `id_` replay; 2 clients, each >= 2 s apart,
+  backing off on throttling), parsing both the 2022+ layout and the older one. `--source eprint` reads ePrint
   itself instead (>= 5 s apart, stops on the first 403) but on 2026-11-10 ePrint's Cloudflare
   answered this machine with a block page, so the Wayback copies were used. If a copy predates
   the withdrawal, `withdrawn_on` falls back to the OAI datestamp.
 
 ```sh
-python3 -I pipeline/backfill_withdrawn.py --gap 6            # fetch + parse, resumable
+python3 -I pipeline/backfill_withdrawn.py --workers 2 --gap 2   # fetch + parse, resumable
 python3 -I pipeline/backfill_withdrawn.py --retry-failed     # retry papers that failed
 python3 -I pipeline/backfill_withdrawn.py --apply            # write to remote D1 (idempotent)
 ```
@@ -68,8 +68,9 @@ CDX digests), `size`, `source` (`github-mirror` | `wayback` | `upload`), `source
    hold; plus the GitHub-mirror snapshot (from `sources`) unless GitHub is already a version.
 4. `copy`: the helper Worker fetches each planned copy inside Cloudflare, checks `%PDF-`, hashes
    it, and stores it unless its sha256 is already held for that paper. GitHub items run in
-   parallel batches; Wayback items one at a time >= 3 s apart, backing off on 429/5xx/refused
-   connections.
+   parallel batches; Wayback items with 2 fetchers, each >= 2 s apart. On 429/5xx, or when IA
+   refuses the helper (521/522, dropped connections), all fetchers pause 2-5 min and the item is
+   retried; items still failing are left for a later run (never recorded as permanent).
 5. `apply`: inserts version rows for stored copies and moves `papers.pdf_key` to the newest
    version where it is newer than the current one (or none was set, e.g. withdrawn papers).
 
@@ -83,7 +84,7 @@ cd ..
 python3 -I pipeline/discover_versions.py list
 python3 -I pipeline/discover_versions.py existing --prefill-results data/prefill/results.jsonl
 python3 -I pipeline/discover_versions.py plan
-python3 -I pipeline/discover_versions.py copy        # long: ~3 s per Wayback copy
+python3 -I pipeline/discover_versions.py copy        # long: hours (2 fetchers x 2 s, pauses on refusals)
 python3 -I pipeline/discover_versions.py apply
 python3 -I pipeline/discover_versions.py stats
 cd worker && npx --no-install wrangler delete --name open-cryptology-versions

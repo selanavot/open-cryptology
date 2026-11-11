@@ -323,8 +323,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--source", choices=["wayback", "eprint"], default="wayback")
     ap.add_argument("--gap", type=float, default=None,
-                    help="seconds between one worker's requests (wayback 1, eprint 5)")
-    ap.add_argument("--workers", type=int, default=3, help="parallel Wayback clients (eprint: always 1)")
+                    help="seconds between one worker's requests (wayback 2, eprint 5)")
+    ap.add_argument("--workers", type=int, default=2, help="parallel Wayback clients (eprint: always 1)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--ids", help="comma list of ids (default: all withdrawn papers without a title)")
     ap.add_argument("--retry-failed", action="store_true")
@@ -352,7 +352,7 @@ def main():
         apply(results)
         return
 
-    gap = max(a.gap or 5.0, 5.0) if a.source == "eprint" else (a.gap or 1.0)
+    gap = max(a.gap or 5.0, 5.0) if a.source == "eprint" else (a.gap or 2.0)
     if a.ids:
         ids = a.ids.split(",")
     else:
