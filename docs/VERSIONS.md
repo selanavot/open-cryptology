@@ -84,8 +84,8 @@ CDX digests), `size`, `source` (`github-mirror` | `wayback` | `upload`), `source
 
 ```sh
 # temporary helper Worker (own shared key, kept in data/versions/.versions-key)
+scripts/deploy.sh -c versions-worker/wrangler.jsonc
 cd worker
-npx --no-install wrangler deploy -c ../versions-worker/wrangler.jsonc
 python3 -c "import secrets;print(secrets.token_urlsafe(32))" > ../data/versions/.versions-key
 npx --no-install wrangler secret put VERSIONS_KEY --name open-cryptology-versions < ../data/versions/.versions-key
 cd ..
