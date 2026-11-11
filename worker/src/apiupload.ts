@@ -1,4 +1,4 @@
-import { canonicalId, confirmCurrent, getPaper, knownCopy, parseAuthors, type Env } from "./db";
+import { canonicalId, confirmCurrent, getPaper, knownCopy, parseAuthors, STALE_AFTER_UPLOAD, type Env } from "./db";
 import { coverageChanged } from "./missing";
 import { pendingDuplicate, queueForReview } from "./quarantine";
 import { activeContentScan, API_LIMITS, ipHash, overLimit, reviewQueueFull, scanPdf } from "./uploadguard";
@@ -111,7 +111,7 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE papers SET pdf_key = ?1, pdf_sha256 = ?2, pdf_size = ?3, pdf_source = 'upload',
-         pdf_source_date = ?4, pdf_maybe_stale = 0 WHERE id = ?5`,
+         pdf_source_date = ?4, pdf_maybe_stale = ${STALE_AFTER_UPLOAD} WHERE id = ?5`,
     ).bind(key, sha, buf.byteLength, now, id),
     env.DB.prepare(
       `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)

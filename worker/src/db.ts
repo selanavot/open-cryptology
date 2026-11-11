@@ -58,7 +58,18 @@ export interface Paper {
   pdf_source: string | null;
   pdf_source_date: string | null;
   pdf_maybe_stale: number;
+  pdf_latest_size: number | null; // ePrint's current PDF size (RSS), see db/schema.sql
+  pdf_latest_at: string | null; // the `updated` that size belongs to
 }
+
+/** ePrint's current PDF size, when we know it for the paper as it is now (else null). */
+export const eprintSize = (p: Paper): number | null =>
+  p.pdf_latest_size != null && p.pdf_latest_at != null && p.pdf_latest_at === p.updated ? p.pdf_latest_size : null;
+
+/** SQL for papers.pdf_maybe_stale after storing an upload of size ?3 as the default PDF: still
+ *  outdated only if we know ePrint's current PDF and it has a different size. */
+export const STALE_AFTER_UPLOAD =
+  "CASE WHEN pdf_latest_size IS NOT NULL AND pdf_latest_at = updated AND pdf_latest_size != ?3 THEN 1 ELSE 0 END";
 
 export interface Source {
   paper_id: string;
@@ -151,6 +162,9 @@ export async function knownCopy(env: Env, p: Paper, sha: string): Promise<"curre
  *  change, including metadata-only edits, so most flags clear this way). Returns true if cleared. */
 export async function confirmCurrent(env: Env, p: Paper): Promise<boolean> {
   if (!p.pdf_maybe_stale) return false;
+  // Not when ePrint's RSS says its current PDF has a different size than ours.
+  const known = eprintSize(p);
+  if (known != null && p.pdf_size != null && known !== p.pdf_size) return false;
   await env.DB.prepare("UPDATE papers SET pdf_maybe_stale = 0 WHERE id = ?1").bind(p.id).run();
   return true;
 }

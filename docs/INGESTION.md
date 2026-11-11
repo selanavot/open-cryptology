@@ -8,7 +8,11 @@ pipeline against Wrangler's emulated D1/R2 instead (`pipeline/README.md`).
 - **Initial load:** `pipeline/harvest_oai.py` (full OAI-PMH ListRecords, written to remote D1).
 - **Updates:** GitHub Actions, every 4 hours (`.github/workflows/harvest.yml`, cron
   `23 */4 * * *`, also runnable by hand) runs `pipeline/harvest_remote.py`: incremental
-  `ListRecords&from=<meta.last_harvest>`, following resumptionTokens (<= 30 pages per run,
+  `ListRecords&from=<meta.last_harvest minus 30 days>` (a new paper's datestamp is its submission
+  time, but it only appears in OAI once approved, often days later; harvesting strictly from the
+  watermark missed such papers; records we already hold unchanged are skipped, so the look-back
+  costs no D1 writes; the `lookback_days` workflow input does a longer catch-up), following
+  resumptionTokens (<= 30 pages per run,
   >= 3 s between pages, one client, descriptive User-Agent), written straight to production D1
   through the Cloudflare D1 HTTP API with the same parsing and upsert as `worker/src/oai.ts`.
   Upserts touch metadata columns only, never move a record backwards in time
@@ -45,12 +49,23 @@ The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
   author's name (`worker/src/match.ts`, measured with `pipeline/verify_bench.mjs`) goes live at
   once; any other well-formed PDF lands in `quarantine/` until the maintainer approves it at
   `/review` (behind Cloudflare Access; at most one summary email per 15 minutes).
-- **Staleness:** `pdf_maybe_stale = 1` when the stored copy predates the paper's OAI `updated`
-  datestamp (conservative: the datestamp also moves on some metadata-only edits). The harvest
-  sets it whenever a record's datestamp moves past our copy's capture date. Such papers are
-  "may be outdated": yellow on `/missing`, and the paper page asks for the latest version (the
-  upload endpoints accept one). An upload of exactly the copy we serve clears the flag (that's
-  how metadata-only edits get resolved); an upload of a copy we hold as an older version is refused.
+- **Staleness:** `pdf_maybe_stale = 1` when the stored copy may predate ePrint's current PDF.
+  The harvest sets it whenever a record's datestamp moves past our copy's capture date. The OAI
+  datestamp also moves on metadata-only edits (publication info, typically on acceptance), and OAI
+  can't tell them apart, so after the OAI step the harvest reads ePrint's RSS feed once: its 100
+  most recently changed papers, each with `<enclosure length>` = the current PDF's byte size. The
+  size is stored as `pdf_latest_size` (with `pdf_latest_at` = the datestamp it belongs to), and the
+  flag becomes exactly "our size != ePrint's size" (same size: metadata-only edit, flag cleared).
+  Checked on 2026-11-11: 36/36 unflagged copies matched ePrint's size; of 36 flagged ones changed
+  in the last ~6 days, 3 were metadata-only. Older flags were resolved where an archived feed
+  snapshot covers them (`pipeline/rss_backfill.py`; the feed has sizes since August 2026). ePrint's
+  per-paper versions page labels "PDF update" vs metadata-only too, but answers GitHub Actions
+  with a Cloudflare challenge, so we don't use it.
+  Flagged papers are "may be outdated": yellow on `/missing`; the paper page asks for the latest
+  version ("ePrint has a newer PDF" when the size says so), and the upload endpoints accept one.
+  An upload of exactly the copy we serve clears the flag unless ePrint's size says otherwise; an
+  upload of a copy we hold as an older version is refused; an accepted upload whose size differs
+  from ePrint's known current size stays flagged.
 
 ## Lessons and numbers
 
