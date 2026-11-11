@@ -120,7 +120,7 @@ function footer(env: Env): Html {
     <a href="/llms.txt">For AI agents (llms.txt)</a> ·
     <a href="/#contact">Contact</a> ·
     <a href="${env.REPO_URL}">Source on GitHub</a> ·
-    <a href="/support">Support hosting</a> ·
+    <a href="/support">Support me</a> ·
     <a href="${env.ISSUES_URL}">Report an issue</a>
   </nav>
   <p>${env.SITE_NAME} is an unofficial, non-commercial mirror of the

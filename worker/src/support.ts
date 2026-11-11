@@ -11,7 +11,7 @@ export function supportPage(env: Env): Response {
     cache: "public, max-age=3600",
     body: html`<section class="message">
   <h3>Support hosting</h3>
-  <p>${env.SITE_NAME} costs about $6 a month to run: Cloudflare Workers, storage for the PDFs, and the
+  <p>${env.SITE_NAME} costs about $7 a month to run: Cloudflare Workers, storage for the PDFs, and the
   domain. If the site is useful to you, you can chip in on GitHub Sponsors, once or monthly.</p>
   <p>Donations only pay for hosting. Everything on the site stays free for everyone, and donors get
   nothing extra: no early access, no higher limits.</p>
