@@ -8,6 +8,7 @@ import { messagePage } from "./layout";
 import { apiPaper, handleUpload, paperPage, servePdf } from "./paper";
 import { apiMissing, missingPage } from "./missing";
 import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
+import { supportPage } from "./support";
 import { llmsTxt, robotsTxt } from "./text";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
@@ -105,6 +106,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return redirect(url, "/llms.txt", 302);
     case "/about":
       return redirect(url, "/", 302);
+    case "/support":
+      return supportPage(env);
     case "/llms.txt":
       return llmsTxt(env, url.origin);
     case "/robots.txt":
