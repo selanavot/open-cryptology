@@ -54,7 +54,7 @@ download it there. Then either you or they can upload it:
     confirm automatically that it is this paper, so a person will review it. This is not a failure:
     do not upload it again (the same file again also gets 202, and isn't stored twice).
   - 200 {"status":"already_have_it"}: we already have this exact file.
-  - 409 if we already have an up-to-date PDF; 410 if the paper was withdrawn; 413 over 30 MB;
+  - 409 if we already have an up-to-date PDF; 413 over 30 MB;
     415/422 if it isn't a readable PDF or contains scripts or attachments; 429 if rate-limited.
   No account or CAPTCHA needed.
 - People: the upload form at ${origin}/YYYY/NNN#upload (the "upload_url" in the JSON).
@@ -79,7 +79,9 @@ ePrint's own revision numbers; ePrint's own version list is on the original page
 Withdrawn papers: like ePrint, the mirror keeps the full abstract page (HTTP 200) with
 "withdrawn": true and "withdrawn_on" (YYYY-MM-DD). If we hold a copy, the last available PDF is
 still served (HTTP 200, header X-Withdrawn: 1); please respect the authors' withdrawal: prefer
-not to rely on or redistribute a withdrawn paper without saying it was withdrawn.
+not to rely on or redistribute a withdrawn paper without saying it was withdrawn. If we hold no copy,
+/YYYY/NNN.pdf answers 410. ePrint no longer offers withdrawn PDFs, but a copy saved before the
+withdrawal can be uploaded like any other (same endpoint and checks); it is shown as withdrawn.
 
 ## License obligations (apply to you too)
 
