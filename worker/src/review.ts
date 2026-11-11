@@ -1,4 +1,5 @@
 import { getPaper, parseAuthors, type Env } from "./db";
+import { coverageChanged } from "./missing";
 import { html } from "./html";
 import { messagePage } from "./layout";
 
@@ -182,11 +183,13 @@ export async function handleReview(req: Request, env: Env, url: URL): Promise<Re
         env.DB.prepare("UPDATE uploads SET status = 'accepted', r2_key = ?2 WHERE id = ?1").bind(up.id, key),
       ]);
       await env.PDFS.delete(up.r2_key);
+      await coverageChanged(url.origin, p.id);
       return backToList(p.id, "approved") ?? messagePage(env, 200, "Approved", html`<p>The PDF for <a href="/${p.id}">${p.id}</a> is now live.</p><p><a href="/review">All pending uploads</a></p>`, { cache: "no-store", noindex: true });
     }
     if (action === "reject") {
       await env.PDFS.delete(up.r2_key);
       await env.DB.prepare("UPDATE uploads SET status = 'rejected' WHERE id = ?1").bind(up.id).run();
+      await coverageChanged(url.origin, p.id);
       return backToList(p.id, "rejected") ?? messagePage(env, 200, "Rejected", html`<p>The upload for <a href="/${p.id}">${p.id}</a> was deleted.</p><p><a href="/review">All pending uploads</a></p>`, { cache: "no-store", noindex: true });
     }
     return messagePage(env, 400, "Unknown action", html`<p>Choose approve or reject.</p>`, { cache: "no-store", noindex: true });

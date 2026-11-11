@@ -1,4 +1,5 @@
 import { canonicalId, getPaper, parseAuthors, type Env } from "./db";
+import { coverageChanged } from "./missing";
 import { pendingDuplicate, queueForReview } from "./quarantine";
 import { activeContentScan, API_LIMITS, ipHash, overLimit, reviewQueueFull, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
@@ -111,5 +112,6 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
        VALUES (?1, ?2, ?3, ?4, ?5, 'upload', NULL, ?6, ?6)`,
     ).bind(id, stamp, key, sha, buf.byteLength, now),
   ]);
+  await coverageChanged(url.origin, id);
   return j(201, { status: "live", id, pdf_url: pdfUrl, sha256: sha, size: buf.byteLength, check: report });
 }

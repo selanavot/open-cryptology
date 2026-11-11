@@ -91,8 +91,34 @@ async function cached<T>(origin: string, key: string, ttl: number, fn: () => Pro
   return v;
 }
 
+/** Drop the cached counts after a paper's PDF or upload state changes, so this colo's homepage and
+ *  /missing show it on the next view (other colos catch up within the 5-minute TTL). */
+export async function coverageChanged(origin: string, paperId: string): Promise<void> {
+  const year = paperId.slice(0, 4);
+  try {
+    await Promise.all(
+      [YEARS_KEY, `${CELLS_KEY}-${year}`].map((k) => caches.default.delete(new Request(`${origin}/__cache/missing/${k}`))),
+    );
+  } catch {
+    /* no cache */
+  }
+}
+const YEARS_KEY = "years-v4";
+const CELLS_KEY = "cells-v4";
+
+/** A year's counts from its (fresh) cells, the same way yearStats counts them. */
+function statOf(year: number, cells: Cell[]): YearStat {
+  const s = { year, total: cells.length, have: 0, pending: 0, gone: 0 };
+  for (const c of cells) {
+    if (c.have) s.have++;
+    else if (c.pending) s.pending++;
+    else if (c.withdrawn) s.gone++;
+  }
+  return s;
+}
+
 async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
-  return cached(origin, "years-v4", 300, async () => {
+  return cached(origin, YEARS_KEY, 300, async () => {
     const r = await env.DB.prepare(
       `SELECT year, count(*) AS total, sum(pdf_key IS NOT NULL) AS have,
          sum(pdf_key IS NULL AND ${PENDING}) AS pending,
@@ -180,7 +206,7 @@ export async function missingCard(env: Env, origin: string): Promise<{ card: Htm
   const total = years.reduce((s, y) => s + y.total, 0);
   const have = years.reduce((s, y) => s + y.have, 0);
   const focus = focusYear(years);
-  const cells = focus ? await cached(origin, `cells-v4-${focus.year}`, 300, () => yearCells(env, focus.year)) : [];
+  const cells = focus ? await cached(origin, `${CELLS_KEY}-${focus.year}`, 300, () => yearCells(env, focus.year)) : [];
   const content = html`<p class="small mb-2"><strong>${fmtInt(have)} of ${papersWord(total)}</strong> have a PDF here.
     ${focus ? "Can you upload a missing one?" : "No paper is waiting for an upload now. Thank you for helping!"}</p>
   ${yearTiles(years)}
@@ -199,10 +225,14 @@ function missingYearParam(url: URL): number | null {
 }
 
 export async function missingPage(env: Env, url: URL): Promise<Response> {
-  const years = await yearStats(env, url.origin);
+  const cachedYears = await yearStats(env, url.origin);
   const asked = missingYearParam(url);
-  const sel = years.find((y) => y.year === asked) ?? (asked === null ? (focusYear(years) ?? years[0]) : undefined);
-  const cells = sel ? await yearCells(env, sel.year) : [];
+  const pick = cachedYears.find((y) => y.year === asked) ?? (asked === null ? (focusYear(cachedYears) ?? cachedYears[0]) : undefined);
+  const cells = pick ? await yearCells(env, pick.year) : [];
+  // The selected year's grid is read fresh; take its tile, heading and the total from the same
+  // read, so they agree right after an upload even while the other years come from the cache.
+  const sel = pick && statOf(pick.year, cells);
+  const years = sel ? cachedYears.map((y) => (y.year === sel.year ? sel : y)) : cachedYears;
   const missing = years.reduce((s, y) => s + missingOf(y), 0);
   const body = html`<section class="missing-page">
   <div class="results-bar">
