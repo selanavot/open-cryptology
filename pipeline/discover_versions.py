@@ -54,8 +54,9 @@ EXISTING = os.path.join(VDIR, "existing-results.jsonl")
 COPY = os.path.join(VDIR, "copy-results.jsonl")
 PDF_RE = re.compile(r"^https?://(?:www\.)?eprint\.iacr\.org(?::\d+)?/(\d{4})/(\d{3,5})\.pdf$")
 MAX_SIZE = 50 * 1024 * 1024
-WB_GAP = float(os.environ.get("WB_GAP", "1.0"))        # seconds between requests, per fetcher
-WB_THREADS = int(os.environ.get("WB_THREADS", "4"))    # parallel Wayback fetchers
+WB_GAP = float(os.environ.get("WB_GAP", "2.0"))        # seconds between requests, per fetcher
+WB_THREADS = int(os.environ.get("WB_THREADS", "2"))    # parallel Wayback fetchers
+WB_BACKOFF_MIN, WB_BACKOFF_MAX = 120.0, 300.0          # pause for all fetchers on throttling/refusals
 UA = "open-cryptology-versions-driver/0.1 (unofficial non-commercial ePrint mirror)"
 
 
@@ -315,7 +316,7 @@ def cmd_copy(a):
     # Wayback: WB_THREADS fetchers, each >= WB_GAP s between its requests. Items are partitioned
     # by paper so one paper's versions are copied in order by one thread (dedup via `known`).
     # Throttling (429/5xx/lost connections) pauses ALL fetchers, doubling up to 15 min.
-    shared = {"pause_until": 0.0, "backoff": 30.0}
+    shared = {"pause_until": 0.0, "backoff": WB_BACKOFF_MIN}
 
     # Some Wayback crawls sit on storage that is unreachable for a while (e.g. 2008 captures
     # answered 521/522 from the Worker). Once a capture month has >= 8 such failures and no
@@ -345,18 +346,19 @@ def cmd_copy(a):
             r = helper("/copy", [{"id": p["id"], "url": p["url"], "key": p["key"],
                                   "skip": sorted(known.get(p["id"], ()))}])[0]
             note(p, r)
-            if retryable(r) and attempt == 0 and not bad(p):
-                continue  # one quick retry, then leave it for a later run
-            if not throttled(r):
-                if not retryable(r):
-                    with lock:
-                        shared["backoff"] = 30.0
-                record(p, r, final=not retryable(r))
+            if not throttled(r) and not retryable(r):
+                with lock:
+                    shared["backoff"] = WB_BACKOFF_MIN
+                record(p, r)
                 return
+            if bad(p):
+                break  # this capture month looks unreachable: leave it for a later run
+            # Throttling, or IA refusing the helper (521/522, dropped connection): every fetcher
+            # pauses 2-5 min, then this item is retried.
             with lock:
                 b = shared["backoff"]
                 shared["pause_until"] = max(shared["pause_until"], time.monotonic() + b)
-                shared["backoff"] = min(b * 2, 900.0)
+                shared["backoff"] = min(b * 1.5, WB_BACKOFF_MAX)
             log(f"  wayback error ({r.get('status') or r.get('error')}) on {p['id']}; all fetchers pause {b:.0f}s")
         record(p, r, final=False)  # give up on this one for now; a later run retries it
 
