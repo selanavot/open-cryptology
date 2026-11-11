@@ -61,7 +61,7 @@ The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
   snapshot covers them (`pipeline/rss_backfill.py`; the feed has sizes since August 2026). ePrint's
   per-paper versions page labels "PDF update" vs metadata-only too, but answers GitHub Actions
   with a Cloudflare challenge, so we don't use it.
-  Flagged papers are "may be outdated": yellow on `/missing`; the paper page asks for the latest
+  Flagged papers are "may be outdated": yellow on the year pages; the paper page asks for the latest
   version ("ePrint has a newer PDF" when the size says so), and the upload endpoints accept one.
   An upload of exactly the copy we serve clears the flag unless ePrint's size says otherwise; an
   upload of a copy we hold as an older version is refused; an accepted upload whose size differs

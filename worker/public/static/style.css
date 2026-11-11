@@ -351,11 +351,11 @@ span.authorName { font-style: italic; }
 /* Papers missing a PDF (/missing and the homepage card): one tile per year, filled from the bottom in
    green up to the share of papers with an up-to-date PDF here (--cur), then yellow up to the share
    with any PDF (--fill: the rest may be outdated), and one square per paper of a year. */
-.missing-page { max-width: 62rem; padding: .5rem 1rem; }
-.missing-page .results-bar { margin-left: 0; }
-.missing-page h5 { font-size: 1.1rem; margin-bottom: .5rem; }
+.year-page { max-width: 62rem; padding: .5rem 1rem; }
+.year-page .results-bar { margin: 0 0 1rem; }
+.year-page h5 { font-size: 1.1rem; margin-bottom: .5rem; }
 .year-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(3.1rem, 1fr)); gap: 4px; }
-.missing-page .year-tiles { grid-template-columns: repeat(auto-fill, minmax(3.6rem, 1fr)); }
+.year-page .year-tiles { grid-template-columns: repeat(auto-fill, minmax(3.6rem, 1fr)); }
 a.year-tile, a.year-tile:visited {
   display: flex; flex-direction: column; justify-content: center; align-items: center; aspect-ratio: 1;
   border-radius: 4px; color: #102a17; line-height: 1.1; border: 1px solid rgba(27, 31, 35, .06);
@@ -393,3 +393,9 @@ ul.versions small { display: block; }
 .upload-notice { border-radius: 6px; padding: 8px 12px; margin: 8px 0; font-size: .95rem; }
 .upload-notice-ok { background: #e7f6e9; border: 1px solid #9fd3a6; color: #1d4d24; }
 .upload-notice-err { background: #fdecea; border: 1px solid #f1aea6; color: #6b1d14; }
+
+/* ---------- year page: list of every paper */
+ol.year-list { list-style: none; margin: 0; padding: 0; }
+ol.year-list li { margin: 0 0 .85rem; line-height: 1.4; }
+ol.year-list .badge { margin-left: .35rem; }
+.year-authors { font-style: italic; color: #555; }

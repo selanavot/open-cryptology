@@ -104,7 +104,7 @@ const META_COLS = [
 ] as const;
 
 /** ePrint changed the paper after our copy was captured, so the PDF may be an older revision
- *  ("may be outdated": yellow on /missing, uploads accepted). Only when the datestamp moves
+ *  ("may be outdated": yellow on the year pages, uploads accepted). Only when the datestamp moves
  *  forward, so re-reading the same record never re-flags a copy an upload confirmed since.
  *  Same expression in pipeline/harvest_remote.py (the harvester that runs) and harvest_oai.py. */
 const STALE_SET = `pdf_maybe_stale=CASE WHEN papers.pdf_key IS NOT NULL

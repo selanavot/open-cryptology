@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "13";
+const ASSET_VER = "15";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -44,7 +44,13 @@ export interface PageOpts {
   /** Link shown in the "unofficial mirror" strip; defaults to the ePrint homepage. */
   original?: string;
   originalLabel?: string;
+  /** Absolute URL; also og:url. Pages without one get no Open Graph tags. */
   canonical?: string;
+  /** Absolute URL of the social preview image. */
+  ogImage?: string;
+  ogType?: "website" | "article";
+  /** Extra <head> markup (e.g. Scholar meta tags, JSON-LD). */
+  head?: Html;
   noindex?: boolean;
   query?: string;
   headers?: Record<string, string>;
@@ -61,6 +67,18 @@ export function page(env: Env, o: PageOpts): Response {
 ${o.description && html`<meta name="description" content="${o.description}">`}
 ${o.canonical && html`<link rel="canonical" href="${o.canonical}">`}
 ${o.noindex && html`<meta name="robots" content="noindex">`}
+${o.canonical && !o.noindex &&
+html`<meta property="og:site_name" content="${site}">
+<meta property="og:type" content="${o.ogType ?? "website"}">
+<meta property="og:title" content="${o.title}">
+${o.description && html`<meta property="og:description" content="${o.description}">`}
+<meta property="og:url" content="${o.canonical}">
+${o.ogImage && html`<meta property="og:image" content="${o.ogImage}">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="Open Cryptology: unofficial mirror of the Cryptology ePrint Archive">`}
+<meta name="twitter:card" content="${o.ogImage ? "summary_large_image" : "summary"}">`}
+${o.head}
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#FFC72C">
 <link rel="icon" href="/favicon.svg?v=${ASSET_VER}" type="image/svg+xml">

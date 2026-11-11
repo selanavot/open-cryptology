@@ -3,12 +3,13 @@ import { activeContentScan, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
 import { canonicalId, confirmCurrent, eprintSize, getPaper, getSources, getVersion, getVersions, knownCopy, parseAuthors, STALE_AFTER_UPLOAD, type Env, type Paper } from "./db";
-import { coverageChanged } from "./missing";
+import { coverageChanged } from "./years";
 import { versionJson, versionsList } from "./versions";
 import { html, safeUrl, type Html } from "./html";
 import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
 import { bibtex, licenseInfo, originalUrl, versionsUrl, type LicenseInfo } from "./license";
 import { day, json } from "./pages";
+import { ogImage, paperHead, siteOrigin } from "./seo";
 
 export const MAX_UPLOAD = 95 * 1024 * 1024; // Workers accept request bodies up to 100 MB
 /** Above this, the upload is streamed (no in-memory copy) and sent to review instead of auto-verified. */
@@ -84,14 +85,19 @@ export async function paperPage(
 <pre id="bibtex">${bibtex(p, env.ORIGIN_BASE)}</pre>
 <p class="small mb-0"><a href="/?paper=${p.id}#contact">Report a problem with this paper</a></p>`;
 
+  const origin = siteOrigin(env, url);
+  const description = `${withdrawn ? "Withdrawn. " : ""}${(p.abstract ?? "").replace(/\s+/g, " ")}`.slice(0, 200);
   return page(env, {
     title: `${id}: ${title}${withdrawn ? " (withdrawn)" : ""}`,
-    description: `${withdrawn ? "Withdrawn. " : ""}${(p.abstract ?? "").replace(/\s+/g, " ")}`.slice(0, 200),
+    description,
     body,
     katex: hasTex(p.title, p.abstract),
     original: orig,
     originalLabel: `View paper ${id} on the original ePrint`,
-    canonical: orig, // search engines should prefer the original
+    canonical: `${origin}/${id}`,
+    ogType: "article",
+    ogImage: ogImage(origin),
+    head: paperHead(p, title, pdfHref && `${origin}${pdfHref}`),
     // Pages that can still change through an upload must not be served stale from a browser cache.
     cache: url.searchParams.has("upload") ? "no-store" : pdfHref && !p.pdf_maybe_stale ? "public, max-age=600" : "no-cache",
     headers: lic.url ? { link: `<${lic.url}>; rel="license"` } : undefined,
@@ -256,9 +262,7 @@ export async function servePdf(
     "x-content-type-options": "nosniff",
     "access-control-allow-origin": "*",
   });
-  const links = [`<${orig}.pdf>; rel="canonical"`];
-  if (lic.url) links.unshift(`<${lic.url}>; rel="license"`);
-  headers.set("link", links.join(", "));
+  if (lic.url) headers.set("link", `<${lic.url}>; rel="license"`);
   if (lic.code) headers.set("x-license", lic.code);
   if (etag) headers.set("etag", etag);
   if (!stamp && p.pdf_maybe_stale) headers.set("x-mirror-note", "may-be-older-revision");

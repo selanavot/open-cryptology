@@ -1,5 +1,5 @@
 import { canonicalId, confirmCurrent, getPaper, knownCopy, parseAuthors, STALE_AFTER_UPLOAD, type Env } from "./db";
-import { coverageChanged } from "./missing";
+import { coverageChanged } from "./years";
 import { pendingDuplicate, queueForReview } from "./quarantine";
 import { activeContentScan, API_LIMITS, ipHash, overLimit, reviewQueueFull, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
