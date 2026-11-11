@@ -257,11 +257,6 @@ div.eprintCardContent { padding: 20px; }
 div.eprintCard p { margin-top: .5rem; margin-bottom: .5rem; }
 
 /* ---------- home */
-.home-side { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 1.5rem; }
-@media (min-width: 768px) { .home-side { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 992px) {
-  .home-side { grid-template-columns: minmax(0, 1fr); align-content: start; }
-}
 .recent-item { padding: .5rem 1.5rem; }
 @media (min-width: 1400px) { .recent-item { padding-left: 1rem; padding-right: 1rem; } }
 h6.recent-title { margin: 0; font-size: 1.1rem; }
@@ -336,7 +331,12 @@ span.authorName { font-style: italic; }
 
 /* Home: the letter is the main column; search + papers missing a PDF sit on the right. */
 .home-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; padding: .5rem 1rem; }
-@media (min-width: 992px) { .home-layout { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 3rem; } }
+/* Search comes first in the markup so it sits above the letter on narrow screens. */
+@media (min-width: 992px) {
+  .home-layout { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 1rem 3rem; }
+  .home-letter { grid-column: 1; grid-row: 1 / span 2; }
+  .home-search, .home-side { grid-column: 2; }
+}
 .home-letter { max-width: 42rem; font-size: 1.05rem; line-height: 1.65; }
 .home-letter p { margin: 0 0 1rem; }
 .home-letter .contact-form { max-width: 32rem; margin-top: .5rem; }
