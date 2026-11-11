@@ -212,7 +212,7 @@ export async function servePdf(
   } else if (!p.pdf_key) {
     return p.withdrawn
       ? missing(410, "This paper was withdrawn by its authors, and we have no copy of it.")
-      : missing(404, "We don’t have a mirrored copy of this PDF yet.");
+      : noPdfYet(env, req, p, orig);
   }
   const pdfKey = obj0.pdf_key!;
 
@@ -302,6 +302,46 @@ export async function servePdf(
 function pdfCacheKey(req: Request, p: { pdf_key: string | null; pdf_size: number | null; pdf_source_date: string | null }): Request {
   const v = encodeURIComponent(`${p.pdf_size ?? ""}-${p.pdf_source_date ?? ""}`);
   return new Request(new URL(`/__pdf-cache/${p.pdf_key}?v=${v}`, req.url).toString());
+}
+
+
+/** 404 for a paper we have no PDF for yet: tell the reader (person or agent) how to fill the gap.
+ *  Browsers get a page; agents get plain text (or JSON if they ask for it) — never HTML at a .pdf URL. */
+function noPdfYet(env: Env, req: Request, p: Paper, orig: string): Response {
+  const origin = new URL(req.url).origin;
+  const upload = `${origin}/${p.id}#upload`;
+  const accept = req.headers.get("accept") ?? "";
+  const headers = {
+    "cache-control": "no-cache",
+    "x-upload-url": upload,
+    link: `<${orig}>; rel="alternate"; title="original on ePrint", <${upload}>; rel="help"; title="upload the PDF"`,
+  };
+  if (accept.includes("text/html")) {
+    return messagePage(
+      env,
+      404,
+      `We don’t have the PDF for ${p.id} yet`,
+      html`<p><strong>${p.title}</strong></p>
+      <p>Help fill the gap: <a href="${orig}" target="_blank" rel="noopener">download it from ePrint ↗</a>,
+      then upload it here so everyone (people and AI agents) can get it. Uploads are anonymous, and a
+      file that matches the paper goes live right away.</p>
+      <p><a class="btn btn-outline-dark" href="/${p.id}#upload">Upload the PDF</a>
+      <a class="btn btn-outline-dark" href="${orig}" target="_blank" rel="noopener">Get it on ePrint ↗</a></p>`,
+      { original: orig, cache: "no-cache", headers },
+    );
+  }
+  const message =
+    `We don't have the PDF for ePrint ${p.id} ("${p.title}") yet. ` +
+    `The original is at ${orig} (ePrint's PDF download is behind a bot check, so a person may need to download it). ` +
+    `Once you have the PDF, please upload it at ${upload} so everyone, including other AI agents, can get it. ` +
+    `Uploads are anonymous, and a file that matches the paper goes live right away.`;
+  if (accept.includes("application/json")) {
+    return new Response(JSON.stringify({ error: "no_pdf_yet", id: p.id, title: p.title, original_url: orig, upload_url: upload, message }, null, 2), {
+      status: 404,
+      headers: { "content-type": "application/json; charset=utf-8", ...headers },
+    });
+  }
+  return new Response(`404 Not Found: ${message}\n`, { status: 404, headers: { "content-type": "text/plain; charset=utf-8", ...headers } });
 }
 
 // ---------------------------------------------------------------------------- upload
@@ -516,6 +556,12 @@ export async function apiPaper(
           withdrawn: !!p.withdrawn,
         }
       : null,
+    ...(p.pdf_key || p.withdrawn
+      ? {}
+      : {
+          upload_url: `${origin}/${id}#upload`,
+          missing_pdf: `No PDF here yet. A person can download it from ${originalUrl(env.ORIGIN_BASE, id)} and upload it at ${origin}/${id}#upload so everyone can get it.`,
+        }),
     versions: versions.map((v) => versionJson(origin, id, v, p.pdf_key)),
     other_sources: sources.map((s) => ({ kind: s.kind, url: s.url, captured_at: s.captured_at, size: s.size })),
     bibtex: bibtex(p, env.ORIGIN_BASE),

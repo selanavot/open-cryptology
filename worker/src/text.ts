@@ -23,7 +23,8 @@ export function llmsTxt(env: Env, origin: string): Response {
 
 - Paper page (HTML): ${origin}/YYYY/NNN   e.g. ${origin}/2024/123 (IDs have at least 3 digits: 2024/007)
 - Paper metadata (JSON): ${origin}/api/papers/YYYY/NNN
-- PDF (when mirrored): ${origin}/YYYY/NNN.pdf   (404 if not mirrored; check "pdf" in the JSON first)
+- PDF (when mirrored): ${origin}/YYYY/NNN.pdf   (check "pdf" in the JSON first; if we don't have it,
+  you get a 404 with a plain-text explanation, or JSON if you send Accept: application/json)
   This is the latest copy we hold. Other stored copies: ${origin}/YYYY/NNN/versions/YYYYMMDDThhmmssZ.pdf
   (listed in the JSON "versions"; the stamp is when the public copy was captured).
 - Search (JSON): ${origin}/api/search?q=QUERY&page=1&sort=relevance|new
@@ -33,7 +34,18 @@ export function llmsTxt(env: Env, origin: string): Response {
 - Papers we have no PDF for yet (JSON): ${origin}/api/missing?page=1&year=YYYY   (50 per page, newest
   first; fields: id, title, year, url, original_url, upload_url; plus total, total_pages, next).
   HTML: ${origin}/missing. Uploads are made by people through the form on each paper page.
+- Search result fields: id, title, authors, category, license, submitted, withdrawn, withdrawn_on,
+  has_pdf, pdf_url (null if we have no PDF), upload_url (where a person can upload a missing PDF),
+  snippet, url, api_url.
 - Home (purpose, license guidance, contact form): ${origin}/
+
+## If we don't have a PDF yet
+
+Some papers (mostly very recent ones) have no PDF here yet. The original is on ePrint at
+${env.ORIGIN_BASE}/YYYY/NNN, but ePrint's PDF downloads sit behind a bot check, so ask your user to
+download it there and upload it at ${origin}/YYYY/NNN#upload (the "upload_url" in the JSON).
+Uploads are anonymous, and a file that matches the paper goes live right away for everyone,
+including other AI agents.
 - Original ePrint page for any paper: ${env.ORIGIN_BASE}/YYYY/NNN
 
 ## JSON paper fields
