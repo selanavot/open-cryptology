@@ -1,0 +1,20 @@
+name: probe-eprint-access
+on:
+  pull_request:
+    paths: [".github/workflows/probe-eprint.yml"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch ePrint metadata endpoints with our honest user-agent
+        env:
+          UA: "open-cryptology-harvester/0.1 (unofficial non-commercial ePrint mirror; https://opencryptology.org)"
+        run: |
+          set +e
+          for u in "https://eprint.iacr.org/oai?verb=Identify" \
+                   "https://eprint.iacr.org/oai?verb=ListRecords&metadataPrefix=oai_dc&from=2026-11-10T15:29:13Z" \
+                   "https://eprint.iacr.org/rss/rss.xml"; do
+            code=$(curl -s -o out.txt -w "%{http_code}" -A "$UA" "$u")
+            echo "$code $(wc -c < out.txt)B oai=$(grep -c '<OAI-PMH' out.txt) records=$(grep -o '<record>' out.txt | wc -l) challenge=$(grep -ci 'just a moment\|cf-chl\|blocked' out.txt) $u"
+            sleep 3
+          done
