@@ -34,6 +34,9 @@ export interface LicenseInfo {
   sa: boolean;
 }
 
+/** ePrint's list of every version of a paper (also the way to a withdrawn paper's earlier PDFs). */
+export const versionsUrl = (base: string, id: string): string => `${base.replace(/\/$/, "")}/archive/versions/${id}/`;
+
 export function originalUrl(originBase: string, id: string): string {
   return `${originBase.replace(/\/$/, "")}/${id}`;
 }

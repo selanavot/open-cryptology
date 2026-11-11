@@ -224,7 +224,7 @@ export async function apiSearch(env: Env, url: URL): Promise<Response> {
         url: `${origin}/${h.id}`,
         api_url: `${origin}/api/papers/${h.id}`,
         pdf_url: h.has_pdf ? `${origin}/${h.id}.pdf` : null,
-        upload_url: h.has_pdf || h.withdrawn ? null : `${origin}/${h.id}#upload`,
+        upload_url: h.has_pdf ? null : `${origin}/${h.id}#upload`,
       })),
     },
     error ? 400 : 200,

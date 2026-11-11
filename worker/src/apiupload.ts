@@ -25,7 +25,6 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
   const p = await getPaper(env, id);
   if (!p) return j(404, { error: "not_found", id, message: `Paper ${id} isn't in the mirror.` });
   const pdfUrl = `${url.origin}/${id}.pdf`;
-  if (p.withdrawn) return j(410, { error: "withdrawn", id, message: "Withdrawn papers don't accept uploads." });
   if (p.pdf_key && !p.pdf_maybe_stale)
     return j(409, { error: "already_have_it", id, pdf_url: pdfUrl, message: "This paper already has an up-to-date PDF here." });
 
