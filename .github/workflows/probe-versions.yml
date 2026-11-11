@@ -1,0 +1,40 @@
+# Throwaway probe (not to be merged): can GitHub Actions read ePrint's per-paper versions pages
+# (/archive/versions/YYYY/NNNN), and what labels do their entries carry ("PDF update" vs
+# metadata-only)? One client, 5 s apart, stops at the first non-200 or challenge page.
+name: probe-eprint-versions
+on:
+  pull_request:
+    paths: [".github/workflows/probe-versions.yml"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch versions pages of flagged papers
+        env:
+          UA: "open-cryptology-harvester/0.1 (unofficial non-commercial ePrint mirror; https://opencryptology.org)"
+        run: |
+          python3 - <<'EOF'
+          import os, re, time, urllib.request, urllib.error
+          ids = ["2019/737", "2025/1800", "2026/2156", "2026/1856", "2026/2283", "2025/1100",
+                 "2024/1915", "2013/133", "2026/2797", "2026/2721", "2023/040", "2026/2279"]
+          for i, pid in enumerate(ids):
+              if i:
+                  time.sleep(5)
+              url = f"https://eprint.iacr.org/archive/versions/{pid}"
+              req = urllib.request.Request(url, headers={"User-Agent": os.environ["UA"]})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      code, body = r.status, r.read().decode("utf-8", "replace")
+              except urllib.error.HTTPError as e:
+                  code, body = e.code, e.read().decode("utf-8", "replace")
+              low = body.lower()
+              challenged = any(m in low for m in ("just a moment", "cf-chl", "challenge-platform", "you have been blocked"))
+              rows = re.findall(r'<a href="/archive/[^"]+">([^<]+)</a>\s*([^<]*)', body)
+              print(f"{pid}: HTTP {code} {len(body)}B challenge={challenged}")
+              for stamp, label in rows:
+                  print(f"    {stamp.strip()}  {' '.join(label.split())}")
+              if code != 200 or challenged:
+                  print("stopping: not a clean 200")
+                  print(body[:600])
+                  break
+          EOF
