@@ -1,4 +1,4 @@
-import { getPaper, parseAuthors, type Env } from "./db";
+import { getPaper, parseAuthors, STALE_AFTER_UPLOAD, type Env } from "./db";
 import { coverageChanged } from "./missing";
 import { html } from "./html";
 import { messagePage } from "./layout";
@@ -174,7 +174,7 @@ export async function handleReview(req: Request, env: Env, url: URL): Promise<Re
       await env.PDFS.put(key, obj.body, { httpMetadata: { contentType: "application/pdf" }, customMetadata: { paper_id: p.id, sha256: up.sha256, source: "upload" } });
       await env.DB.batch([
         env.DB.prepare(
-          `UPDATE papers SET pdf_key = ?1, pdf_sha256 = ?2, pdf_size = ?3, pdf_source = 'upload', pdf_source_date = ?4, pdf_maybe_stale = 0 WHERE id = ?5`,
+          `UPDATE papers SET pdf_key = ?1, pdf_sha256 = ?2, pdf_size = ?3, pdf_source = 'upload', pdf_source_date = ?4, pdf_maybe_stale = ${STALE_AFTER_UPLOAD} WHERE id = ?5`,
         ).bind(key, up.sha256, up.size, now, p.id),
         env.DB.prepare(
           `INSERT OR IGNORE INTO versions (paper_id, stamp, r2_key, sha256, size, source, source_url, captured_at, added_at)

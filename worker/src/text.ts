@@ -71,7 +71,7 @@ anything else is checked by a person first.
 id, title, authors[], affiliations[] | null, abstract (may contain TeX: $...$), category,
 license {code, url, label, attribution, retroactive, redistribute_verbatim_only, non_commercial},
 dates {submitted, updated, withdrawn}, original_url,
-pdf {url, sha256, size, source, source_date, maybe_stale, withdrawn} | null,
+pdf {url, sha256, size, source, source_date, maybe_stale, newer_on_eprint, withdrawn} | null,
 versions[] {url, captured_at, label, source, source_url, size, sha256, is_default_pdf} (newest first),
 other_sources[], withdrawn, withdrawn_on, bibtex.
 
@@ -98,8 +98,9 @@ field and in the PDF's \`Link: <...>; rel="license"\` and \`X-License\` headers.
 - Papers posted before 2022 had their license assigned retroactively by the IACR.
 - When citing, cite the ePrint entry (see "bibtex"), not this mirror.
 - "maybe_stale": ePrint changed the paper after our copy was captured, so the mirrored PDF may be
-  an older revision. Uploads of the latest version are welcome for these papers, the same way as
-  for missing ones.
+  an older revision. "newer_on_eprint": true when we know ePrint's current PDF differs from ours,
+  false when it is the same file, null when unknown (the change may be metadata only). Uploads of
+  the latest version are welcome for these papers, the same way as for missing ones.
 - PDF responses carry X-Captured-At (when the copy was captured) and, for withdrawn papers, X-Withdrawn: 1.
 
 ## Access policy

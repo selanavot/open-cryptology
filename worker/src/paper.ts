@@ -2,7 +2,7 @@ import { pendingDuplicate, queueForReview } from "./quarantine";
 import { activeContentScan, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
 import { turnstileOk, turnstileWidget } from "./turnstile";
-import { canonicalId, confirmCurrent, getPaper, getSources, getVersion, getVersions, knownCopy, parseAuthors, type Env, type Paper } from "./db";
+import { canonicalId, confirmCurrent, eprintSize, getPaper, getSources, getVersion, getVersions, knownCopy, parseAuthors, STALE_AFTER_UPLOAD, type Env, type Paper } from "./db";
 import { coverageChanged } from "./missing";
 import { versionJson, versionsList } from "./versions";
 import { html, safeUrl, type Html } from "./html";
@@ -160,10 +160,16 @@ function uploadForm(env: Env, p: Paper, orig: string, notice: Html | "" = ""): H
     ? html`<p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
   <p>Download the latest version from <a href="${versionsUrl(env.ORIGIN_BASE, p.id)}" target="_blank" rel="noopener">ePrint’s version list ↗</a>
   and upload it here.</p>`
+    : p.pdf_key && eprintSize(p) != null
+    ? html`<p class="upload-cta-head"><strong>ePrint has a newer PDF.</strong></p>
+  <p>ePrint updated this paper’s PDF${p.updated ? html` on <time datetime="${p.updated}">${day(p.updated)}</time>` : ""};
+  our copy${p.pdf_source_date ? html` (saved ${day(p.pdf_source_date)})` : ""} is an earlier version. Help out:
+  <a href="${orig}" target="_blank" rel="noopener">download the latest version from ePrint ↗</a> and upload it here.</p>`
     : p.pdf_key
     ? html`<p class="upload-cta-head"><strong>Our PDF may be outdated.</strong></p>
   <p>ePrint updated this paper${p.updated ? html` on <time datetime="${p.updated}">${day(p.updated)}</time>` : ""}, after
-  our copy was saved${p.pdf_source_date ? html` (${day(p.pdf_source_date)})` : ""}. Help out:
+  our copy was saved${p.pdf_source_date ? html` (${day(p.pdf_source_date)})` : ""}. That may be a new PDF, or only new
+  details such as publication info. Help out:
   <a href="${orig}" target="_blank" rel="noopener">download the latest version from ePrint ↗</a> and upload it here.
   If it’s the same file we have, uploading it confirms our copy is current.</p>`
     : html`<p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
@@ -479,7 +485,7 @@ export async function handleUpload(
     await env.DB.batch([
       env.DB.prepare(
         `UPDATE papers SET pdf_key = ?1, pdf_sha256 = ?2, pdf_size = ?3, pdf_source = 'upload',
-           pdf_source_date = ?4, pdf_maybe_stale = 0 WHERE id = ?5`,
+           pdf_source_date = ?4, pdf_maybe_stale = ${STALE_AFTER_UPLOAD} WHERE id = ?5`,
       ).bind(key, sha, buf.byteLength, now, id),
       env.DB.prepare(
         `INSERT INTO uploads (id, paper_id, r2_key, sha256, size, uploader, created_at, status, checks, ip_hash)
@@ -580,6 +586,9 @@ export async function apiPaper(
           source: p.pdf_source,
           source_date: p.pdf_source_date,
           maybe_stale: !!p.pdf_maybe_stale,
+          // true: ePrint's current PDF has a different size (a newer PDF exists); false: same size
+          // (ours is current); null: unknown.
+          newer_on_eprint: eprintSize(p) == null || p.pdf_size == null ? null : eprintSize(p) !== p.pdf_size,
           withdrawn: !!p.withdrawn,
         }
       : null,

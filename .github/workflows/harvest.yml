@@ -14,6 +14,10 @@ on:
         description: "Max OAI pages this run"
         required: false
         default: "30"
+      lookback_days:
+        description: "Also re-read this many days before the watermark (catch-up: e.g. 180)"
+        required: false
+        default: "30"
 
 concurrency:
   group: metadata-harvest
@@ -42,4 +46,5 @@ jobs:
           CF_ACCOUNT_ID: f1a5c2273555ad714cc5911124e671a7
           D1_DATABASE_ID: 18ccadd9-a999-4b68-8ba6-8db45cd0d5a3
           MAX_PAGES: ${{ inputs.max_pages || '30' }}
-        run: python3 -I pipeline/harvest_remote.py --max-pages "$MAX_PAGES"
+          LOOKBACK_DAYS: ${{ inputs.lookback_days || '30' }}
+        run: python3 -I pipeline/harvest_remote.py --max-pages "$MAX_PAGES" --lookback-days "$LOOKBACK_DAYS"

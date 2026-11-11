@@ -5,11 +5,19 @@ ePrint's Cloudflare challenges requests from Cloudflare Workers, so the Worker c
 GitHub Actions runners get real OAI-PMH XML. This script:
 
   1. reads meta.last_harvest from remote D1 (Cloudflare D1 HTTP API),
-  2. fetches OAI-PMH ListRecords (oai_dc) from that datestamp, following resumptionTokens
-     (one client, >= 3 s between pages, at most --max-pages pages),
-  3. upserts each record exactly like worker/src/oai.ts `upsert` (FTS delete -> guarded upsert ->
-     FTS insert, one transaction per record batch),
-  4. advances meta.last_harvest and writes meta.harvest_last_run / meta.harvest_last_ok.
+  2. fetches OAI-PMH ListRecords (oai_dc) from that datestamp minus --lookback-days, following
+     resumptionTokens (one client, >= 3 s between pages, at most --max-pages pages). The look-back
+     is needed because a new paper's datestamp is its submission time, but it only appears in OAI
+     once an editor approves it, often days later: harvesting strictly from the watermark missed
+     those papers (2026-11: 2026/2809-2827),
+  3. upserts each record that is new or whose datestamp changed, exactly like worker/src/oai.ts
+     `upsert` (FTS delete -> guarded upsert -> FTS insert, one transaction per record batch);
+     records we already hold unchanged are skipped (no D1 writes),
+  4. reads ePrint's RSS feed once (the 100 most recently changed papers, each with its current
+     PDF's byte size) and records that size; a paper we hold a PDF for is "may be outdated"
+     exactly when the sizes differ. This tells a new PDF from a metadata-only edit (e.g.
+     publication info), which OAI can't. RSS problems only warn: the OAI harvest still counts,
+  5. advances meta.last_harvest and writes meta.harvest_last_run / meta.harvest_last_ok.
 
 It fails loudly (non-zero exit, `::error::` line for GitHub) on: HTTP status != 200, a body that
 isn't OAI-PMH (Cloudflare challenge / block page), an OAI error other than noRecordsMatch, or any
@@ -19,8 +27,9 @@ Env:
   CLOUDFLARE_API_TOKEN   (required) API token with Account > D1 > Edit
   CF_ACCOUNT_ID, D1_DATABASE_ID   (default: the production ids below)
   OAI_BASE               (default https://eprint.iacr.org/oai; override for testing)
+  RSS_URL                (default https://eprint.iacr.org/rss/rss.xml; "off" to skip)
 
-Usage: python3 -I pipeline/harvest_remote.py [--max-pages N] [--dry-run]
+Usage: python3 -I pipeline/harvest_remote.py [--max-pages N] [--lookback-days D] [--dry-run]
 """
 
 import argparse
@@ -28,6 +37,7 @@ import json
 import os
 import sys
 import time
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -39,6 +49,8 @@ from harvest_oai import META_COLS, parse_page  # noqa: E402  (shared OAI parsing
 DEFAULT_ACCOUNT = "f1a5c2273555ad714cc5911124e671a7"
 DEFAULT_DB = "18ccadd9-a999-4b68-8ba6-8db45cd0d5a3"
 DEFAULT_OAI = "https://eprint.iacr.org/oai"
+DEFAULT_RSS = "https://eprint.iacr.org/rss/rss.xml"
+LOOKBACK_DAYS = 30  # covers ePrint's approval delay; ~640 records (2 pages) per run in 2026
 USER_AGENT = ("open-cryptology-harvester/0.1 (unofficial non-commercial ePrint mirror; "
               "https://opencryptology.org)")
 PAGE_GAP_S = 3.0
@@ -214,16 +226,103 @@ def oai_url(base, **params):
     return base + "?" + urllib.parse.urlencode(params)
 
 
+# --------------------------------------------------------------------------- unchanged records
+
+def held_datestamps(d1, ids):
+    """{id: updated} for the ids we already hold (one query per 90 ids)."""
+    out = {}
+    ids = list(dict.fromkeys(ids))
+    for i in range(0, len(ids), 90):
+        chunk = ids[i:i + 90]
+        ph = ",".join(f"?{k + 1}" for k in range(len(chunk)))
+        for row in d1.query(f"SELECT id, updated FROM papers WHERE id IN ({ph})", chunk):
+            out[row["id"]] = row["updated"]
+    return out
+
+
+# --------------------------------------------------------------------------- RSS: PDF sizes
+
+RSS_ITEM = re.compile(r"<item>(.*?)</item>", re.S)
+RSS_GUID = re.compile(r"<guid[^>]*>\s*https?://eprint\.iacr\.org/(\d{4})/(\d+)\s*</guid>")
+RSS_ENCLOSURE = re.compile(r"<enclosure\b[^>]*\blength=\"(\d+)\"")
+
+
+def parse_rss(body):
+    """[(id, pdf_size)] from ePrint's RSS feed (items without a PDF enclosure are skipped)."""
+    text = body.decode("utf-8", "replace") if isinstance(body, bytes) else body
+    out = []
+    for item in RSS_ITEM.findall(text):
+        g, e = RSS_GUID.search(item), RSS_ENCLOSURE.search(item)
+        if g and e and int(e.group(1)) > 0:
+            out.append((f"{g.group(1)}/{int(g.group(2)):03d}", int(e.group(1))))
+    return out
+
+
+# A paper we hold a PDF for is outdated exactly when ePrint's current PDF has a different size.
+# pdf_latest_at = the OAI datestamp the size belongs to (lets uploads and the paper page tell a
+# known-current size from one recorded before a later change). Withdrawn papers aren't touched.
+_STALE_BY_SIZE = ("CASE WHEN pdf_key IS NULL OR withdrawn = 1 OR pdf_size IS NULL THEN pdf_maybe_stale "
+                  "WHEN pdf_size = ?2 THEN 0 ELSE 1 END")
+RSS_UPDATE = (
+    f"UPDATE papers SET pdf_latest_size = ?2, pdf_latest_at = updated, pdf_maybe_stale = {_STALE_BY_SIZE} "
+    "WHERE id = ?1 AND updated IS NOT NULL AND (?3 IS NULL OR updated <= ?3) "
+    f"AND (pdf_latest_size IS NOT ?2 OR pdf_latest_at IS NOT updated OR pdf_maybe_stale IS NOT ({_STALE_BY_SIZE}))")
+
+
+def rss_stmts(items, observed_at=None):
+    """UPDATE statements for RSS (id, size) items. observed_at (ISO): only apply where the paper's
+    datestamp is not newer than that (for archived snapshots; None = the live feed)."""
+    return [(RSS_UPDATE, [pid, size, observed_at]) for pid, size in items]
+
+
+def fetch_rss(url):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
+                                               "Accept": "application/rss+xml, application/xml"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            status, body = resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        status, body = e.code, b""
+    except (urllib.error.URLError, OSError) as e:
+        raise HarvestError(f"RSS unreachable: {getattr(e, 'reason', e)}")
+    if status != 200 or b"<rss" not in body[:2000]:
+        raise HarvestError(f"RSS returned HTTP {status} without an RSS document (blocked or changed?)")
+    return body
+
+
+def check_rss(d1, url, dry_run):
+    """Record ePrint's current PDF sizes; returns a summary dict. Never raises (warns)."""
+    try:
+        items = parse_rss(fetch_rss(url))
+        if not items:
+            raise HarvestError("RSS feed had no items with a PDF size")
+        stmts = rss_stmts(items)
+        changed = 0
+        if not dry_run:
+            for i in range(0, len(stmts), 50):
+                res = d1._post({"batch": [{"sql": s, "params": list(p)} for s, p in stmts[i:i + 50]]})
+                changed += sum((r.get("meta") or {}).get("changes", 0) for r in res)
+        log(f"  RSS: {len(items)} items with a PDF size, {changed} paper(s) updated")
+        return {"items": len(items), "changed": changed}
+    except HarvestError as e:
+        print(f"::warning title=RSS size check skipped::{e}", flush=True)
+        log(f"  RSS check skipped: {e}")
+        return {"error": str(e)}
+
+
 # --------------------------------------------------------------------------- main
 
-def harvest(d1, base, max_pages, dry_run):
+def harvest(d1, base, max_pages, dry_run, lookback_days=LOOKBACK_DAYS):
     meta = get_meta(d1, ["last_harvest"])
-    from_ = meta.get("last_harvest")
-    if not from_:
+    mark = meta.get("last_harvest")
+    if not mark:
         raise HarvestError("meta.last_harvest is missing in D1 (load the initial dump first)")
-    log(f"OAI harvest from={from_} ({base})")
-    summary = {"at": now_iso(), "from": from_, "pages": 0, "records": 0, "new": 0, "upserted": 0,
-               "newest": from_, "status": "ok", "runner": "github-actions"}
+    back = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - lookback_days * 86400))
+    from_ = min(mark, back)
+    log(f"OAI harvest from={from_} (watermark {mark}, look-back {lookback_days} d) ({base})")
+    summary = {"at": now_iso(), "from": from_, "watermark": mark, "pages": 0, "records": 0,
+               "new": 0, "added": 0, "upserted": 0, "newest": mark, "status": "ok",
+               "runner": "github-actions"}
     url = oai_url(base, verb="ListRecords", metadataPrefix="oai_dc", **{"from": from_})
     sorted_ok, prev, token = True, None, None
     while url:
@@ -244,24 +343,29 @@ def harvest(d1, base, max_pages, dry_run):
         if err:
             raise HarvestError(f"OAI error {err} for {url}")
         stmts = []
+        held = held_datestamps(d1, [r["id"] for r in recs])
         for r in recs:
             r = normalize(r)
             summary["records"] += 1
             d = r["updated"]
-            if d and d > from_:
+            if d and d > mark:
                 summary["new"] += 1
             if d and d > summary["newest"]:
                 summary["newest"] = d
             if d and prev and d < prev:
                 sorted_ok = False
             prev = d or prev
+            if r["id"] in held and held[r["id"]] == d:
+                continue  # already hold this exact record
+            if r["id"] not in held:
+                summary["added"] += 1
             stmts.extend(upsert_stmts(r))
+            summary["upserted"] += 1
         for i in range(0, len(stmts), 3 * RECORDS_PER_BATCH):
             if not dry_run:
                 d1.batch(stmts[i:i + 3 * RECORDS_PER_BATCH])
-        summary["upserted"] += len(recs)
         log(f"  page {summary['pages']}: {len(recs)} records (total {summary['records']}, "
-            f"newest {summary['newest']})")
+            f"upserted {summary['upserted']}, newest {summary['newest']})")
         url = oai_url(base, verb="ListRecords", resumptionToken=token) if token else None
 
     capped = bool(token)
@@ -280,6 +384,8 @@ def harvest(d1, base, max_pages, dry_run):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--max-pages", type=int, default=30, help="OAI pages per run (default 30)")
+    ap.add_argument("--lookback-days", type=float, default=LOOKBACK_DAYS,
+                    help=f"also re-read this many days before the watermark (default {LOOKBACK_DAYS})")
     ap.add_argument("--dry-run", action="store_true", help="fetch and parse, write nothing to D1")
     a = ap.parse_args()
 
@@ -293,10 +399,14 @@ def main():
     base = (os.environ.get("OAI_BASE") or DEFAULT_OAI).rstrip("/")
     started = now_iso()
     try:
-        s = harvest(d1, base, a.max_pages, a.dry_run)
+        s = harvest(d1, base, a.max_pages, a.dry_run, a.lookback_days)
+        rss = (os.environ.get("RSS_URL") or DEFAULT_RSS).strip()
+        if rss != "off":
+            time.sleep(PAGE_GAP_S)
+            s["rss"] = check_rss(d1, rss, a.dry_run)
         if not a.dry_run:
             stmts = [meta_stmt("harvest_last_run", json.dumps(s)), meta_stmt("harvest_last_ok", now_iso())]
-            if s["newest"] > s["from"]:
+            if s["newest"] > s["watermark"]:
                 stmts.insert(0, ("INSERT INTO meta(key, value) VALUES ('last_harvest', ?1) "
                                  "ON CONFLICT(key) DO UPDATE SET value = excluded.value "
                                  "WHERE meta.value IS NULL OR excluded.value > meta.value",
@@ -310,8 +420,12 @@ def main():
             except HarvestError:
                 pass
         fail(str(e))
-    line = (f"harvest ok: {s['pages']} page(s), {s['records']} records ({s['new']} new since "
-            f"{s['from']}), {s['upserted']} upserted, last_harvest -> {s['newest']}"
+    r = s.get("rss") or {}
+    rss_part = (f"; RSS: {r['items']} sizes, {r['changed']} paper(s) updated" if "items" in r
+                else f"; RSS skipped ({r['error']})" if "error" in r else "")
+    line = (f"harvest ok: {s['pages']} page(s) from {s['from']}, {s['records']} records ({s['new']} "
+            f"newer than {s['watermark']}), {s['upserted']} upserted ({s['added']} new papers), "
+            f"last_harvest -> {s['newest']}{rss_part}"
             + (" [dry run]" if a.dry_run else "") + f"; status: {s['status']}")
     print(line, flush=True)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")

@@ -98,3 +98,12 @@ CREATE TABLE IF NOT EXISTS versions (
   UNIQUE (paper_id, sha256)
 );
 CREATE INDEX IF NOT EXISTS versions_paper ON versions(paper_id, captured_at);
+
+-- ---------------------------------------------------------------------------------------------
+-- ePrint's current PDF size (2026-11), from its RSS feed (<enclosure length>), recorded by the
+-- harvest (pipeline/harvest_remote.py). OAI-PMH can't tell a new PDF from a metadata-only edit
+-- (e.g. publication info); the size can: pdf_maybe_stale = (pdf_size != pdf_latest_size).
+-- pdf_latest_at = the OAI datestamp (papers.updated) the size belongs to; a size recorded before
+-- a later change (pdf_latest_at < updated) is not used.
+ALTER TABLE papers ADD COLUMN pdf_latest_size INTEGER;
+ALTER TABLE papers ADD COLUMN pdf_latest_at TEXT;
