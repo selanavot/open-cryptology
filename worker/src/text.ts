@@ -47,12 +47,20 @@ download it there. Then either you or they can upload it:
 
 - Agents: POST the PDF to ${origin}/api/upload/YYYY/NNN
     curl -X POST --data-binary @paper.pdf -H "Content-Type: application/pdf" ${origin}/api/upload/2026/123
-  201 {"status":"live", "pdf_url": ...} when the file matches the paper (title and an author's name on
-  its first pages); 422 {"error":"no_match"} otherwise (nothing is stored); 409 if we already have an
-  up-to-date PDF; 429 if rate-limited. Max 30 MB. No account or CAPTCHA needed.
+  Responses (JSON):
+  - 201 {"status":"live", "pdf_url": ...}: the file matched the paper (title and an author's name on
+    its first pages) and is live now.
+  - 202 {"status":"queued_for_review", "id", "check", "message"}: received and stored, but we couldn't
+    confirm automatically that it is this paper, so a person will review it. This is not a failure:
+    do not upload it again (the same file again also gets 202, and isn't stored twice).
+  - 200 {"status":"already_have_it"}: we already have this exact file.
+  - 409 if we already have an up-to-date PDF; 410 if the paper was withdrawn; 413 over 30 MB;
+    415/422 if it isn't a readable PDF or contains scripts or attachments; 429 if rate-limited.
+  No account or CAPTCHA needed.
 - People: the upload form at ${origin}/YYYY/NNN#upload (the "upload_url" in the JSON).
 
-Uploads are anonymous, and a matching file goes live right away for everyone, including other agents.
+Uploads are anonymous. A matching file goes live right away for everyone, including other agents;
+anything else is checked by a person first.
 - Original ePrint page for any paper: ${env.ORIGIN_BASE}/YYYY/NNN
 
 ## JSON paper fields

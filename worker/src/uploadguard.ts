@@ -6,9 +6,28 @@ export interface Limits { perIpPerDay: number; globalPerDay: number; globalBytes
 
 /** Upload form (people). Per-minute limit: UPLOAD_LIMITER binding (wrangler.jsonc). */
 export const LIMITS: Limits = { perIpPerDay: 1000, globalPerDay: 20000, globalBytesPerDay: 20 * 1024 ** 3 };
-/** Upload API (agents): only auto-verified files are accepted, so limits can be high.
- *  Per-minute limit: API_UPLOAD_LIMITER binding. */
+/** Upload API (agents): most files are auto-verified, so limits can be high; unverified ones are
+ *  capped separately (REVIEW_QUEUE). Per-minute limit: API_UPLOAD_LIMITER binding. */
 export const API_LIMITS: Limits = { perIpPerDay: 5000, globalPerDay: 20000, globalBytesPerDay: 20 * 1024 ** 3 };
+/** API uploads that land in the review queue: per IP per day, and pending in total (all sources). */
+export const REVIEW_QUEUE = { perIpPerDay: 300, pendingTotal: 3000 };
+
+/** Returns a reason if an API upload can't be queued for review right now, else null. */
+export async function reviewQueueFull(env: Env, ip: string): Promise<string | null> {
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const r = await env.DB.prepare(
+    `SELECT SUM(status = 'pending') AS pending,
+            SUM(ip_hash = ?2 AND uploader = 'api' AND created_at > ?1 AND checks NOT LIKE '%"ok":true%') AS mine
+       FROM uploads WHERE status = 'pending' OR (ip_hash = ?2 AND created_at > ?1)`,
+  )
+    .bind(since, ip)
+    .first<{ pending: number | null; mine: number | null }>();
+  if ((r?.mine ?? 0) >= REVIEW_QUEUE.perIpPerDay)
+    return "You've sent many PDFs today that need a person to review them. Please wait for those to be reviewed and try again tomorrow.";
+  if ((r?.pending ?? 0) >= REVIEW_QUEUE.pendingTotal)
+    return "The review queue is full right now. Please try again in a few days.";
+  return null;
+}
 
 const toHex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 

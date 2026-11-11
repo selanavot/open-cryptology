@@ -25,8 +25,11 @@ The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
   Cloudflare. Tooling: `prefill-worker/`, `pipeline/prefill_via_worker.py`,
   `pipeline/apply_prefill.py`, `pipeline/missing_report.py`; all to be removed after the backfill.
   It can be re-run occasionally to pick up new public copies.
-- **Uploads:** anyone can upload a PDF for a paper that lacks an up-to-date copy; it lands in
-  `quarantine/` and is published only after it is verified against the paper's metadata.
+- **Uploads:** anyone can upload a PDF for a paper that lacks an up-to-date copy (web form, or
+  the agent API `POST /api/upload/YYYY/NNNN`). A file whose first two pages show the title and an
+  author's name (`worker/src/match.ts`, measured with `pipeline/verify_bench.mjs`) goes live at
+  once; any other well-formed PDF lands in `quarantine/` until the maintainer approves it at
+  `/review` (behind Cloudflare Access; at most one summary email per 15 minutes).
 - **Staleness:** `pdf_maybe_stale = 1` when the stored copy predates the paper's OAI `updated`
   datestamp (conservative: the datestamp also moves on some metadata-only edits). The page and
   the PDF response then say the copy may be an older revision; the upload endpoint accepts a

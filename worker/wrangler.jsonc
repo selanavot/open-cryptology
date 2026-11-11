@@ -30,6 +30,7 @@
   ],
   "vars": {
     "SITE_NAME": "Open Cryptology",
+    "SITE_URL": "https://opencryptology.org",
     "REPO_URL": "https://github.com/selanavot/open-cryptology",
     "SPONSOR_URL": "https://github.com/sponsors/selanavot",
     "ISSUES_URL": "https://github.com/selanavot/open-cryptology/issues",

@@ -27,6 +27,8 @@ export interface Env {
   /** Cloudflare Access (maintainer login) for /review: team domain + allowed application audience tags (comma-separated). */
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
+  /** Public origin (https://...), for links in emails sent from the cron (review reminders). */
+  SITE_URL?: string;
   /** Local dev only: "1" skips the Access check on /review. */
   REVIEW_DEV_BYPASS?: string;
 }

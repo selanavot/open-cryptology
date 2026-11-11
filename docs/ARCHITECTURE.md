@@ -35,7 +35,9 @@ obtain and search for humans and AI assistants, while respecting each paper's li
   original ePrint page, BibTeX
 - `/YYYY/NNNN.pdf` — PDF from R2 with license headers (`Link: <license>; rel="license"`)
 - `/YYYY/NNNN/versions/<stamp>.pdf` — one stored version (see `docs/VERSIONS.md`)
-- `/YYYY/NNNN/upload` (POST) — upload into quarantine
+- `/YYYY/NNNN/upload` (POST) — upload (live if verified, else quarantine); `/api/upload/YYYY/NNNN`
+  (POST) — the same for agents, JSON: 201 live, 202 queued for review
+- `/review`, `/review/<uploadId>` — maintainer review of quarantined uploads (Cloudflare Access)
 - `/api/papers/YYYY/NNNN` — JSON metadata; `/api/search?q=` — JSON search
 - `/llms.txt`, `/robots.txt`, `/about` (license guidance for humans and agents)
 
