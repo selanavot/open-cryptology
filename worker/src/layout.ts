@@ -83,6 +83,7 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
       <a class="site-name" href="/"><img class="site-logo" src="/static/logo.svg?v=${ASSET_VER}" alt="" width="40" height="40">${site}</a>
       <ul class="nav-links">
         <li><a href="/search">Papers</a></li>
+        <li><a href="${env.REPO_URL}">GitHub</a></li>
       </ul>
       <details class="nav-search">
         <summary title="Search" aria-label="Search">${searchIcon()}</summary>
@@ -118,6 +119,7 @@ function footer(env: Env): Html {
   <nav aria-label="Footer">
     <a href="/llms.txt">For AI agents (llms.txt)</a> ·
     <a href="/#contact">Contact</a> ·
+    <a href="${env.REPO_URL}">Source on GitHub</a> ·
     <a href="${env.ISSUES_URL}">Report an issue</a>
   </nav>
   <p>${env.SITE_NAME} is an unofficial, non-commercial mirror of the
