@@ -80,8 +80,9 @@ Withdrawn papers: like ePrint, the mirror keeps the full abstract page (HTTP 200
 "withdrawn": true and "withdrawn_on" (YYYY-MM-DD). If we hold a copy, the last available PDF is
 still served (HTTP 200, header X-Withdrawn: 1); please respect the authors' withdrawal: prefer
 not to rely on or redistribute a withdrawn paper without saying it was withdrawn. If we hold no copy,
-/YYYY/NNN.pdf answers 410. ePrint no longer offers withdrawn PDFs, but a copy saved before the
-withdrawal can be uploaded like any other (same endpoint and checks); it is shown as withdrawn.
+/YYYY/NNN.pdf answers 410. ePrint keeps a withdrawn paper's earlier versions at
+${env.ORIGIN_BASE}/archive/versions/YYYY/NNN/: have your user download the latest one and upload it
+like any other paper.
 
 ## License obligations (apply to you too)
 

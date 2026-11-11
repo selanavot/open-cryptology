@@ -8,8 +8,8 @@ category, license, history ending in "YYYY-MM-DD: withdrawn") and shows
 
 - `/YYYY/NNNN` answers 200 with the full metadata, a notice "Withdrawn by the authors on ePrint on
   YYYY-MM-DD", "-- withdrawn --" under Available format(s) and, if we hold one, the last PDF
-  (labelled withdrawn). Without a copy, the page invites an upload of a copy saved before the
-  withdrawal (ePrint no longer offers it); uploads go through the same checks as any other.
+  (labelled withdrawn). Without a copy, the page asks for an upload of the latest version from ePrint's version
+  list (`/archive/versions/YYYY/NNNN/`); uploads go through the same checks as any other.
 - `/YYYY/NNNN.pdf` serves that PDF (200) with `X-Withdrawn: 1`; 410 if we have no copy (with the
   upload URL, like the 404 for live papers).
 - `/api/papers/YYYY/NNNN` answers 200 with `withdrawn: true`, `withdrawn_on`, `pdf.withdrawn`.

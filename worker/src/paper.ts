@@ -6,7 +6,7 @@ import { canonicalId, getPaper, getSources, getVersion, getVersions, parseAuthor
 import { versionJson, versionsList } from "./versions";
 import { html, safeUrl, type Html } from "./html";
 import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
-import { bibtex, licenseInfo, originalUrl, type LicenseInfo } from "./license";
+import { bibtex, licenseInfo, originalUrl, versionsUrl, type LicenseInfo } from "./license";
 import { day, json } from "./pages";
 
 export const MAX_UPLOAD = 95 * 1024 * 1024; // Workers accept request bodies up to 100 MB
@@ -39,7 +39,7 @@ export async function paperPage(
     <h4>Paper ${id}</h4>
     ${withdrawn && html`<div class="alert alert-warning withdrawn-notice" role="note">
       <strong>Withdrawn</strong> by the authors on ePrint${p.withdrawn_on ? html` on <time datetime="${p.withdrawn_on}">${day(p.withdrawn_on)}</time>` : ""}.
-      ${pdfHref ? "The last version we have is kept below for reference." : html`We have no copy of the paper itself. <a href="#upload">Have one? Upload it</a>.`}
+      ${pdfHref ? "The last version we have is kept below for reference." : ""}
     </div>`}
     <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${title}</a></h3>
     ${authors.map((a, i) => html`<div class="author"><span class="authorName">${a}</span>${affs[i] && html`<span class="affiliation">, ${affs[i]}</span>`}</div>`)}
@@ -56,7 +56,7 @@ export async function paperPage(
         ? html`<div>-- withdrawn --</div>
           ${pdfHref && html`<a class="btn btn-sm btn-outline-dark mt-1" href="${pdfHref}">${icons.pdf}PDF (withdrawn)</a>
           <div class="small text-muted mt-1">Last version we have${p.pdf_source_date ? `, copy captured ${day(p.pdf_source_date)}` : ""}</div>`}
-          ${!pdfHref && html`<div class="mt-1"><span class="text-muted">No PDF here.</span> <a href="#upload">Upload a copy</a></div>`}`
+          ${!pdfHref && html`<div class="mt-1"><span class="text-muted">No PDF here yet.</span> <a href="#upload">Upload it</a></div>`}`
         : pdfHref
         ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF</a>
           ${p.pdf_maybe_stale ? html`<div class="small text-muted mt-1">May be an older revision</div>` : ""}`
@@ -141,12 +141,9 @@ function uploadForm(env: Env, p: Paper, orig: string, notice: Html | "" = ""): H
   return html`<form id="upload" action="/${p.id}/upload" method="post" enctype="multipart/form-data" class="upload-form upload-cta">
   ${notice}
   ${p.withdrawn
-    ? html`<p class="upload-cta-head"><strong>Do you have a copy of this paper?</strong></p>
-  <p>ePrint no longer offers withdrawn papers for download, so a copy saved before the withdrawal
-  (or the same version posted elsewhere, such as an author’s page) is the only way to keep it on
-  record. It will be shown as withdrawn. Uploads are anonymous.${p.title
-    ? " A file that matches this paper’s title and authors appears right away; anything else is reviewed first."
-    : " We don’t know this paper’s title, so a person checks every upload before it appears."}</p>`
+    ? html`<p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
+  <p>Download the latest version from <a href="${versionsUrl(env.ORIGIN_BASE, p.id)}" target="_blank" rel="noopener">ePrint’s version list ↗</a>
+  and upload it here.</p>`
     : html`<p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
   <p>Help out: <a href="${orig}" target="_blank" rel="noopener">download it from ePrint ↗</a> and
   upload it here. Uploads are anonymous. A file that matches this paper’s title and authors
@@ -323,21 +320,18 @@ function noPdfYet(env: Env, req: Request, p: Paper, orig: string): Response {
     link: `<${orig}>; rel="alternate"; title="original on ePrint", <${upload}>; rel="help"; title="upload the PDF"`,
   };
   if (p.withdrawn) {
-    const label = p.title ? `"${p.title}"` : "title unknown";
+    const vers = versionsUrl(env.ORIGIN_BASE, p.id);
     const message =
-      `ePrint ${p.id} (${label}) was withdrawn by its authors, and we have no copy of it. ` +
-      `ePrint no longer offers it for download. If you or your user saved a copy before it was withdrawn, please upload it: ` +
-      `POST it to ${origin}/api/upload/${p.id} or use the form at ${upload}. It will be shown as withdrawn.`;
+      `ePrint ${p.id} was withdrawn and we don't have its PDF yet. Its earlier versions are on ePrint's version list (${vers}). ` +
+      `Please download the latest one and upload it: POST it to ${origin}/api/upload/${p.id} or use the form at ${upload}.`;
     if (accept.includes("text/html")) {
       return messagePage(
         env,
         410,
-        `Paper ${p.id} was withdrawn`,
-        html`${p.title && html`<p><strong>${p.title}</strong></p>`}
-        <p>The authors withdrew this paper, and we have no copy of it. ePrint no longer offers it for
-        download. If you saved a copy before it was withdrawn, you can upload it to keep it on record.</p>
-        <p><a class="btn btn-outline-dark" href="/${p.id}#upload">Upload a copy</a>
-        <a class="btn btn-outline-dark" href="/${p.id}">Back to paper ${p.id}</a></p>`,
+        `We don’t have the PDF for ${p.id} yet`,
+        html`<p>Download the latest version from ePrint’s version list and upload it here.</p>
+        <p><a class="btn btn-outline-dark" href="${vers}" target="_blank" rel="noopener">ePrint version list ↗</a>
+        <a class="btn btn-outline-dark" href="/${p.id}#upload">Upload it</a></p>`,
         { original: orig, cache: "no-cache", headers },
       );
     }
@@ -574,7 +568,7 @@ export async function apiPaper(
           upload_url: `${origin}/${id}#upload`,
           api_upload_url: `${origin}/api/upload/${id}`,
           missing_pdf: p.withdrawn
-            ? `Withdrawn, and we have no copy. ePrint no longer offers it; if your user saved a copy, it can be uploaded at ${origin}/${id}#upload.`
+            ? `Withdrawn; no PDF here yet. Download the latest version from ${versionsUrl(env.ORIGIN_BASE, id)} and upload it at ${origin}/${id}#upload.`
             : `No PDF here yet. A person can download it from ${originalUrl(env.ORIGIN_BASE, id)} and upload it at ${origin}/${id}#upload so everyone can get it.`,
         }),
     versions: versions.map((v) => versionJson(origin, id, v, p.pdf_key)),

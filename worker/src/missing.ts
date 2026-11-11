@@ -158,7 +158,7 @@ function paperGrid(year: number, cells: Cell[], small = false): Html {
     } else if (c.have) out += `<a href="/${id}" title="${id}${c.withdrawn ? " · withdrawn" : ""}" tabindex="-1" aria-hidden="true"></a>`;
     else if (c.pending) out += `<a class="p" href="/${id}" title="${esc(`${id} · upload in review · ${c.title ?? ""}`)}"></a>`;
     else {
-      const what = c.withdrawn ? "withdrawn, no PDF yet: upload a saved copy" : "no PDF yet";
+      const what = c.withdrawn ? "withdrawn, no PDF yet" : "no PDF yet";
       out += `<a class="m" href="/${id}#upload" title="${esc(`${id} · ${what} · ${c.title || (c.withdrawn ? "title unknown" : "Untitled")}`)}"></a>`;
     }
   }
@@ -204,7 +204,6 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
   const sel = years.find((y) => y.year === asked) ?? (asked === null ? (focusYear(years) ?? years[0]) : undefined);
   const cells = sel ? await yearCells(env, sel.year) : [];
   const missing = years.reduce((s, y) => s + missingOf(y), 0);
-  const withdrawnMissing = years.reduce((s, y) => s + y.gone, 0);
   const body = html`<section class="missing-page">
   <div class="results-bar">
     <h4 class="results-h">Help us fill the gaps</h4>
@@ -212,14 +211,14 @@ export async function missingPage(env: Env, url: URL): Promise<Response> {
   </div>
   <p class="mt-3"><strong>${papersWord(missing)}</strong> ${missing === 1 ? "doesn’t" : "don’t"} have a PDF here yet.
   Grab one from ePrint and upload it on the paper’s page: it’s anonymous, and a matching file appears right away.
-  ${withdrawnMissing > 0 && html`${fmtInt(withdrawnMissing)} of them were withdrawn, and ePrint no longer offers those: if you saved a copy, upload that.`}</p>
+</p>
   <h5 class="mt-4">By year</h5>
   ${yearTiles(years, sel?.year ?? null)}
   ${sel
     ? html`<h5 class="mt-4">${sel.year}: ${fmtInt(sel.have)} of ${papersWord(sel.total)} have a PDF here${missingOf(sel)
         ? html`, ${fmtInt(missingOf(sel))} missing`
         : ""}</h5>
-  <p class="small mb-2">Each square is a paper, in number order. Hover for its ID; click a grey one to upload its PDF. Withdrawn papers say so when you hover.</p>
+  <p class="small mb-2">Each square is a paper, in number order. Hover for its ID; click a grey one to upload its PDF.</p>
   ${paperGrid(sel.year, cells)}
   ${legend(cells)}`
     : html`<p class="mt-4">No papers from ${asked} here. Pick a year above.</p>`}
