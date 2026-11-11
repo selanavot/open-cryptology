@@ -1,3 +1,4 @@
+import { apiUpload } from "./apiupload";
 import { handleReview, isReviewPath } from "./review";
 import { handleContact } from "./contact";
 import { runHarvest } from "./harvest";
@@ -13,6 +14,7 @@ import { llmsTxt, robotsTxt } from "./text";
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
 const PAPER_RE = /^\/(\d{4})\/(\d{1,6})(\.pdf|\/upload|\/|\/versions\/(\d{8}T\d{6}Z)\.pdf|\/versions\/?)?$/;
 const API_PAPER_RE = /^\/api\/papers\/(\d{4})\/(\d{1,6})\/?$/;
+const API_UPLOAD_RE = /^\/api\/upload\/(\d{4})\/(\d{1,6})\/?$/;
 
 function redirect(url: URL, path: string, status = 301): Response {
   const to = new URL(path, url);
@@ -67,6 +69,11 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
         "access-control-max-age": "86400",
       },
     });
+  }
+  const um = API_UPLOAD_RE.exec(path);
+  if (um) {
+    if (req.method !== "POST") return json({ error: "method_not_allowed", message: "POST the PDF to this URL." }, 405, "no-store");
+    return apiUpload(env, req, url, Number(um[1]), Number(um[2]));
   }
   if (isReviewPath(path)) {
     if (req.method !== "GET" && req.method !== "POST") return methodNotAllowed("GET, POST");

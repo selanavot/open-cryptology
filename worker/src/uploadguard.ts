@@ -2,12 +2,13 @@ import { type Env } from "./db";
 
 // Layer-1 abuse checks for anonymous PDF uploads (run before anything is stored).
 // Limits are generous enough for one person to upload a batch of papers in one sitting.
-export const LIMITS = {
-  perIpPerMinute: 30, // enforced by the UPLOAD_LIMITER rate-limit binding (wrangler.jsonc)
-  perIpPerDay: 300,
-  globalPerDay: 2000,
-  globalBytesPerDay: 4 * 1024 ** 3,
-};
+export interface Limits { perIpPerDay: number; globalPerDay: number; globalBytesPerDay: number }
+
+/** Upload form (people). Per-minute limit: UPLOAD_LIMITER binding (wrangler.jsonc). */
+export const LIMITS: Limits = { perIpPerDay: 1000, globalPerDay: 20000, globalBytesPerDay: 20 * 1024 ** 3 };
+/** Upload API (agents): only auto-verified files are accepted, so limits can be high.
+ *  Per-minute limit: API_UPLOAD_LIMITER binding. */
+export const API_LIMITS: Limits = { perIpPerDay: 5000, globalPerDay: 20000, globalBytesPerDay: 20 * 1024 ** 3 };
 
 const toHex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -20,9 +21,14 @@ export async function ipHash(env: Env, req: Request): Promise<string> {
 }
 
 /** Returns a user-facing reason if this client or the site as a whole is over its upload budget. */
-export async function overLimit(env: Env, ip: string): Promise<string | null> {
-  if (env.UPLOAD_LIMITER) {
-    const { success } = await env.UPLOAD_LIMITER.limit({ key: ip });
+export async function overLimit(
+  env: Env,
+  ip: string,
+  limits: Limits = LIMITS,
+  limiter: RateLimit | undefined = env.UPLOAD_LIMITER,
+): Promise<string | null> {
+  if (limiter) {
+    const { success } = await limiter.limit({ key: ip });
     if (!success) return "Too many uploads in the last minute. Please wait a minute and try again.";
   }
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
@@ -33,8 +39,8 @@ export async function overLimit(env: Env, ip: string): Promise<string | null> {
   )
     .bind(since, ip)
     .first<{ n: number; bytes: number; mine: number }>();
-  if ((r?.mine ?? 0) >= LIMITS.perIpPerDay) return "You’ve reached today’s upload limit. Thank you! Please try again tomorrow.";
-  if ((r?.n ?? 0) >= LIMITS.globalPerDay || (r?.bytes ?? 0) >= LIMITS.globalBytesPerDay)
+  if ((r?.mine ?? 0) >= limits.perIpPerDay) return "You’ve reached today’s upload limit. Thank you! Please try again tomorrow.";
+  if ((r?.n ?? 0) >= limits.globalPerDay || (r?.bytes ?? 0) >= limits.globalBytesPerDay)
     return "The site has received the maximum number of uploads for today. Please try again tomorrow.";
   return null;
 }

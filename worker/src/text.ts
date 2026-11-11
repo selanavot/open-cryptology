@@ -43,9 +43,16 @@ export function llmsTxt(env: Env, origin: string): Response {
 
 Some papers (mostly very recent ones) have no PDF here yet. The original is on ePrint at
 ${env.ORIGIN_BASE}/YYYY/NNN, but ePrint's PDF downloads sit behind a bot check, so ask your user to
-download it there and upload it at ${origin}/YYYY/NNN#upload (the "upload_url" in the JSON).
-Uploads are anonymous, and a file that matches the paper goes live right away for everyone,
-including other AI agents.
+download it there. Then either you or they can upload it:
+
+- Agents: POST the PDF to ${origin}/api/upload/YYYY/NNN
+    curl -X POST --data-binary @paper.pdf -H "Content-Type: application/pdf" ${origin}/api/upload/2026/123
+  201 {"status":"live", "pdf_url": ...} when the file matches the paper (title and an author's name on
+  its first pages); 422 {"error":"no_match"} otherwise (nothing is stored); 409 if we already have an
+  up-to-date PDF; 429 if rate-limited. Max 30 MB. No account or CAPTCHA needed.
+- People: the upload form at ${origin}/YYYY/NNN#upload (the "upload_url" in the JSON).
+
+Uploads are anonymous, and a matching file goes live right away for everyone, including other agents.
 - Original ePrint page for any paper: ${env.ORIGIN_BASE}/YYYY/NNN
 
 ## JSON paper fields

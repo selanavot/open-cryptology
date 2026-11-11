@@ -23,8 +23,11 @@
   ],
   "triggers": { "crons": ["17 */4 * * *"] },
   "send_email": [{ "name": "MAILER" }],
-  // Upload rate limit: 30 per minute per (salted) IP. Daily caps live in src/uploadguard.ts.
-  "ratelimits": [{ "name": "UPLOAD_LIMITER", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } }],
+  // Upload rate limits per (salted) IP: web form 60/min, agent API 120/min. Daily caps: src/uploadguard.ts.
+  "ratelimits": [
+    { "name": "UPLOAD_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } },
+    { "name": "API_UPLOAD_LIMITER", "namespace_id": "1002", "simple": { "limit": 120, "period": 60 } }
+  ],
   "vars": {
     "SITE_NAME": "Open Cryptology",
     "ISSUES_URL": "https://github.com/selanavot/open-cryptology/issues",
