@@ -2,7 +2,7 @@ import { type Env } from "./db";
 
 // Belt-and-braces alarm for the metadata harvest. The harvest runs on GitHub Actions
 // (.github/workflows/harvest.yml, pipeline/harvest_remote.py), which writes meta.harvest_last_ok
-// after every successful run (every 4 h). If that is missing or older than STALE_AFTER, the
+// after every successful run (every 8 h). If that is missing or older than STALE_AFTER, the
 // Worker cron emails the maintainer, at most once per RESEND_EVERY.
 
 const STALE_AFTER = 26 * 3600_000;

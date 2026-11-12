@@ -6,8 +6,8 @@ pipeline against Wrangler's emulated D1/R2 instead (`pipeline/README.md`).
 ## Metadata (live)
 
 - **Initial load:** `pipeline/harvest_oai.py` (full OAI-PMH ListRecords, written to remote D1).
-- **Updates:** GitHub Actions, every 4 hours (`.github/workflows/harvest.yml`, cron
-  `23 */4 * * *`, also runnable by hand) runs `pipeline/harvest_remote.py`: incremental
+- **Updates:** GitHub Actions, every 8 hours (`.github/workflows/harvest.yml`, cron
+  `23 */8 * * *`, also runnable by hand) runs `pipeline/harvest_remote.py`: incremental
   `ListRecords&from=<meta.last_harvest minus 30 days>` (a new paper's datestamp is its submission
   time, but it only appears in OAI once approved, often days later; harvesting strictly from the
   watermark missed such papers; records we already hold unchanged are skipped, so the look-back

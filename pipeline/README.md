@@ -7,7 +7,7 @@ by default) and to `gh` for GitHub listings.
 
 Nothing here writes data into git: generated SQL, caches and temp PDFs go under `data/`
 (gitignored) and are deleted after use. Nothing here fetches PDFs from eprint.iacr.org.
-In production, metadata stays current via `harvest_remote.py` on GitHub Actions every 4 h
+In production, metadata stays current via `harvest_remote.py` on GitHub Actions every 8 h
 (`.github/workflows/harvest.yml`, details in `docs/INGESTION.md`); how PDFs get
 into R2 is described in `docs/INGESTION.md`.
 
