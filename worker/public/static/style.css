@@ -374,7 +374,7 @@ a.year-tile.sel { outline: 3px solid var(--link); outline-offset: 1px; }
 .paper-grid .m { background: #d0d4d9; }
 .paper-grid .o { background: #ffc72c; }
 .paper-grid .p { background: #79b8ff; }
-.paper-grid a.m:hover, .paper-grid a.o:hover, .paper-grid a.p:hover, .paper-grid a:focus-visible { background: var(--link-hover); outline: none; }
+.paper-grid a:hover, .paper-grid a:focus-visible { background: var(--link-hover); outline: none; }
 .grid-legend { display: flex; flex-wrap: wrap; gap: .25rem 1rem; list-style: none; margin: .5rem 0 0; padding: 0; color: var(--muted); }
 .grid-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; background: #40c463; }
 .grid-legend i.m { background: #d0d4d9; }
