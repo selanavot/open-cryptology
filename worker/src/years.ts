@@ -153,18 +153,18 @@ function yearTiles(years: YearStat[], selected: number | null = null): Html {
   })}</div>`;
 }
 
-/** One square per paper of a year, in number order. Missing and outdated papers link to their
- *  upload box and are the only ones in the tab order; the rest are decoration for assistive tech. Built as one
- *  string: a year has thousands of cells. The small (homepage) grid keeps the markup light: plain
- *  squares for papers we have, and no titles in the tooltips. */
+/** One square per paper of a year, in number order, each a link to its paper. Missing and outdated
+ *  papers link to their upload box and are the only ones in the tab order; the rest are hidden from
+ *  assistive tech. Built as one string: a year has thousands of cells. The small (homepage) grid keeps
+ *  the markup light: no titles in the tooltips. */
 function paperGrid(year: number, cells: Cell[], small = false): Html {
   let out = `<div class="paper-grid${small ? " small" : ""}">`;
   for (const c of cells) {
     const id = canonicalId(year, c.num);
     if (small) {
-      if (c.pending) out += `<i class="p"></i>`;
+      if (c.pending) out += `<a class="p" href="/${id}" title="${id} · upload in review" tabindex="-1" aria-hidden="true"></a>`;
       else if (c.outdated) out += `<a class="o" href="/${id}#upload" title="${id} · may be outdated"></a>`;
-      else if (c.have) out += `<i></i>`;
+      else if (c.have) out += `<a href="/${id}" title="${id}" tabindex="-1" aria-hidden="true"></a>`;
       else out += `<a class="m" href="/${id}#upload" title="${id} · ${c.withdrawn ? "withdrawn, " : ""}no PDF yet"></a>`;
     } else if (c.pending) out += `<a class="p" href="/${id}" title="${esc(`${id} · upload in review · ${c.title ?? ""}`)}"></a>`;
     else if (c.outdated) out += `<a class="o" href="/${id}#upload" title="${esc(`${id} · may be outdated: ePrint changed it after our copy · ${c.title ?? ""}`)}"></a>`;
