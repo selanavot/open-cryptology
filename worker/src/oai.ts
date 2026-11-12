@@ -1,6 +1,6 @@
 // OAI-PMH record parsing and the D1 upsert, used by the scheduled harvest (harvest.ts) with the
 // same normalization as pipeline/harvest_oai.py. Requests from visitors never reach ePrint: the
-// harvest (every 4 hours) is the only thing that talks to it.
+// harvest (every 8 hours) is the only thing that talks to it.
 
 import { type Env } from "./db";
 import { licenseCode } from "./license";

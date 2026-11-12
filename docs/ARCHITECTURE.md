@@ -24,7 +24,7 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 | PDFs | Cloudflare R2 bucket `open-cryptology-pdfs` | `pdf/YYYY/NNNN.pdf`; more versions `pdf/YYYY/NNNN/<stamp>.pdf`; uploads under `quarantine/` |
 | Site + API | Cloudflare Worker (`worker/`) | server-rendered HTML, JSON API, `llms.txt` |
 | Pipeline | `pipeline/` (Python, stdlib) | initial OAI harvest → D1; source discovery; local-dev PDF sample |
-| Updates | GitHub Actions every 4 h (`.github/workflows/harvest.yml`) | incremental OAI `from=` metadata harvest (30-day look-back) + RSS PDF sizes → D1 via the D1 HTTP API (`pipeline/harvest_remote.py`); PDFs prefilled separately |
+| Updates | GitHub Actions every 8 h (`.github/workflows/harvest.yml`) | incremental OAI `from=` metadata harvest (30-day look-back) + RSS PDF sizes → D1 via the D1 HTTP API (`pipeline/harvest_remote.py`); PDFs prefilled separately |
 | Monitoring | Worker Cron Trigger every 4 h | emails the maintainer if the harvest hasn't succeeded for 26 h (`worker/src/staleness.ts`); failed workflow runs email via GitHub; also pings IndexNow (`worker/src/indexnow.ts`) |
 
 ## Routes (Worker)

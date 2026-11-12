@@ -1,4 +1,4 @@
-# Metadata harvest: ePrint OAI-PMH -> production D1, every 4 hours.
+# Metadata harvest: ePrint OAI-PMH -> production D1, every 8 hours.
 # Runs here (not in the Worker cron) because ePrint's Cloudflare challenges requests from Workers.
 # A failed run is the alert: GitHub emails the repo owner about failed scheduled runs when
 # Settings -> Notifications -> Actions -> "Send notifications for failed workflows only" is on.
@@ -7,7 +7,7 @@ name: Metadata harvest
 
 on:
   schedule:
-    - cron: "23 */4 * * *"
+    - cron: "23 */8 * * *"
   workflow_dispatch:
     inputs:
       max_pages:
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
