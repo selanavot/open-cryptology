@@ -187,23 +187,25 @@ const legend = (cells: Cell[]) => {
 </ul>`;
 };
 
-/** Homepage side card. */
-/** Homepage side card, and the year page to send people who want to fill gaps to. */
+/** Homepage side card (its grid is always the newest year), and the year page to send people who
+ *  want to fill gaps to. */
 export async function missingCard(env: Env, origin: string): Promise<{ card: Html; tex: boolean; gapsYear: number }> {
   const years = await yearStats(env, origin);
   const total = years.reduce((s, y) => s + y.total, 0);
   const have = years.reduce((s, y) => s + y.have, 0);
   const focus = focusYear(years);
-  const cells = focus ? await cached(origin, `${CELLS_KEY}-${focus.year}`, 300, () => yearCells(env, focus.year)) : [];
+  const shown = years[0];
+  const cells = shown ? await cached(origin, `${CELLS_KEY}-${shown.year}`, 300, () => yearCells(env, shown.year)) : [];
+  const m = shown ? missingOf(shown) : 0;
   const content = html`<p class="small mb-2"><strong>${fmtInt(have)} of ${papersWord(total)}</strong> have a PDF here.
     ${focus ? "Can you upload a missing one?" : "No paper is waiting for an upload now. Thank you for helping!"}</p>
   ${yearTiles(years)}
-  ${focus &&
-  html`<p class="small mt-3 mb-1"><strong>${focus.year}</strong> · ${fmtInt(missingOf(focus))} missing</p>
-  ${paperGrid(focus.year, cells, true)}
+  ${shown &&
+  html`<p class="small mt-3 mb-1"><strong>${shown.year}</strong> · ${m ? `${fmtInt(m)} missing` : "none missing"}</p>
+  ${paperGrid(shown.year, cells, true)}
   ${legend(cells)}
-  <p class="mt-2 mb-0"><a href="/${focus.year}">See all papers from ${focus.year} →</a></p>`}`;
-  return { card: card("Papers by year", content, "home-missing"), tex: false, gapsYear: (focus ?? years[0])?.year ?? new Date().getUTCFullYear() };
+  <p class="mt-2 mb-0"><a href="/${shown.year}">See all papers from ${shown.year} →</a></p>`}`;
+  return { card: card("Papers by year", content, "home-missing"), tex: false, gapsYear: (focus ?? shown)?.year ?? new Date().getUTCFullYear() };
 }
 
 /** A year's papers, newest first, with what the grid needs. */
