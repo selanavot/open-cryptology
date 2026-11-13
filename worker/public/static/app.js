@@ -95,9 +95,11 @@
     var card = document.querySelector(".home-missing");
     if (!card || !window.fetch) return;
     var got = {};
+    // The fragment URL carries this script's ?v=, so a deploy never mixes old fragments in.
+    var ver = ((document.currentScript && document.currentScript.src) || "").split("?")[1] || "";
     function load(year) {
       if (!got[year]) {
-        got[year] = fetch("/__grid/" + year).then(function (r) {
+        got[year] = fetch("/__grid/" + year + (ver ? "?" + ver : "")).then(function (r) {
           if (!r.ok) throw new Error(r.status);
           return r.text();
         });
