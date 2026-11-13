@@ -143,13 +143,15 @@ const share = (n: number, total: number) => `${total ? ((100 * n) / total).toFix
 
 /** One tile per year, filled from the bottom: green for papers with an up-to-date PDF here, then
  *  yellow for those whose PDF may be outdated, light grey for the rest. The label is the green share. */
-function yearTiles(years: YearStat[], selected: number | null = null): Html {
+/** `selected` gets the .sel outline; `aria` is its aria-current ("page" on its own year page,
+ *  "true" for the homepage card's shown grid). */
+function yearTiles(years: YearStat[], selected: number | null = null, aria = "page"): Html {
   return html`<div class="year-tiles">${years.map((y) => {
     const current = y.have - y.outdated;
     const p = pct(current, y.total);
     const m = missingOf(y);
     const tip = `${y.year}: ${fmtInt(y.have)} of ${papersWord(y.total)} have a PDF here${m ? ` · ${fmtInt(m)} missing` : ""}${y.gone ? ` (${fmtInt(y.gone)} withdrawn)` : ""}${y.outdated ? ` · ${fmtInt(y.outdated)} may be outdated` : ""}${y.pending ? ` · ${fmtInt(y.pending)} in review` : ""}`;
-    return html`<a class="year-tile${p === 100 ? " full" : ""}${y.year === selected ? " sel" : ""}" href="/${y.year}" style="--cur:${share(current, y.total)};--fill:${share(y.have, y.total)}" title="${tip}"${y.year === selected ? html` aria-current="page"` : ""}><span class="yt-year">${y.year}</span>${p < 100 ? html`<span class="yt-pct">${p}%</span>` : ""}</a>`;
+    return html`<a class="year-tile${p === 100 ? " full" : ""}${y.year === selected ? " sel" : ""}" href="/${y.year}" style="--cur:${share(current, y.total)};--fill:${share(y.have, y.total)}" title="${tip}"${y.year === selected ? html` aria-current="${aria}"` : ""}><span class="yt-year">${y.year}</span>${p < 100 ? html`<span class="yt-pct">${p}%</span>` : ""}</a>`;
   })}</div>`;
 }
 
@@ -223,7 +225,7 @@ export async function missingCard(env: Env, origin: string): Promise<{ card: Htm
   const cells = shown ? await yearCellsCached(env, origin, shown.year) : [];
   const content = html`<p class="small mb-2"><strong>${fmtInt(have)} of ${papersWord(total)}</strong> have a PDF here.
     ${focus ? "Can you upload a missing one?" : "No paper is waiting for an upload now. Thank you for helping!"}</p>
-  ${yearTiles(years)}
+  ${yearTiles(years, shown?.year ?? null, "true")}
   ${shown && homeGrid(years, shown, cells)}`;
   return { card: card("Papers by year", content, "home-missing"), tex: false, gapsYear: (focus ?? shown)?.year ?? new Date().getUTCFullYear() };
 }
