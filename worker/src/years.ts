@@ -16,10 +16,10 @@ import { card, hasTex, messagePage, page } from "./layout";
 import { fmtInt } from "./pages";
 import { ogImage, siteOrigin } from "./seo";
 
-const PENDING = `EXISTS (SELECT 1 FROM uploads u WHERE u.paper_id = papers.id AND u.status = 'pending')`;
+export const PENDING = `EXISTS (SELECT 1 FROM uploads u WHERE u.paper_id = papers.id AND u.status = 'pending')`;
 /** We have a PDF, but ePrint changed the paper after it was captured (papers.pdf_maybe_stale, set
  *  by the harvest): a newer version may exist. Withdrawn papers are never "outdated". */
-const STALE = `(pdf_key IS NOT NULL AND pdf_maybe_stale = 1 AND withdrawn = 0)`;
+export const STALE = `(pdf_key IS NOT NULL AND pdf_maybe_stale = 1 AND withdrawn = 0)`;
 
 // ---------------------------------------------------------------------------- data
 
@@ -210,7 +210,7 @@ function homeGrid(years: YearStat[], shown: YearStat, cells: Cell[]): Html {
   <p class="grid-counts small mb-1">${counts}</p>
   ${paperGrid(shown.year, cells, true)}
   ${legend(cells)}
-  <p class="mt-2 mb-0"><a href="/${shown.year}">See all papers from ${shown.year} →</a></p>
+  <p class="mt-2 mb-0"><a href="/${shown.year}">See all papers from ${shown.year} →</a><br><a href="/missing">List of papers that need a PDF →</a></p>
 </div>`;
 }
 
@@ -278,7 +278,7 @@ export async function yearPage(env: Env, url: URL, year: number): Promise<Respon
   <h3 class="mb-3">Papers from ${year}</h3>
   ${yearTiles(years, year)}
   <h5 class="mt-4">${papersWord(sel.total)}${missing ? html` · ${fmtInt(missing)} missing` : ""}${sel.outdated ? html` · ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
-  ${!!(missing || sel.outdated) && html`<p class="small mb-2">Click a grey or yellow square to upload.</p>`}
+  ${!!(missing || sel.outdated) && html`<p class="small mb-2">Click a grey or yellow square to upload, or see <a href="/missing?year=${year}">the list</a>.</p>`}
   ${paperGrid(year, rows)}
   ${legend(rows)}
   <h5 class="mt-4">All ${papersWord(listed.length)}, newest first</h5>
