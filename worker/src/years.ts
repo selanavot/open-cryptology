@@ -187,19 +187,22 @@ const legend = (cells: Cell[]) => {
 </ul>`;
 };
 
-/** The homepage card's grid of one year, with arrows to the year before and after it. Without JS
+/** The homepage card's grid of one year, with arrows to the years beside it, in the tiles' order
+ *  (newest first): ‹ goes to the newer year, › to the older one. Without JS
  *  the arrows go to those years' pages; app.js swaps in /__grid/YYYY (gridFragment) instead. */
 function homeGrid(years: YearStat[], shown: YearStat, cells: Cell[]): Html {
   const i = years.findIndex((y) => y.year === shown.year);
   const older = years[i + 1];
   const newer = i > 0 ? years[i - 1] : undefined;
-  const arrow = (y: YearStat | undefined, cls: string, label: string, glyph: string) =>
+  const chevron = (d: string) =>
+    html`<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const arrow = (y: YearStat | undefined, cls: string, label: string, d: string) =>
     y
-      ? html`<a class="grid-nav ${cls}" href="/${y.year}" data-grid-year="${y.year}" aria-label="${label} (${y.year})" title="${y.year}">${glyph}</a>`
-      : html`<span class="grid-nav ${cls} off" aria-hidden="true">${glyph}</span>`;
+      ? html`<a class="grid-nav ${cls}" href="/${y.year}" data-grid-year="${y.year}" aria-label="${label} (${y.year})" title="${y.year}">${chevron(d)}</a>`
+      : html`<span class="grid-nav ${cls} off" aria-hidden="true">${chevron(d)}</span>`;
   const m = missingOf(shown);
   return html`<div class="home-grid" data-year="${shown.year}">
-  <p class="grid-head small mt-3 mb-1">${arrow(older, "prev", "Previous year", "‹")}<span><strong>${shown.year}</strong> · ${m ? `${fmtInt(m)} missing` : "none missing"}</span>${arrow(newer, "next", "Next year", "›")}</p>
+  <p class="grid-head small mt-3 mb-1">${arrow(newer, "prev", "Newer year", "M10 3.5 5.5 8l4.5 4.5")}<span><strong>${shown.year}</strong> · ${m ? `${fmtInt(m)} missing` : "none missing"}</span>${arrow(older, "next", "Older year", "M6 3.5 10.5 8 6 12.5")}</p>
   ${paperGrid(shown.year, cells, true)}
   ${legend(cells)}
   <p class="mt-2 mb-0"><a href="/${shown.year}">See all papers from ${shown.year} →</a></p>
