@@ -63,8 +63,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     <p><strong>PDFs</strong> come from existing public copies, and readers <a href="/${missing.gapsYear}">fill in the gaps</a>: if one is
     missing, download it from ePrint and upload it anonymously here.</p>
     <p><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the
-    original. Please respect it: credit the authors, no commercial use for NC papers, unmodified
-    copies only for ND.</p>
+    original. Please respect it.</p>
     <p><strong>What’s next.</strong> The vision is a one-stop place for everything known about each
     paper, kept up to date as cryptography moves on: discussion, links between papers and the
     protocols they build on, and known attacks on each construction.</p>
