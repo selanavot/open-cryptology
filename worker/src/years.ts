@@ -187,7 +187,29 @@ const legend = (cells: Cell[]) => {
 </ul>`;
 };
 
-/** Homepage side card (its grid is always the newest year), and the year page to send people who
+/** The homepage card's grid of one year, with arrows to the year before and after it. Without JS
+ *  the arrows go to those years' pages; app.js swaps in /__grid/YYYY (gridFragment) instead. */
+function homeGrid(years: YearStat[], shown: YearStat, cells: Cell[]): Html {
+  const i = years.findIndex((y) => y.year === shown.year);
+  const older = years[i + 1];
+  const newer = i > 0 ? years[i - 1] : undefined;
+  const arrow = (y: YearStat | undefined, cls: string, label: string, glyph: string) =>
+    y
+      ? html`<a class="grid-nav ${cls}" href="/${y.year}" data-grid-year="${y.year}" aria-label="${label} (${y.year})" title="${y.year}">${glyph}</a>`
+      : html`<span class="grid-nav ${cls} off" aria-hidden="true">${glyph}</span>`;
+  const m = missingOf(shown);
+  return html`<div class="home-grid" data-year="${shown.year}">
+  <p class="grid-head small mt-3 mb-1">${arrow(older, "prev", "Previous year", "‹")}<span><strong>${shown.year}</strong> · ${m ? `${fmtInt(m)} missing` : "none missing"}</span>${arrow(newer, "next", "Next year", "›")}</p>
+  ${paperGrid(shown.year, cells, true)}
+  ${legend(cells)}
+  <p class="mt-2 mb-0"><a href="/${shown.year}">See all papers from ${shown.year} →</a></p>
+</div>`;
+}
+
+const yearCellsCached = (env: Env, origin: string, year: number) =>
+  cached(origin, `${CELLS_KEY}-${year}`, 300, () => yearCells(env, year));
+
+/** Homepage side card (its grid starts at the newest year), and the year page to send people who
  *  want to fill gaps to. */
 export async function missingCard(env: Env, origin: string): Promise<{ card: Html; tex: boolean; gapsYear: number }> {
   const years = await yearStats(env, origin);
@@ -195,17 +217,22 @@ export async function missingCard(env: Env, origin: string): Promise<{ card: Htm
   const have = years.reduce((s, y) => s + y.have, 0);
   const focus = focusYear(years);
   const shown = years[0];
-  const cells = shown ? await cached(origin, `${CELLS_KEY}-${shown.year}`, 300, () => yearCells(env, shown.year)) : [];
-  const m = shown ? missingOf(shown) : 0;
+  const cells = shown ? await yearCellsCached(env, origin, shown.year) : [];
   const content = html`<p class="small mb-2"><strong>${fmtInt(have)} of ${papersWord(total)}</strong> have a PDF here.
     ${focus ? "Can you upload a missing one?" : "No paper is waiting for an upload now. Thank you for helping!"}</p>
   ${yearTiles(years)}
-  ${shown &&
-  html`<p class="small mt-3 mb-1"><strong>${shown.year}</strong> · ${m ? `${fmtInt(m)} missing` : "none missing"}</p>
-  ${paperGrid(shown.year, cells, true)}
-  ${legend(cells)}
-  <p class="mt-2 mb-0"><a href="/${shown.year}">See all papers from ${shown.year} →</a></p>`}`;
+  ${shown && homeGrid(years, shown, cells)}`;
   return { card: card("Papers by year", content, "home-missing"), tex: false, gapsYear: (focus ?? shown)?.year ?? new Date().getUTCFullYear() };
+}
+
+/** /__grid/YYYY: the homepage card's grid for another year (HTML fragment, fetched by app.js). */
+export async function gridFragment(env: Env, origin: string, year: number): Promise<Response> {
+  const years = await yearStats(env, origin);
+  const shown = years.find((y) => y.year === year);
+  const headers = { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" };
+  if (!shown) return new Response("No papers from that year\n", { status: 404, headers: { ...headers, "cache-control": "no-store" } });
+  const cells = await yearCellsCached(env, origin, year);
+  return new Response(homeGrid(years, shown, cells).toString(), { headers: { ...headers, "cache-control": "public, max-age=300" } });
 }
 
 /** A year's papers, newest first, with what the grid needs. */

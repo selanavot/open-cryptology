@@ -89,8 +89,46 @@
     });
   }
 
+  // Homepage "Papers by year" card: the ‹ › arrows swap in another year's grid (/__grid/YYYY)
+  // instead of going to that year's page. Fragments are kept, so going back is instant.
+  function setupGridNav() {
+    var card = document.querySelector(".home-missing");
+    if (!card || !window.fetch) return;
+    var got = {};
+    function load(year) {
+      if (!got[year]) {
+        got[year] = fetch("/__grid/" + year).then(function (r) {
+          if (!r.ok) throw new Error(r.status);
+          return r.text();
+        });
+        got[year].catch(function () { delete got[year]; });
+      }
+      return got[year];
+    }
+    card.addEventListener("click", function (ev) {
+      var a = ev.target.closest && ev.target.closest("a.grid-nav[data-grid-year]");
+      if (!a || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button) return;
+      var cur = card.querySelector(".home-grid");
+      if (!cur) return;
+      ev.preventDefault();
+      var cls = a.classList.contains("prev") ? ".prev" : ".next";
+      cur.classList.add("loading");
+      load(a.getAttribute("data-grid-year")).then(function (frag) {
+        var t = document.createElement("template");
+        t.innerHTML = frag.trim();
+        var next = t.content.firstElementChild;
+        cur.replaceWith(next);
+        var focus = next.querySelector("a.grid-nav" + cls) || next.querySelector("a.grid-nav");
+        if (focus) focus.focus({ preventScroll: true });
+      }, function () {
+        location.href = a.href;
+      });
+    });
+  }
+
   renderTex();
   scrollToUpload();
+  setupGridNav();
   setupCopy();
   setupUpload();
   setupNavSearch();

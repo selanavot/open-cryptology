@@ -8,7 +8,7 @@ import { canonicalId, type Env } from "./db";
 import { html } from "./html";
 import { messagePage } from "./layout";
 import { apiPaper, handleUpload, paperPage, servePdf } from "./paper";
-import { yearPage } from "./years";
+import { gridFragment, yearPage } from "./years";
 import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
 import { supportPage } from "./support";
 import { llmsTxt, robotsTxt } from "./text";
@@ -21,6 +21,7 @@ const PAPER_RE = /^\/(\d{4})\/(\d{1,6})(\.pdf|\/upload|\/|\/versions\/(\d{8}T\d{
 const API_PAPER_RE = /^\/api\/papers\/(\d{4})\/(\d{1,6})\/?$/;
 const API_UPLOAD_RE = /^\/api\/upload\/(\d{4})\/(\d{1,6})\/?$/;
 const YEAR_RE = /^\/(\d{4})\/?$/;
+const GRID_RE = /^\/__grid\/(\d{4})$/;
 
 function redirect(url: URL, path: string, status = 301): Response {
   const to = new URL(path, url);
@@ -97,6 +98,9 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
   const am = API_PAPER_RE.exec(path);
   if (am) return apiPaper(env, url, Number(am[1]), Number(am[2]));
+
+  const gm = GRID_RE.exec(path);
+  if (gm) return gridFragment(env, url.origin, Number(gm[1]));
 
   const ym = YEAR_RE.exec(path);
   if (ym) {
