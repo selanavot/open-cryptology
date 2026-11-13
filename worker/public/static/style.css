@@ -365,6 +365,7 @@ a.year-tile.full { background: #30a14e; color: #fff; }
 a.year-tile:hover { outline: 2px solid var(--text); outline-offset: 1px; color: #102a17; }
 a.year-tile.full:hover { color: #fff; }
 a.year-tile.sel { outline: 3px solid var(--link); outline-offset: 1px; }
+.home-missing a.year-tile.sel { outline-width: 2px; }
 .yt-year { font-size: .8rem; font-weight: 600; }
 .yt-pct { font-size: .7rem; }
 .paper-grid { --cell: 11px; display: grid; grid-template-columns: repeat(auto-fill, var(--cell)); gap: 2px; }

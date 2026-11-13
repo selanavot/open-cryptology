@@ -121,6 +121,14 @@
         var next = t.content.firstElementChild;
         next.classList.add(cls === ".prev" ? "from-prev" : "from-next");
         cur.replaceWith(next);
+        // Outline the year's tile, as the year page does.
+        var y = next.getAttribute("data-year");
+        card.querySelectorAll(".year-tile").forEach(function (tile) {
+          var on = tile.getAttribute("href") === "/" + y;
+          tile.classList.toggle("sel", on);
+          if (on) tile.setAttribute("aria-current", "true");
+          else tile.removeAttribute("aria-current");
+        });
         var focus = next.querySelector("a.grid-nav" + cls) || next.querySelector("a.grid-nav");
         if (focus) focus.focus({ preventScroll: true });
       }, function () {
