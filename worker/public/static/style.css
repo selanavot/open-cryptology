@@ -375,6 +375,13 @@ a.year-tile.sel { outline: 3px solid var(--link); outline-offset: 1px; }
 .paper-grid .o { background: #ffc72c; }
 .paper-grid .p { background: #79b8ff; }
 .paper-grid a:hover, .paper-grid a:focus-visible { background: var(--link-hover); outline: none; }
+.grid-head { display: flex; align-items: center; gap: .5rem; }
+.grid-nav { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 4px; font-size: 1.1rem; line-height: 1; text-decoration: none; color: var(--link); border: 1px solid currentColor; }
+.grid-nav.next { margin-left: auto; }
+.grid-nav.prev + span { flex: 1; text-align: center; }
+a.grid-nav:hover, a.grid-nav:focus-visible { background: var(--link); color: #fff; text-decoration: none; }
+.grid-nav.off { color: var(--muted); opacity: .35; }
+.home-grid.loading { opacity: .5; }
 .grid-legend { display: flex; flex-wrap: wrap; gap: .25rem 1rem; list-style: none; margin: .5rem 0 0; padding: 0; color: var(--muted); }
 .grid-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; background: #40c463; }
 .grid-legend i.m { background: #d0d4d9; }
