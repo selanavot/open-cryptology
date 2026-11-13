@@ -28,6 +28,11 @@ export function llmsTxt(env: Env, origin: string): Response {
   This is the latest copy we hold. Other stored copies: ${origin}/YYYY/NNN/versions/YYYYMMDDThhmmssZ.pdf
   (listed in the JSON "versions"; the stamp is when the public copy was captured).
 - All papers of a year, with which ones have a PDF (HTML): ${origin}/YYYY   e.g. ${origin}/2024
+- Papers that need a PDF (missing, or ours may be outdated), newest first:
+  ${origin}/api/missing (JSON)   ${origin}/missing (HTML)
+  Filters: ?status=all|missing|outdated&year=YYYY&page=N (2,000 per page; follow "next").
+  Fields: id, status, title, authors, withdrawn, newer_on_eprint, url, api_url, download_from,
+  upload_url, api_upload_url. Papers with an upload in review are left out.
 - Sitemap of every paper page: ${origin}/sitemap.xml
 - Search (JSON): ${origin}/api/search?q=QUERY&page=1&sort=relevance|new
   Supports "phrases", prefix*, and author:/title:/abstract: filters. An ID query like "2024/123" is
