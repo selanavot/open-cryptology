@@ -202,9 +202,12 @@ function homeGrid(years: YearStat[], shown: YearStat, cells: Cell[]): Html {
     y
       ? html`<a class="grid-nav ${cls}" href="/${y.year}" data-grid-year="${y.year}" aria-label="${label} (${y.year})" title="${y.year}">${chevron(d)}</a>`
       : html`<span class="grid-nav ${cls} off" aria-hidden="true">${chevron(d)}</span>`;
-  const m = missingOf(shown);
+  // The three add up to the year's total: green squares, papers with no PDF yet (an upload in
+  // review included), yellow squares.
+  const counts = `${fmtInt(shown.have - shown.outdated)} available, ${fmtInt(shown.total - shown.have)} missing, ${fmtInt(shown.outdated)} outdated`;
   return html`<div class="home-grid" data-year="${shown.year}">
-  <p class="grid-head small mt-3 mb-1">${arrow(newer, "prev", "Newer year", "M10 3.5 5.5 8l4.5 4.5")}<span><strong>${shown.year}</strong> · ${m ? `${fmtInt(m)} missing` : "none missing"}</span>${arrow(older, "next", "Older year", "M6 3.5 10.5 8 6 12.5")}</p>
+  <p class="grid-head small mt-3 mb-0">${arrow(newer, "prev", "Newer year", "M10 3.5 5.5 8l4.5 4.5")}<strong>${shown.year}</strong>${arrow(older, "next", "Older year", "M6 3.5 10.5 8 6 12.5")}</p>
+  <p class="grid-counts small mb-1">${counts}</p>
   ${paperGrid(shown.year, cells, true)}
   ${legend(cells)}
   <p class="mt-2 mb-0"><a href="/${shown.year}">See all papers from ${shown.year} →</a></p>

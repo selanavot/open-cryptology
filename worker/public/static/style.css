@@ -380,6 +380,7 @@ a.year-tile.sel { outline: 3px solid var(--link); outline-offset: 1px; }
 .grid-nav { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; border-radius: 50%; color: var(--muted); transition: background-color .15s, color .15s; }
 a.grid-nav:hover, a.grid-nav:focus-visible { color: var(--text); background: rgba(0, 0, 0, .07); outline: none; }
 .grid-nav.off { visibility: hidden; }
+.grid-counts { text-align: center; color: var(--muted); }
 .home-grid.from-prev { animation: grid-in-prev .2s ease-out; }
 .home-grid.from-next { animation: grid-in-next .2s ease-out; }
 @keyframes grid-in-prev { from { opacity: 0; transform: translateX(-10px); } }
