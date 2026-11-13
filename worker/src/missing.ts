@@ -13,7 +13,7 @@ import { PENDING, STALE } from "./years";
 type Status = "all" | "missing" | "outdated";
 const STATUSES: Status[] = ["all", "missing", "outdated"];
 const HTML_PER_PAGE = 500;
-const API_PER_PAGE = 1000;
+const API_PER_PAGE = 2000;
 
 interface Row {
   id: string;

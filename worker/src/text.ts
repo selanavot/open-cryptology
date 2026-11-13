@@ -30,7 +30,7 @@ export function llmsTxt(env: Env, origin: string): Response {
 - All papers of a year, with which ones have a PDF (HTML): ${origin}/YYYY   e.g. ${origin}/2024
 - Papers that need a PDF (missing, or ours may be outdated), newest first:
   ${origin}/api/missing (JSON)   ${origin}/missing (HTML)
-  Filters: ?status=all|missing|outdated&year=YYYY&page=N (1,000 per page; follow "next").
+  Filters: ?status=all|missing|outdated&year=YYYY&page=N (2,000 per page; follow "next").
   Fields: id, status, title, authors, withdrawn, newer_on_eprint, url, api_url, download_from,
   upload_url, api_upload_url. Papers with an upload in review are left out.
 - Sitemap of every paper page: ${origin}/sitemap.xml
