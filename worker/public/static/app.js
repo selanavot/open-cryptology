@@ -119,6 +119,7 @@
         var t = document.createElement("template");
         t.innerHTML = frag.trim();
         var next = t.content.firstElementChild;
+        next.classList.add(cls === ".prev" ? "from-prev" : "from-next");
         cur.replaceWith(next);
         var focus = next.querySelector("a.grid-nav" + cls) || next.querySelector("a.grid-nav");
         if (focus) focus.focus({ preventScroll: true });

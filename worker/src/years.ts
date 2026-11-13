@@ -193,13 +193,15 @@ function homeGrid(years: YearStat[], shown: YearStat, cells: Cell[]): Html {
   const i = years.findIndex((y) => y.year === shown.year);
   const older = years[i + 1];
   const newer = i > 0 ? years[i - 1] : undefined;
-  const arrow = (y: YearStat | undefined, cls: string, label: string, text: string) =>
+  const chevron = (d: string) =>
+    html`<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const arrow = (y: YearStat | undefined, cls: string, label: string, d: string) =>
     y
-      ? html`<a class="btn btn-outline-dark btn-sm grid-nav ${cls}" href="/${y.year}" data-grid-year="${y.year}" aria-label="${label} (${y.year})">${text}</a>`
-      : html`<span class="btn btn-outline-dark btn-sm grid-nav ${cls} off" aria-hidden="true">${text}</span>`;
+      ? html`<a class="grid-nav ${cls}" href="/${y.year}" data-grid-year="${y.year}" aria-label="${label} (${y.year})" title="${y.year}">${chevron(d)}</a>`
+      : html`<span class="grid-nav ${cls} off" aria-hidden="true">${chevron(d)}</span>`;
   const m = missingOf(shown);
   return html`<div class="home-grid" data-year="${shown.year}">
-  <p class="grid-head small mt-3 mb-1">${arrow(older, "prev", "Previous year", `← ${older?.year ?? shown.year - 1}`)}<span><strong>${shown.year}</strong> · ${m ? `${fmtInt(m)} missing` : "none missing"}</span>${arrow(newer, "next", "Next year", `${newer?.year ?? shown.year + 1} →`)}</p>
+  <p class="grid-head small mt-3 mb-1">${arrow(older, "prev", "Previous year", "M10 3.5 5.5 8l4.5 4.5")}<span><strong>${shown.year}</strong> · ${m ? `${fmtInt(m)} missing` : "none missing"}</span>${arrow(newer, "next", "Next year", "M6 3.5 10.5 8 6 12.5")}</p>
   ${paperGrid(shown.year, cells, true)}
   ${legend(cells)}
   <p class="mt-2 mb-0"><a href="/${shown.year}">See all papers from ${shown.year} →</a></p>
