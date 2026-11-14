@@ -430,14 +430,21 @@ function readOAuthCookie(req: Request): OAuthState | null {
 
 /** Start an OAuth round trip: remember state + PKCE verifier in a short-lived cookie (the
  *  __Host- prefix means only we can set it), then send the browser to the provider. */
-export async function oauthRedirect(authorizeUrl: string, params: Record<string, string>, st: Omit<OAuthState, "s" | "v">): Promise<Response> {
+export async function oauthRedirect(
+  authorizeUrl: string,
+  params: Record<string, string>,
+  st: Omit<OAuthState, "s" | "v">,
+  pkce = true,
+): Promise<Response> {
   const s = randomToken(16);
   const v = randomToken(32);
   const u = new URL(authorizeUrl);
   for (const [k, val] of Object.entries(params)) u.searchParams.set(k, val);
   u.searchParams.set("state", s);
-  u.searchParams.set("code_challenge", await pkceChallenge(v));
-  u.searchParams.set("code_challenge_method", "S256");
+  if (pkce) {
+    u.searchParams.set("code_challenge", await pkceChallenge(v));
+    u.searchParams.set("code_challenge_method", "S256");
+  }
   const cookie = b64url(new TextEncoder().encode(JSON.stringify({ s, v, ...st })));
   return redirect303(u.toString(), [`${OAUTH_COOKIE}=${cookie}; HttpOnly; ${cookieAttrs(600)}`]);
 }
@@ -547,7 +554,148 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     return redirect303(safeNext(form?.get("next")?.toString()), clearCookies());
   }
 
+  // ORCID (public API, /authenticate scope): sign in, or link to the signed-in account.
+  if (path === "/auth/orcid" && isGet) {
+    const next = safeNext(url.searchParams.get("next") ?? "/account");
+    if (!env.ORCID_CLIENT_ID || !env.ORCID_CLIENT_SECRET)
+      return authMessage(env, 503, "ORCID isn't set up", "Sign-in with ORCID isn't configured on this server yet.", next);
+    const signedIn = !!(await currentUser(env, req));
+    return oauthRedirect(
+      `${orcidBase(env)}/oauth/authorize`,
+      { client_id: env.ORCID_CLIENT_ID, response_type: "code", scope: "/authenticate", redirect_uri: `${authOrigin(env, url)}/auth/orcid/callback` },
+      { n: next, m: signedIn ? "link" : "login" },
+      false, // ORCID's public API doesn't document PKCE; state + the client secret protect the code
+    );
+  }
+
+  if (path === "/auth/orcid/callback" && isGet) {
+    const st = oauthCallbackState(req, url);
+    if (!st) {
+      const cancelled = url.searchParams.get("error") === "access_denied";
+      return authMessage(env, 400, cancelled ? "Cancelled" : "ORCID sign-in failed",
+        cancelled ? "You didn't authorize access to your ORCID iD." : "The link expired or was already used. Please try again.", "/account");
+    }
+    const o = await orcidProfile(env, url.searchParams.get("code")!, `${authOrigin(env, url)}/auth/orcid/callback`);
+    if (!o) return authMessage(env, 502, "ORCID sign-in failed", "ORCID didn't confirm your iD. Please try again.", st.n);
+    return orcidDone(env, req, o, st.m, st.n, [clearOAuthCookie]);
+  }
+
+  // Local testing without an ORCID client: AUTH_DEV_LOGIN=1 (never in production).
+  if (path === "/auth/dev-orcid" && isGet && env.AUTH_DEV_LOGIN === "1") {
+    const orcid = url.searchParams.get("orcid") ?? "";
+    if (!ORCID_RE.test(orcid)) return authMessage(env, 400, "Bad dev ORCID", "Use /auth/dev-orcid?orcid=0000-0002-1825-0097&name=…");
+    const signedIn = !!(await currentUser(env, req));
+    return orcidDone(env, req, { orcid, name: url.searchParams.get("name") ?? "" }, signedIn ? "link" : "login", safeNext(url.searchParams.get("next") ?? "/account"));
+  }
+
   return authMessage(env, 404, "Not found", "There's nothing here.");
+}
+
+// ---------------------------------------------------------------------------------------------
+// ORCID
+
+export const ORCID_RE = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
+const orcidBase = (env: Env) => (env.ORCID_BASE || "https://orcid.org").replace(/\/$/, "");
+
+async function orcidProfile(env: Env, code: string, redirectUri: string): Promise<{ orcid: string; name: string } | null> {
+  const r = await fetch(`${orcidBase(env)}/oauth/token`, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": UA },
+    body: new URLSearchParams({
+      client_id: env.ORCID_CLIENT_ID!,
+      client_secret: env.ORCID_CLIENT_SECRET!,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: redirectUri,
+    }),
+  });
+  // The token response itself carries the iD and name; the access token is never stored or used.
+  const j = (await r.json().catch(() => null)) as { orcid?: string; name?: string } | null;
+  return j?.orcid && ORCID_RE.test(j.orcid) ? { orcid: j.orcid, name: j.name ?? "" } : null;
+}
+
+/** After ORCID confirmed an iD: link it to the signed-in account, or sign in with it (creating an
+ *  account if it's new). An iD already linked to another account is never moved or merged. */
+async function orcidDone(
+  env: Env,
+  req: Request,
+  o: { orcid: string; name: string },
+  mode: "login" | "link",
+  next: string,
+  extraCookies: string[] = [],
+): Promise<Response> {
+  const owner = await env.DB.prepare(
+    "SELECT i.user_id FROM identities i JOIN users u ON u.id = i.user_id WHERE i.provider = 'orcid' AND i.provider_user_id = ?1 AND u.deleted_at IS NULL",
+  )
+    .bind(o.orcid)
+    .first<{ user_id: string }>();
+  const url = `https://orcid.org/${o.orcid}`;
+  if (mode === "link") {
+    const me = await currentUser(env, req);
+    if (!me || me.via !== "session") return authMessage(env, 401, "Signed out", "Sign in again, then link your ORCID iD.", "/account");
+    if (owner && owner.user_id !== me.user.id)
+      return authMessage(env, 409, "Already linked", "This ORCID iD belongs to another account here. Sign in with it to use that account.", "/account");
+    if (!owner)
+      await env.DB.prepare(
+        "INSERT INTO identities (provider, provider_user_id, user_id, handle, url, public, created_at) VALUES ('orcid', ?1, ?2, ?1, ?3, 1, ?4)",
+      )
+        .bind(o.orcid, me.user.id, url, nowIso())
+        .run();
+    return redirect303("/account?saved=orcid", extraCookies);
+  }
+  let user: { id: string; display_name: string };
+  if (owner) {
+    const u = await loadUser(env, owner.user_id);
+    if (!u) return authMessage(env, 404, "Sign-in failed", "That account no longer exists.");
+    user = { id: u.id, display_name: u.displayName };
+  } else {
+    // New account from ORCID alone. Use the ORCID name when it's free, else "user-<id>".
+    const id = randomId();
+    const name = o.name && !(await nameProblem(env, "", o.name)) ? cleanName(o.name) : `user-${id}`;
+    const t = nowIso();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO users (id, display_name, name_key, role, kind, created_at) VALUES (?1, ?2, ?3, 'member', 'human', ?4)").bind(
+        id,
+        name,
+        nameKey(name),
+        t,
+      ),
+      env.DB.prepare(
+        "INSERT INTO identities (provider, provider_user_id, user_id, handle, url, public, created_at) VALUES ('orcid', ?1, ?2, ?1, ?3, 1, ?4)",
+      ).bind(o.orcid, id, url, t),
+    ]);
+    user = { id, display_name: name };
+  }
+  return redirect303(next, [...extraCookies, ...(await startSession(env, user))]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// identity visibility and removal (on /account)
+
+/** Show or hide an identity on the public profile, or remove it. A person always keeps at least
+ *  one public identity: it is what proves who is behind the display name. */
+export async function changeIdentity(
+  env: Env,
+  user: User,
+  provider: string,
+  providerUserId: string,
+  change: "show" | "hide" | "remove",
+): Promise<string | null> {
+  const mine = user.identities.find((i) => i.provider === provider && i.providerUserId === providerUserId);
+  if (!mine) return "No such sign-in on your account.";
+  const others = user.identities.filter((i) => i !== mine);
+  if (change === "show") {
+    await env.DB.prepare("UPDATE identities SET public = 1 WHERE provider = ?1 AND provider_user_id = ?2").bind(provider, providerUserId).run();
+    return null;
+  }
+  if (!others.some((i) => i.public))
+    return change === "hide"
+      ? "Keep at least one sign-in public: it shows readers who is behind your name."
+      : "This is your only public sign-in. Make another one public first, or delete the account.";
+  if (change === "hide")
+    await env.DB.prepare("UPDATE identities SET public = 0 WHERE provider = ?1 AND provider_user_id = ?2").bind(provider, providerUserId).run();
+  else await env.DB.prepare("DELETE FROM identities WHERE provider = ?1 AND provider_user_id = ?2").bind(provider, providerUserId).run();
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------

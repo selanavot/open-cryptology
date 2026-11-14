@@ -21,6 +21,20 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **CSRF.** Cookie-authenticated POSTs must carry our Origin (or `Sec-Fetch-Site: same-origin`).
   Redirect targets (`next=`) must be same-origin paths.
 - **Maintainers.** GitHub ids listed in `MAINTAINER_GITHUB_IDS` get the maintainer role at sign-in.
+- **Display names** are unique (case-insensitive, after NFKC), can't be another user's GitHub
+  login, and are always shown with a public verified identity, so nobody can pass as someone else.
+  A GitHub login's owner reclaims it from anyone who chose it as a name before they joined.
+- **ORCID.** Sign in with an ORCID iD (a new account if it's unknown), or link one to a signed-in
+  account. Uses ORCID's free public API (`/authenticate` scope). An iD linked to one account is
+  never moved to another. Every person keeps at least one public identity.
+- **Agent tokens** (`Authorization: Bearer oct_...`, scopes `comment` and `upload`) act as the
+  account that created them, but can't change its settings. Content posted with a token, or by a
+  bot account, counts as agent-made (`isAgent`).
+- **Bots** are accounts a maintainer runs (e.g. an AI reviewer): no sign-in, tokens only, and the
+  profile says who operates them.
+- **Suspension and deletion.** Maintainers suspend accounts (they can't post; tokens are refused).
+  Deleting an account keeps a "deleted user" tombstone so its content keeps an author; sign-ins,
+  sessions, links, tokens and the person's bots are removed.
 
 ## Using it from another feature
 
@@ -37,8 +51,13 @@ if (isAuthFailure(a)) return authJson(a); // API; an HTML form redirects back to
 | `GITHUB_CLIENT_ID` | var or secret | GitHub OAuth app (no scopes; callback `<origin>/auth/github/callback`) |
 | `GITHUB_CLIENT_SECRET` | secret | |
 | `MAINTAINER_GITHUB_IDS` | var | comma-separated numeric GitHub ids |
+| `ORCID_CLIENT_ID` | var or secret | ORCID public API client (redirect URI `<origin>/auth/orcid/callback`) |
+| `ORCID_CLIENT_SECRET` | secret | |
+| `ORCID_BASE` | var, optional | `https://sandbox.orcid.org` for testing; default `https://orcid.org` |
 | `AUTH_ORIGIN` | `.dev.vars` only | `http://localhost:8788`: wrangler dev rewrites URLs to the production host |
-| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables `/auth/dev-login?login=<x>&ghid=<n>` (made-up GitHub accounts). Never in production. |
+| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables `/auth/dev-login?login=<x>&ghid=<n>` and `/auth/dev-orcid?orcid=<iD>&name=<n>` (made-up accounts). Never in production. |
+
+Sign-in shows up in the navbar once `GITHUB_CLIENT_ID` or `ORCID_CLIENT_ID` is set.
 
 ## Migrating a database
 
@@ -55,3 +74,6 @@ npx --prefix worker wrangler d1 execute DB --local --file /tmp/accounts.sql   # 
 DEV_STATE=copy npm --prefix worker run dev -- --port 8788
 node scripts/auth-smoke.mjs http://localhost:8788
 ```
+
+`worker/.dev.vars` needs `AUTH_DEV_LOGIN=1`, `AUTH_ORIGIN=http://localhost:8788` and
+`MAINTAINER_GITHUB_IDS=4242` (the smoke test signs in as made-up GitHub id 4242 for the maintainer checks).

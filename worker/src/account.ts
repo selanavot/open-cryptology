@@ -34,6 +34,7 @@ import {
   resolveUser,
   sameOrigin,
   setBanned,
+  changeIdentity,
 } from "./auth";
 
 const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
@@ -97,23 +98,32 @@ const SAVED: Record<string, string> = {
   "bot-deleted": "The bot was deleted; what it posted stays, credited to “deleted user”.",
   banned: "The account is suspended.",
   unbanned: "The suspension was lifted.",
+  orcid: "Your ORCID iD is linked.",
+  identity: "Your sign-ins were updated.",
 };
 
 const SCOPE_LABEL: Record<string, string> = { comment: "comment", upload: "upload results" };
 
 function signInPage(env: Env, url: URL): Response {
   const next = safeNext(url.searchParams.get("next") ?? "/account");
-  const ready = !!env.GITHUB_CLIENT_ID;
+  const dev = env.AUTH_DEV_LOGIN === "1";
+  const github = env.GITHUB_CLIENT_ID
+    ? `/auth/github?next=${encodeURIComponent(next)}`
+    : dev && `/auth/dev-login?login=dev-user&ghid=1&next=${encodeURIComponent(next)}`;
+  const orcid = orcidReady(env) && orcidStart(env, next);
   return page(env, {
     title: "Sign in",
     ...NO_STORE,
     body: card(
       "Sign in",
-      html`<p>Sign in to comment and to share results, under your own name or as an agent you run.
-We keep your GitHub account’s id and username, and nothing else: no email address, no password, no access to your repositories.</p>
-${ready
-  ? html`<p><a class="btn btn-outline-dark" href="/auth/github?next=${encodeURIComponent(next)}">Sign in with GitHub</a></p>`
-  : html`<p class="text-muted">Sign-in isn’t switched on yet.</p>`}`,
+      html`<p>Sign in to comment and to share results, under your own name or through an agent you run.</p>
+${github || orcid
+  ? html`<p class="acct-signin">${github && html`<a class="btn btn-outline-dark" href="${github}">Sign in with GitHub</a>`}
+${orcid && html`<a class="btn btn-outline-dark" href="${orcid}">Sign in with ORCID</a>`}</p>
+${dev && html`<p class="text-muted">Local test server: these buttons sign in as made-up accounts.</p>`}`
+  : html`<p class="text-muted">Sign-in isn’t switched on yet.</p>`}
+<p class="form-hint text-muted">We keep the account’s id and public name (your GitHub username or ORCID iD), and nothing else:
+no email address, no password, no access to your repositories or records.</p>`,
       "account",
     ),
   });
@@ -162,6 +172,33 @@ ${tokens.length
 </form>`,
     "account",
   );
+}
+
+const orcidReady = (env: Env) => !!env.ORCID_CLIENT_ID || env.AUTH_DEV_LOGIN === "1";
+const orcidStart = (env: Env, next: string) =>
+  env.ORCID_CLIENT_ID ? `/auth/orcid?next=${encodeURIComponent(next)}` : `/auth/dev-orcid?orcid=0000-0002-1825-0097&name=&next=${encodeURIComponent(next)}`;
+
+function identitiesBody(env: Env, u: Actor["user"]): Html {
+  const publicCount = u.identities.filter((i) => i.public).length;
+  const hasOrcid = u.identities.some((i) => i.provider === "orcid");
+  return html`<p class="text-muted">Readers see your public sign-ins next to your name. At least one stays public.</p>
+<ul class="acct-list acct-tokens">${u.identities.map((i) => {
+    const lastPublic = i.public && publicCount === 1;
+    return html`<li><form method="post" action="/account" class="acct-inline">
+  <input type="hidden" name="action" value="identity">
+  <input type="hidden" name="provider" value="${i.provider}"><input type="hidden" name="pid" value="${i.providerUserId}">
+  ${identityLink(i)} <span class="text-muted">· ${i.public ? "public" : "hidden"}</span>
+  <span class="acct-actions">
+  ${i.public
+    ? !lastPublic && html`<button class="btn btn-sm btn-outline-dark" name="change" value="hide">Hide</button>`
+    : html`<button class="btn btn-sm btn-outline-dark" name="change" value="show">Show</button>`}
+  ${!lastPublic && u.identities.length > 1 && html`<button class="btn btn-sm btn-outline-dark" name="change" value="remove">Remove</button>`}
+  </span>
+</form></li>`;
+  })}</ul>
+${!hasOrcid && orcidReady(env) &&
+  html`<p class="mt-2"><a class="btn btn-sm btn-outline-dark" href="${orcidStart(env, "/account")}">Link your ORCID iD</a>
+<span class="text-muted">Shows readers your researcher record, and lets you sign in with ORCID too.</span></p>`}`;
 }
 
 /** The accounts this user manages tokens for: themself and the bots they run. */
@@ -253,11 +290,7 @@ ${u.banned && html`<p class="alert alert-warning">This account is suspended: it 
 </form>`,
   "account",
 )}
-${card(
-  "Verified sign-ins",
-  html`<ul class="acct-list">${u.identities.map((i) => html`<li>${identityLink(i)}</li>`)}</ul>`,
-  "account",
-)}
+${card("Verified sign-ins", identitiesBody(env, u), "account")}
 ${card(
   "Links",
   html`<p class="text-muted">Your homepage, DBLP or Google Scholar. Shown on your profile marked “unverified”.</p>
@@ -297,6 +330,12 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
   }
   // A suspended account can still delete itself, and nothing else.
   if (a.user.banned) return accountPage(env, a, { err: "This account is suspended." }, 403);
+  if (action === "identity") {
+    const change = form.get("change")?.toString();
+    if (change !== "show" && change !== "hide" && change !== "remove") return accountPage(env, a, { err: "Unknown change." }, 400);
+    const problem = await changeIdentity(env, a.user, form.get("provider")?.toString() ?? "", form.get("pid")?.toString() ?? "", change);
+    return problem ? accountPage(env, a, { err: problem }, 400) : redirect303(`/account?saved=identity`);
+  }
   const maint = atLeast(a.user, "maintainer");
   if (action === "bot-create" || action === "bot-delete" || action === "ban" || action === "unban") {
     if (!maint) return accountPage(env, a, { err: "Only maintainers can do that." }, 403);

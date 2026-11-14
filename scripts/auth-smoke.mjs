@@ -323,6 +323,76 @@ test("deleting an account leaves a tombstone and frees the name", async () => {
   check("same GitHub account signs up fresh, with its name back", me2?.id !== id && me2?.displayName === login, `${me2?.id} ${me2?.displayName}`);
 });
 
+// ------------------------------------------------------------------------------------------- step 5
+const orcidOf = (n) => {
+  // A made-up but well-formed iD (ISO 7064 check digit), unique per run.
+  const base = String(RUN * 10 + n).padStart(15, "0").slice(-15);
+  let t = 0;
+  for (const d of base) t = (t + Number(d)) * 2;
+  const r = (12 - (t % 11)) % 11;
+  const s = base + (r === 10 ? "X" : String(r));
+  return `${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}-${s.slice(12)}`;
+};
+const devOrcid = (c, orcid, name = "", next = "/account") =>
+  c.req(`/auth/dev-orcid?orcid=${orcid}&name=${encodeURIComponent(name)}&next=${encodeURIComponent(next)}`);
+const identityForm = (c, provider, pid, change) => form(c, { action: "identity", provider, pid, change });
+
+test("ORCID: link to a GitHub account, then sign in with either", async () => {
+  const c = new Client();
+  const ghid = 1060000 + (RUN % 1e5);
+  await c.login(`nia${RUN}`, ghid);
+  const orcid = orcidOf(1);
+  const r = await devOrcid(c, orcid);
+  check("linked (303 /account?saved=orcid)", r.status === 303 && r.headers.get("location") === "/account?saved=orcid", `${r.status} ${r.headers.get("location")}`);
+  const me = (await c.json("/api/me")).body?.user;
+  const oi = me?.identities?.find((i) => i.provider === "orcid");
+  check("orcid identity: handle = iD, url", oi?.handle === orcid && oi?.url === `https://orcid.org/${orcid}`, JSON.stringify(oi));
+  const viaOrcid = new Client();
+  await devOrcid(viaOrcid, orcid, "Someone Else");
+  check("signing in with the ORCID iD reaches the same account", (await viaOrcid.json("/api/me")).body?.user?.id === me?.id);
+  const other = new Client();
+  await other.login(`otto${RUN}`, 1070000 + (RUN % 1e5));
+  const steal = await devOrcid(other, orcid);
+  check("an iD linked elsewhere can't be linked again (409)", steal.status === 409, steal.status);
+});
+
+test("ORCID-only accounts", async () => {
+  const c = new Client();
+  const orcid = orcidOf(2);
+  await devOrcid(c, orcid, `Wang Fang ${RUN}`, "/2024/1");
+  const me = (await c.json("/api/me")).body?.user;
+  check("account created, named from ORCID", me?.displayName === `Wang Fang ${RUN}`, me?.displayName);
+  check("only identity is ORCID", me?.identities?.length === 1 && me.identities[0].provider === "orcid");
+  const d = new Client();
+  await devOrcid(d, orcidOf(3), `Wang Fang ${RUN}`);
+  check("a taken ORCID name falls back to user-<id>", /^user-[a-z2-7]{12}$/.test((await d.json("/api/me")).body?.user?.displayName ?? ""));
+});
+
+test("identity visibility: hide, show, remove; one stays public", async () => {
+  const c = new Client();
+  const ghid = String(1080000 + (RUN % 1e5));
+  await c.login(`pia${RUN}`, Number(ghid));
+  let r = await identityForm(c, "github", ghid, "hide");
+  check("can't hide the only public sign-in", r.status === 400, r.status);
+  r = await identityForm(c, "github", ghid, "remove");
+  check("can't remove the only sign-in", r.status === 400, r.status);
+  const orcid = orcidOf(4);
+  await devOrcid(c, orcid);
+  r = await identityForm(c, "github", ghid, "hide");
+  check("GitHub hidden once ORCID is public", r.status === 303, r.status);
+  const id = (await c.json("/api/me")).body?.user?.id;
+  const prof = await (await new Client().req(`/u/${id}`)).text();
+  check("profile shows ORCID, not GitHub", prof.includes(orcid) && !prof.includes(`github.com/pia${RUN}`));
+  r = await identityForm(c, "orcid", orcid, "hide");
+  check("can't hide the last public one", r.status === 400, r.status);
+  r = await identityForm(c, "github", ghid, "show");
+  check("show again", r.status === 303, r.status);
+  r = await identityForm(c, "orcid", orcid, "remove");
+  check("ORCID removed", r.status === 303 && !(await c.json("/api/me")).body?.user?.identities?.some((i) => i.provider === "orcid"));
+  r = await identityForm(c, "github", "1", "hide");
+  check("someone else's identity: refused", r.status === 400, r.status);
+});
+
 // ------------------------------------------------------------------------------------------------
 for (const [name, fn] of tests) {
   console.log(`\n# ${name}`);

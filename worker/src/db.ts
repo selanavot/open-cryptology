@@ -43,8 +43,13 @@ export interface Env {
   AUTH_ORIGIN?: string;
   /** Comma-separated GitHub numeric user ids that get the maintainer role at sign-in. */
   MAINTAINER_GITHUB_IDS?: string;
-  /** Local dev only: "1" enables /auth/dev-login (sign in as a made-up GitHub account). */
+  /** Local dev only: "1" enables /auth/dev-login and /auth/dev-orcid (made-up accounts). */
   AUTH_DEV_LOGIN?: string;
+  /** ORCID public API client (https://orcid.org/developer-tools): id (var) and secret (Worker secret). */
+  ORCID_CLIENT_ID?: string;
+  ORCID_CLIENT_SECRET?: string;
+  /** https://sandbox.orcid.org for testing; unset = https://orcid.org. */
+  ORCID_BASE?: string;
 }
 
 export interface Paper {
