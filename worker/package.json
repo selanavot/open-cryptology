@@ -14,6 +14,6 @@
     "wrangler": "4.160.0"
   },
   "dependencies": {
-    "unpdf": "1.9.1"
+    "unpdf": "2.1.0"
   }
 }
