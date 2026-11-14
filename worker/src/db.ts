@@ -36,6 +36,15 @@ export interface Env {
   INDEXNOW_KEY?: string;
   /** Local dev only: "1" skips the Access check on /review. */
   REVIEW_DEV_BYPASS?: string;
+  /** Accounts (auth.ts). GitHub OAuth app: client id (var) and secret (Worker secret). */
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  /** Origin OAuth providers redirect back to; unset = the request's origin. Local: http://localhost:8787. */
+  AUTH_ORIGIN?: string;
+  /** Comma-separated GitHub numeric user ids that get the maintainer role at sign-in. */
+  MAINTAINER_GITHUB_IDS?: string;
+  /** Local dev only: "1" enables /auth/dev-login (sign in as a made-up GitHub account). */
+  AUTH_DEV_LOGIN?: string;
 }
 
 export interface Paper {

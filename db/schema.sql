@@ -107,3 +107,71 @@ CREATE INDEX IF NOT EXISTS versions_paper ON versions(paper_id, captured_at);
 -- a later change (pdf_latest_at < updated) is not used.
 ALTER TABLE papers ADD COLUMN pdf_latest_size INTEGER;
 ALTER TABLE papers ADD COLUMN pdf_latest_at TEXT;
+
+-- ---------------------------------------------------------------------------------------------
+-- accounts (2026-11): sign-in, profiles and agent tokens (worker/src/auth.ts, docs/ACCOUNTS.md).
+-- Only CREATE ... IF NOT EXISTS, so this section can be run on its own on an existing database:
+--   sed -n '/^-- accounts/,$p' db/schema.sql > /tmp/accounts.sql   (then wrangler d1 execute)
+-- Owned by auth.ts; other features reference users.id only.
+
+-- A person or a bot. Content points at users.id; a deleted account stays as a tombstone.
+CREATE TABLE IF NOT EXISTS users (
+  id            TEXT PRIMARY KEY,            -- random, lowercase base32 (URL: /u/<id>)
+  display_name  TEXT NOT NULL,               -- chosen name; 'deleted user' for tombstones
+  name_key      TEXT,                        -- normalized display_name for uniqueness; NULL = not reserved
+  role          TEXT NOT NULL DEFAULT 'member', -- 'member' | 'trusted' | 'maintainer'
+  kind          TEXT NOT NULL DEFAULT 'human',  -- 'human' | 'bot'
+  owner_user_id TEXT,                        -- bots only: the human who runs it
+  banned        INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL,
+  deleted_at    TEXT                         -- set = tombstone
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_name_key ON users(name_key) WHERE name_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS users_owner ON users(owner_user_id) WHERE owner_user_id IS NOT NULL;
+
+-- A verified sign-in (GitHub account, ORCID iD) belonging to one user.
+CREATE TABLE IF NOT EXISTS identities (
+  provider            TEXT NOT NULL,         -- 'github' | 'orcid'
+  provider_user_id    TEXT NOT NULL,         -- GitHub numeric id / ORCID iD (stable; never the login)
+  user_id             TEXT NOT NULL,
+  handle              TEXT NOT NULL,         -- GitHub login / ORCID iD, refreshed at each sign-in
+  url                 TEXT NOT NULL,         -- https://github.com/<login> | https://orcid.org/<iD>
+  provider_created_at TEXT,                  -- GitHub account creation time (ISO), for new-account checks
+  public              INTEGER NOT NULL DEFAULT 1,
+  created_at          TEXT NOT NULL,
+  PRIMARY KEY (provider, provider_user_id)
+);
+CREATE INDEX IF NOT EXISTS identities_user ON identities(user_id);
+CREATE INDEX IF NOT EXISTS identities_handle ON identities(provider, lower(handle));
+
+-- Browser sessions. The cookie holds a random token; only its SHA-256 is stored.
+CREATE TABLE IF NOT EXISTS sessions (
+  id          TEXT PRIMARY KEY,              -- hex SHA-256 of the cookie token
+  user_id     TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,                 -- sliding: pushed out when last_seen is refreshed
+  last_seen   TEXT NOT NULL                  -- written at most once an hour
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+
+-- API tokens for agents and bots ("Authorization: Bearer oct_..."). Only the SHA-256 is stored.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id          TEXT PRIMARY KEY,              -- public id (shown in the token list)
+  hash        TEXT NOT NULL UNIQUE,          -- hex SHA-256 of the token
+  user_id     TEXT NOT NULL,                 -- the account it acts as (a human, or a bot)
+  name        TEXT NOT NULL,                 -- e.g. "my Claude agent"
+  scopes      TEXT NOT NULL,                 -- space-separated, e.g. "comment upload"
+  created_at  TEXT NOT NULL,
+  last_used   TEXT,                          -- written at most once an hour
+  revoked_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens(user_id);
+
+-- Self-reported links on a profile (homepage, DBLP, Scholar). Always shown as unverified.
+CREATE TABLE IF NOT EXISTS user_links (
+  user_id   TEXT NOT NULL,
+  position  INTEGER NOT NULL,
+  label     TEXT NOT NULL,
+  url       TEXT NOT NULL,
+  PRIMARY KEY (user_id, position)
+);
