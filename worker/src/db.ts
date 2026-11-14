@@ -45,6 +45,9 @@ export interface Env {
   MAINTAINER_GITHUB_IDS?: string;
   /** Local dev only: "1" enables /auth/dev-login and /auth/dev-orcid (made-up accounts). */
   AUTH_DEV_LOGIN?: string;
+  /** Google sign-in (OpenID Connect; scopes openid email profile): id (var) and secret (Worker secret). */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   /** ORCID public API client (https://orcid.org/developer-tools): id (var) and secret (Worker secret). */
   ORCID_CLIENT_ID?: string;
   ORCID_CLIENT_SECRET?: string;

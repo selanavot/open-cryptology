@@ -6,11 +6,16 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 ## Design
 
 - **Users and identities.** A *user* is a person or a bot; content points at `users.id`. An
-  *identity* is a verified sign-in (a GitHub account, an ORCID iD) that belongs to one user, keyed on
-  the provider's stable id (GitHub's numeric id, never the login). A user gets a second identity
-  only by linking it while signed in; nothing is merged automatically (not even by email).
-- **What we store.** No passwords, no provider access tokens (dropped once the profile is read), no
-  email addresses. Sessions and API tokens are stored as SHA-256 hashes only.
+  *identity* is a verified sign-in (GitHub, Google or ORCID) that belongs to one user, keyed on the
+  provider's stable id (GitHub's numeric id, Google's `sub`, the ORCID iD; never a login or email).
+  People start with any of the three and add the others on `/account` (starting a provider's
+  sign-in while signed in adds it). Each one then signs in to the same account. An identity that
+  belongs to another account is refused, never moved or merged (not even by email). The last
+  identity can't be removed.
+- **What we store.** No passwords, no provider access tokens (used once to read the profile), no
+  email addresses: for Google we keep only the address's domain, shown as "verified @mit.edu" for
+  institutions and as just "Google account" for gmail.com. Sessions and API tokens are stored as
+  SHA-256 hashes only.
 - **Sessions.** The `__Host-oc_session` cookie (HttpOnly, Secure, SameSite=Lax) holds 32 random
   bytes. Expiry is enforced in D1 and slides 30 days from the last use; `last_seen` is written at
   most once an hour.
@@ -21,12 +26,13 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **CSRF.** Cookie-authenticated POSTs must carry our Origin (or `Sec-Fetch-Site: same-origin`).
   Redirect targets (`next=`) must be same-origin paths.
 - **Maintainers.** GitHub ids listed in `MAINTAINER_GITHUB_IDS` get the maintainer role at sign-in.
-- **Display names** are unique (case-insensitive, after NFKC), can't be another user's GitHub
-  login, and are always shown with a public verified identity, so nobody can pass as someone else.
-  A GitHub login's owner reclaims it from anyone who chose it as a name before they joined.
-- **ORCID.** Sign in with an ORCID iD (a new account if it's unknown), or link one to a signed-in
-  account. Uses ORCID's free public API (`/authenticate` scope). An iD linked to one account is
-  never moved to another. Every person keeps at least one public identity.
+- **Display names** are unique (case-insensitive, after NFKC) and shown with the person's
+  sign-ins. A new account takes the provider's name (GitHub login, Google or ORCID name) when it is
+  free, else `user-<id>`.
+- **Providers.** GitHub OAuth (no scopes, PKCE); Google OpenID Connect (`openid email profile`,
+  PKCE); ORCID public API (`/authenticate`). All three share one code path (`PROVIDERS` in auth.ts).
+- **Kept simple on purpose:** no account-age checks, no approval queue for new accounts, no
+  per-identity visibility settings.
 - **Agent tokens** (`Authorization: Bearer oct_...`, scopes `comment` and `upload`) act as the
   account that created them, but can't change its settings. Content posted with a token, or by a
   bot account, counts as agent-made (`isAgent`).
@@ -51,13 +57,20 @@ if (isAuthFailure(a)) return authJson(a); // API; an HTML form redirects back to
 | `GITHUB_CLIENT_ID` | var or secret | GitHub OAuth app (no scopes; callback `<origin>/auth/github/callback`) |
 | `GITHUB_CLIENT_SECRET` | secret | |
 | `MAINTAINER_GITHUB_IDS` | var | comma-separated numeric GitHub ids |
+| `GOOGLE_CLIENT_ID` | var or secret | Google OAuth client, type "Web application" (redirect URI `<origin>/auth/google/callback`) |
+| `GOOGLE_CLIENT_SECRET` | secret | |
 | `ORCID_CLIENT_ID` | var or secret | ORCID public API client (redirect URI `<origin>/auth/orcid/callback`) |
 | `ORCID_CLIENT_SECRET` | secret | |
 | `ORCID_BASE` | var, optional | `https://sandbox.orcid.org` for testing; default `https://orcid.org` |
 | `AUTH_ORIGIN` | `.dev.vars` only | `http://localhost:8788`: wrangler dev rewrites URLs to the production host |
-| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables `/auth/dev-login?login=<x>&ghid=<n>` and `/auth/dev-orcid?orcid=<iD>&name=<n>` (made-up accounts). Never in production. |
+| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables made-up accounts: `/auth/dev-login?login=<x>&ghid=<n>[&link=1]`, `/auth/dev-google?sub=<n>&email=<a@b>&name=<n>`, `/auth/dev-orcid?orcid=<iD>&name=<n>` (the last two add to the account when signed in). Never in production. |
 
-Sign-in shows up in the navbar once `GITHUB_CLIENT_ID` or `ORCID_CLIENT_ID` is set.
+Sign-in shows up in the navbar once any provider's client id is set; the sign-in page offers the
+configured ones.
+
+Google setup: Google Cloud console → "Google Auth Platform": app name, homepage, privacy policy URL,
+authorized domain `opencryptology.org`; scopes `openid`, `email`, `profile` only (no Google review
+needed); then a "Web application" client with the redirect URI above.
 
 ## Migrating a database
 

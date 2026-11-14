@@ -159,7 +159,6 @@ test("display name rules", async () => {
   r = await form(b, { action: "name", name: `ERIN EXAMPLE ${RUN}` });
   check("name taken (case-insensitive) -> 400", r.status === 400 && /already uses/.test(await r.text()), r.status);
   r = await form(b, { action: "name", name: `erin${RUN}` });
-  check("someone else's GitHub login -> 400", r.status === 400 && /GitHub username/.test(await r.text()), r.status);
   for (const bad of ["deleted user", "user-abcdefghijkl", "<script>", "x".repeat(41), ""]) {
     r = await form(b, { action: "name", name: bad });
     check(`rejected: ${JSON.stringify(bad.slice(0, 20))}`, r.status === 400, r.status);
@@ -170,19 +169,6 @@ test("display name rules", async () => {
   check("cross-site name change refused", r.status === 403, r.status);
 });
 const c_cross = (c) => c.req("/account", { method: "POST", form: { action: "name", name: "Mallory" }, origin: "https://evil.example" });
-
-test("a GitHub login's owner gets their name back from a squatter", async () => {
-  const squatter = new Client();
-  await squatter.login(`sq${RUN}`, 970000 + (RUN % 1e5));
-  const victim = `victim${RUN}`;
-  await form(squatter, { action: "name", name: victim });
-  check("squatter took the name", (await squatter.json("/api/me")).body?.user?.displayName === victim);
-  const v = new Client();
-  await v.login(victim, 980000 + (RUN % 1e5));
-  check("owner gets their login as name", (await v.json("/api/me")).body?.user?.displayName === victim);
-  const sname = (await squatter.json("/api/me")).body?.user?.displayName;
-  check("squatter renamed to user-<id>", /^user-[a-z2-7]{12}$/.test(sname), sname);
-});
 
 test("links: saved, validated, shown as unverified on the cached profile", async () => {
   const c = new Client();
@@ -200,7 +186,7 @@ test("links: saved, validated, shown as unverified on the cached profile", async
   check("blank label -> host", t.includes(">dblp.org<"));
   check("links are nofollow ugc", /rel="nofollow ugc noopener"/.test(t));
   check("marked unverified", /unverified/.test(t));
-  check("verified GitHub link shown", t.includes(`https://github.com/gail${RUN}`) && /on GitHub since 2015/.test(t));
+  check("verified GitHub link shown", t.includes(`https://github.com/gail${RUN}`));
   check("unknown profile 404", (await new Client().req("/u/aaaaaaaaaaaa")).status === 404);
 });
 
@@ -350,7 +336,7 @@ test("ORCID: link to a GitHub account, then sign in with either", async () => {
   await c.login(`nia${RUN}`, ghid);
   const orcid = orcidOf(1);
   const r = await devOrcid(c, orcid);
-  check("linked (303 /account?saved=orcid)", r.status === 303 && r.headers.get("location") === "/account?saved=orcid", `${r.status} ${r.headers.get("location")}`);
+  check("linked (303 /account?saved=linked)", r.status === 303 && r.headers.get("location") === "/account?saved=linked", `${r.status} ${r.headers.get("location")}`);
   const me = (await c.json("/api/me")).body?.user;
   const oi = me?.identities?.find((i) => i.provider === "orcid");
   check("orcid identity: handle = iD, url", oi?.handle === orcid && oi?.url === `https://orcid.org/${orcid}`, JSON.stringify(oi));
@@ -375,30 +361,73 @@ test("ORCID-only accounts", async () => {
   check("a taken ORCID name falls back to user-<id>", /^user-[a-z2-7]{12}$/.test((await d.json("/api/me")).body?.user?.displayName ?? ""));
 });
 
-test("identity visibility: hide, show, remove; one stays public", async () => {
+// ------------------------------------------------------------------------------------------- step 6
+const devGoogle = (c, sub, email, name = "", next = "/account") =>
+  c.req(`/auth/dev-google?sub=${sub}&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&next=${encodeURIComponent(next)}`);
+const removeForm = (c, provider, pid) => form(c, { action: "identity", provider, pid, change: "remove" });
+
+test("Google: sign in first, keeps only the email domain", async () => {
   const c = new Client();
-  const ghid = String(1080000 + (RUN % 1e5));
-  await c.login(`pia${RUN}`, Number(ghid));
-  let r = await identityForm(c, "github", ghid, "hide");
-  check("can't hide the only public sign-in", r.status === 400, r.status);
-  r = await identityForm(c, "github", ghid, "remove");
-  check("can't remove the only sign-in", r.status === 400, r.status);
-  const orcid = orcidOf(4);
-  await devOrcid(c, orcid);
-  r = await identityForm(c, "github", ghid, "hide");
-  check("GitHub hidden once ORCID is public", r.status === 303, r.status);
-  const id = (await c.json("/api/me")).body?.user?.id;
-  const prof = await (await new Client().req(`/u/${id}`)).text();
-  check("profile shows ORCID, not GitHub", prof.includes(orcid) && !prof.includes(`github.com/pia${RUN}`));
-  r = await identityForm(c, "orcid", orcid, "hide");
-  check("can't hide the last public one", r.status === 400, r.status);
-  r = await identityForm(c, "github", ghid, "show");
-  check("show again", r.status === 303, r.status);
-  r = await identityForm(c, "orcid", orcid, "remove");
-  check("ORCID removed", r.status === 303 && !(await c.json("/api/me")).body?.user?.identities?.some((i) => i.provider === "orcid"));
-  r = await identityForm(c, "github", "1", "hide");
-  check("someone else's identity: refused", r.status === 400, r.status);
+  const sub = String(2000000000 + RUN);
+  const r = await devGoogle(c, sub, `qi${RUN}@Example.EDU`, `Qi ${RUN}`, "/2024/1");
+  check("303 to next", r.status === 303 && r.headers.get("location") === "/2024/1", `${r.status} ${r.headers.get("location")}`);
+  const me = await c.json("/api/me");
+  const gi = me.body?.user?.identities?.[0];
+  check("named from Google", me.body?.user?.displayName === `Qi ${RUN}`, me.body?.user?.displayName);
+  check("google identity: domain only, no link", gi?.provider === "google" && gi.handle === "example.edu" && gi.url === "", JSON.stringify(gi));
+  check("no email address anywhere in /api/me", !JSON.stringify(me.body).includes("@"));
+  const prof = await (await new Client().req(`/u/${me.body?.user?.id}`)).text();
+  check("profile: verified @example.edu", prof.includes("verified @example.edu"));
+  const g = new Client();
+  await devGoogle(g, String(2100000000 + RUN), `someone${RUN}@gmail.com`);
+  const gp = await (await new Client().req(`/u/${(await g.json("/api/me")).body?.user?.id}`)).text();
+  check("gmail: no domain shown", /Google<\/span> account/.test(gp) && !gp.includes("gmail.com"));
 });
+
+test("any first sign-in, then add the others; each one signs in to the same account", async () => {
+  const c = new Client();
+  const sub = String(2200000000 + RUN);
+  await devGoogle(c, sub, `ray${RUN}@uni.example`);
+  const id = (await c.json("/api/me")).body?.user?.id;
+  const ghid = 1100000 + (RUN % 1e5);
+  let r = await c.req(`/auth/dev-login?login=ray${RUN}&ghid=${ghid}&link=1&next=/account`);
+  check("GitHub added (303 saved=linked)", r.status === 303 && r.headers.get("location") === "/account?saved=linked", `${r.status} ${r.headers.get("location")}`);
+  const orcid = orcidOf(5);
+  r = await devOrcid(c, orcid);
+  check("ORCID added", r.headers.get("location") === "/account?saved=linked", r.headers.get("location"));
+  const ids = (await c.json("/api/me")).body?.user?.identities?.map((i) => i.provider).sort().join(",");
+  check("three identities", ids === "github,google,orcid", ids);
+  for (const [label, signIn] of [
+    ["GitHub", (x) => x.login(`ray${RUN}`, ghid)],
+    ["Google", (x) => devGoogle(x, sub, `ray${RUN}@uni.example`)],
+    ["ORCID", (x) => devOrcid(x, orcid)],
+  ]) {
+    const x = new Client();
+    await signIn(x);
+    check(`${label} reaches the same account`, (await x.json("/api/me")).body?.user?.id === id);
+  }
+  const other = new Client();
+  await other.login(`sam${RUN}`, 1110000 + (RUN % 1e5));
+  r = await devGoogle(other, sub, `ray${RUN}@uni.example`);
+  check("someone else's Google account can't be added (409)", r.status === 409, r.status);
+  r = await removeForm(c, "google", sub);
+  check("Google removed", r.status === 303, r.status);
+  r = await removeForm(c, "orcid", orcid);
+  check("ORCID removed", r.status === 303, r.status);
+  r = await removeForm(c, "github", String(ghid));
+  check("the last sign-in can't be removed", r.status === 400, r.status);
+  r = await removeForm(other, "github", String(ghid));
+  check("someone else's sign-in: refused", r.status === 400, r.status);
+});
+
+test("sign-in page offers all three providers", async () => {
+  const t = await (await new Client().req("/account")).text();
+  check("GitHub, Google, ORCID buttons", /Sign in with GitHub/.test(t) && /Sign in with Google/.test(t) && /Sign in with ORCID/.test(t));
+  const r = await new Client().req("/auth/google?next=/");
+  const loc = r.headers.get("location") ?? "";
+  check("Google: 503 page or PKCE redirect", r.status === 503 || (loc.startsWith("https://accounts.google.com/") && /code_challenge_method=S256/.test(loc)), `${r.status} ${loc}`);
+});
+
 
 // ------------------------------------------------------------------------------------------------
 for (const [name, fn] of tests) {

@@ -16,7 +16,7 @@ export type Kind = "human" | "bot";
 const ROLE_RANK: Record<Role, number> = { member: 0, trusted: 1, maintainer: 2 };
 
 export interface Identity {
-  provider: "github" | "orcid";
+  provider: Provider;
   providerUserId: string; // GitHub numeric id / ORCID iD
   handle: string; // GitHub login / ORCID iD
   url: string; // https://github.com/<login> | https://orcid.org/<iD>
@@ -144,7 +144,7 @@ interface UserRow {
   deleted_at: string | null;
 }
 interface IdentityRow {
-  provider: "github" | "orcid";
+  provider: Provider;
   provider_user_id: string;
   user_id: string;
   handle: string;
@@ -350,60 +350,114 @@ async function startSession(env: Env, user: { id: string; display_name: string }
 }
 
 // ---------------------------------------------------------------------------------------------
-// GitHub sign-in
+// signing in with, or linking, a verified identity (any provider)
 
-export interface GithubProfile {
-  id: number;
-  login: string;
-  created_at?: string;
+export type Provider = "github" | "google" | "orcid";
+export const PROVIDER_LABEL: Record<Provider, string> = { github: "GitHub", google: "Google", orcid: "ORCID" };
+
+/** What a provider confirmed about the person. */
+export interface Verified {
+  provider: Provider;
+  providerUserId: string; // stable id: GitHub numeric id, Google "sub", ORCID iD
+  handle: string; // GitHub login, Google email domain, ORCID iD
+  url: string; // public link, or "" (Google has none)
+  providerCreatedAt?: string | null;
+  name: string; // suggested display name for a new account
 }
 
-const isMaintainerGithub = (env: Env, id: string) =>
-  (env.MAINTAINER_GITHUB_IDS ?? "").split(",").map((s) => s.trim()).includes(id);
+const isMaintainer = (env: Env, v: Verified) =>
+  v.provider === "github" && (env.MAINTAINER_GITHUB_IDS ?? "").split(",").map((s) => s.trim()).includes(v.providerUserId);
 
-/** Find or create the user for a GitHub account; refresh the stored login. */
-export async function userForGithub(env: Env, gh: GithubProfile): Promise<{ id: string; display_name: string }> {
-  const ghId = String(gh.id);
-  const url = `https://github.com/${gh.login}`;
-  const existing = await env.DB.prepare(
-    `SELECT u.id, u.display_name, u.role FROM identities i JOIN users u ON u.id = i.user_id
-     WHERE i.provider = 'github' AND i.provider_user_id = ?1 AND u.deleted_at IS NULL`,
+async function identityOwner(env: Env, v: Verified): Promise<string | null> {
+  const r = await env.DB.prepare(
+    "SELECT i.user_id FROM identities i JOIN users u ON u.id = i.user_id WHERE i.provider = ?1 AND i.provider_user_id = ?2 AND u.deleted_at IS NULL",
   )
-    .bind(ghId)
-    .first<{ id: string; display_name: string; role: Role }>();
-  if (existing) {
+    .bind(v.provider, v.providerUserId)
+    .first<{ user_id: string }>();
+  return r?.user_id ?? null;
+}
+
+const insertIdentity = (env: Env, v: Verified, userId: string, t: string) =>
+  env.DB.prepare(
+    `INSERT INTO identities (provider, provider_user_id, user_id, handle, url, provider_created_at, public, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)`,
+  ).bind(v.provider, v.providerUserId, userId, v.handle, v.url, v.providerCreatedAt ?? null, t);
+
+/** Find or create the user for a verified identity, refreshing what the provider told us. A new
+ *  account takes the suggested name if it is free, else "user-<id>" (changeable on /account). */
+export async function signInWith(env: Env, v: Verified): Promise<{ id: string; display_name: string }> {
+  const owner = await identityOwner(env, v);
+  if (owner) {
     const stmts = [
       env.DB.prepare(
-        "UPDATE identities SET handle = ?2, url = ?3, provider_created_at = COALESCE(?4, provider_created_at) WHERE provider = 'github' AND provider_user_id = ?1",
-      ).bind(ghId, gh.login, url, gh.created_at ?? null),
+        "UPDATE identities SET handle = ?3, url = ?4, provider_created_at = COALESCE(?5, provider_created_at) WHERE provider = ?1 AND provider_user_id = ?2",
+      ).bind(v.provider, v.providerUserId, v.handle, v.url, v.providerCreatedAt ?? null),
     ];
-    if (existing.role !== "maintainer" && isMaintainerGithub(env, ghId))
-      stmts.push(env.DB.prepare("UPDATE users SET role = 'maintainer' WHERE id = ?1").bind(existing.id));
+    if (isMaintainer(env, v)) stmts.push(env.DB.prepare("UPDATE users SET role = 'maintainer' WHERE id = ?1").bind(owner));
     await env.DB.batch(stmts);
-    return existing;
+    const u = await env.DB.prepare("SELECT id, display_name FROM users WHERE id = ?1").bind(owner).first<{ id: string; display_name: string }>();
+    return u!;
   }
-  // New account: display name = the GitHub login. A login's owner has priority over a name someone
-  // else chose: such a user is renamed to "user-<id>" (they can pick another name).
   const id = randomId();
   const t = nowIso();
-  const key = nameKey(gh.login);
-  const role: Role = isMaintainerGithub(env, ghId) ? "maintainer" : "member";
+  const name = v.name && !(await nameProblem(env, "", v.name)) ? cleanName(v.name) : `user-${id}`;
   await env.DB.batch([
-    env.DB.prepare("UPDATE users SET display_name = 'user-' || id, name_key = 'user-' || id WHERE name_key = ?1").bind(key),
     env.DB.prepare("INSERT INTO users (id, display_name, name_key, role, kind, created_at) VALUES (?1, ?2, ?3, ?4, 'human', ?5)").bind(
       id,
-      gh.login,
-      key,
-      role,
+      name,
+      nameKey(name),
+      isMaintainer(env, v) ? "maintainer" : "member",
       t,
     ),
-    env.DB.prepare(
-      `INSERT INTO identities (provider, provider_user_id, user_id, handle, url, provider_created_at, public, created_at)
-       VALUES ('github', ?1, ?2, ?3, ?4, ?5, 1, ?6)`,
-    ).bind(ghId, id, gh.login, url, gh.created_at ?? null, t),
+    insertIdentity(env, v, id, t),
   ]);
-  return { id, display_name: gh.login };
+  return { id, display_name: name };
 }
+
+/** Add a verified identity to a signed-in user. Refuses one that belongs to another account:
+ *  identities are never moved or merged. Returns a problem, or null. */
+export async function linkIdentity(env: Env, userId: string, v: Verified): Promise<string | null> {
+  const owner = await identityOwner(env, v);
+  if (owner && owner !== userId) return `This ${PROVIDER_LABEL[v.provider]} account already belongs to another account here. Sign in with it to use that account.`;
+  if (owner) return null;
+  const stmts = [insertIdentity(env, v, userId, nowIso())];
+  if (isMaintainer(env, v)) stmts.push(env.DB.prepare("UPDATE users SET role = 'maintainer' WHERE id = ?1").bind(userId));
+  await env.DB.batch(stmts);
+  return null;
+}
+
+/** The end of every provider's callback: link to the signed-in account, or sign in. */
+async function identityDone(env: Env, req: Request, v: Verified, mode: "login" | "link", next: string, extraCookies: string[] = []): Promise<Response> {
+  if (mode === "link") {
+    const me = await currentUser(env, req);
+    if (!me || me.via !== "session") return authMessage(env, 401, "Signed out", "Sign in again, then add the account.", "/account");
+    const problem = await linkIdentity(env, me.user.id, v);
+    if (problem) return authMessage(env, 409, "Already in use", problem, "/account");
+    return redirect303("/account?saved=linked", extraCookies);
+  }
+  const user = await signInWith(env, v);
+  return redirect303(safeNext(next), [...extraCookies, ...(await startSession(env, user))]);
+}
+
+/** Starting a provider's sign-in while signed in (from /account) adds it to the account. */
+const startMode = async (env: Env, req: Request): Promise<"login" | "link"> => ((await currentUser(env, req)) ? "link" : "login");
+
+// GitHub
+
+interface GithubProfile {
+  id: number;
+  login: string;
+  name?: string | null;
+  created_at?: string;
+}
+const githubVerified = (gh: GithubProfile): Verified => ({
+  provider: "github",
+  providerUserId: String(gh.id),
+  handle: gh.login,
+  url: `https://github.com/${gh.login}`,
+  providerCreatedAt: gh.created_at ?? null,
+  name: gh.login,
+});
 
 interface OAuthState {
   s: string; // state
@@ -458,34 +512,6 @@ export const clearOAuthCookie = `${OAUTH_COOKIE}=; HttpOnly; ${cookieAttrs(0)}`;
 
 const UA = "open-cryptology (+https://github.com/selanavot/open-cryptology)";
 
-async function githubProfile(env: Env, code: string, verifier: string, redirectUri: string): Promise<GithubProfile | null> {
-  const tr = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST",
-    headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": UA },
-    body: new URLSearchParams({
-      client_id: env.GITHUB_CLIENT_ID!,
-      client_secret: env.GITHUB_CLIENT_SECRET!,
-      code,
-      redirect_uri: redirectUri,
-      code_verifier: verifier,
-    }),
-  });
-  const tok = (await tr.json().catch(() => null)) as { access_token?: string } | null;
-  if (!tok?.access_token) return null;
-  const ur = await fetch("https://api.github.com/user", {
-    headers: {
-      authorization: `Bearer ${tok.access_token}`,
-      accept: "application/vnd.github+json",
-      "x-github-api-version": "2022-11-28",
-      "user-agent": UA,
-    },
-  });
-  if (!ur.ok) return null;
-  const u = (await ur.json()) as GithubProfile;
-  return typeof u.id === "number" && typeof u.login === "string" ? u : null;
-  // The access token goes out of scope here: it is never stored.
-}
-
 function authMessage(env: Env, status: number, title: string, text: string, next = "/"): Response {
   return messagePage(env, status, title, html`<p>${text}</p><p><a href="${safeNext(next)}">Go back</a></p>`, {
     cache: "no-store",
@@ -511,39 +537,6 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     return json({ user: userJson(a.user), via: a.via, ...(a.scopes ? { scopes: a.scopes } : {}) });
   }
 
-  if (path === "/auth/github" && isGet) {
-    const next = safeNext(url.searchParams.get("next"));
-    if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET)
-      return authMessage(env, 503, "Sign-in isn't set up", "GitHub sign-in isn't configured on this server yet.", next);
-    return oauthRedirect(
-      "https://github.com/login/oauth/authorize",
-      { client_id: env.GITHUB_CLIENT_ID, redirect_uri: `${authOrigin(env, url)}/auth/github/callback`, allow_signup: "true" },
-      { n: next, m: "login" },
-    );
-  }
-
-  if (path === "/auth/github/callback" && isGet) {
-    const st = oauthCallbackState(req, url);
-    if (!st) {
-      const cancelled = url.searchParams.get("error") === "access_denied";
-      return authMessage(env, 400, cancelled ? "Sign-in cancelled" : "Sign-in failed",
-        cancelled ? "You didn't authorize the sign-in." : "The sign-in link expired or was already used. Please try again.");
-    }
-    const gh = await githubProfile(env, url.searchParams.get("code")!, st.v, `${authOrigin(env, url)}/auth/github/callback`);
-    if (!gh) return authMessage(env, 502, "Sign-in failed", "GitHub didn't confirm the sign-in. Please try again.", st.n);
-    const user = await userForGithub(env, gh);
-    return redirect303(safeNext(st.n), [clearOAuthCookie, ...(await startSession(env, user))]);
-  }
-
-  // Local testing without a GitHub OAuth app: AUTH_DEV_LOGIN=1 in .dev.vars (never in production).
-  if (path === "/auth/dev-login" && isGet && env.AUTH_DEV_LOGIN === "1") {
-    const login = url.searchParams.get("login") ?? "";
-    const ghid = Number(url.searchParams.get("ghid"));
-    if (!/^[A-Za-z0-9-]{1,39}$/.test(login) || !Number.isInteger(ghid) || ghid <= 0)
-      return authMessage(env, 400, "Bad dev login", "Use /auth/dev-login?login=<github-login>&ghid=<number>.");
-    const user = await userForGithub(env, { id: ghid, login, created_at: url.searchParams.get("created") ?? "2015-01-01T00:00:00Z" });
-    return redirect303(safeNext(url.searchParams.get("next")), await startSession(env, user));
-  }
 
   if (path === "/auth/logout") {
     if (req.method !== "POST") return authMessage(env, 405, "Use the sign-out button", "Signing out needs the button on the account page.");
@@ -554,147 +547,187 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     return redirect303(safeNext(form?.get("next")?.toString()), clearCookies());
   }
 
-  // ORCID (public API, /authenticate scope): sign in, or link to the signed-in account.
-  if (path === "/auth/orcid" && isGet) {
-    const next = safeNext(url.searchParams.get("next") ?? "/account");
-    if (!env.ORCID_CLIENT_ID || !env.ORCID_CLIENT_SECRET)
-      return authMessage(env, 503, "ORCID isn't set up", "Sign-in with ORCID isn't configured on this server yet.", next);
-    const signedIn = !!(await currentUser(env, req));
-    return oauthRedirect(
-      `${orcidBase(env)}/oauth/authorize`,
-      { client_id: env.ORCID_CLIENT_ID, response_type: "code", scope: "/authenticate", redirect_uri: `${authOrigin(env, url)}/auth/orcid/callback` },
-      { n: next, m: signedIn ? "link" : "login" },
-      false, // ORCID's public API doesn't document PKCE; state + the client secret protect the code
-    );
-  }
-
-  if (path === "/auth/orcid/callback" && isGet) {
+  // /auth/<provider> starts a sign-in (or, when signed in, adds the account); the provider sends
+  // the browser back to /auth/<provider>/callback.
+  const pm = /^\/auth\/(github|google|orcid)(\/callback)?$/.exec(path);
+  if (pm && isGet) {
+    const p = PROVIDERS[pm[1] as Provider];
+    const label = PROVIDER_LABEL[pm[1] as Provider];
+    const redirectUri = `${authOrigin(env, url)}/auth/${pm[1]}/callback`;
+    if (!pm[2]) {
+      const next = safeNext(url.searchParams.get("next"));
+      if (!p.ready(env)) return authMessage(env, 503, "Sign-in isn't set up", `${label} sign-in isn't configured on this server yet.`, next);
+      const a = p.authorize(env, redirectUri);
+      return oauthRedirect(a.url, a.params, { n: next, m: await startMode(env, req) }, a.pkce);
+    }
     const st = oauthCallbackState(req, url);
     if (!st) {
       const cancelled = url.searchParams.get("error") === "access_denied";
-      return authMessage(env, 400, cancelled ? "Cancelled" : "ORCID sign-in failed",
-        cancelled ? "You didn't authorize access to your ORCID iD." : "The link expired or was already used. Please try again.", "/account");
+      return authMessage(env, 400, cancelled ? "Sign-in cancelled" : "Sign-in failed",
+        cancelled ? `You didn't authorize the ${label} sign-in.` : "The sign-in link expired or was already used. Please try again.");
     }
-    const o = await orcidProfile(env, url.searchParams.get("code")!, `${authOrigin(env, url)}/auth/orcid/callback`);
-    if (!o) return authMessage(env, 502, "ORCID sign-in failed", "ORCID didn't confirm your iD. Please try again.", st.n);
-    return orcidDone(env, req, o, st.m, st.n, [clearOAuthCookie]);
+    if (!p.ready(env)) return authMessage(env, 503, "Sign-in isn't set up", `${label} sign-in isn't configured on this server yet.`);
+    const v = await p.exchange(env, url.searchParams.get("code")!, st.v, redirectUri);
+    if (!v) return authMessage(env, 502, "Sign-in failed", `${label} didn't confirm the sign-in. Please try again.`, st.n);
+    return identityDone(env, req, v, st.m, st.n, [clearOAuthCookie]);
   }
 
-  // Local testing without an ORCID client: AUTH_DEV_LOGIN=1 (never in production).
-  if (path === "/auth/dev-orcid" && isGet && env.AUTH_DEV_LOGIN === "1") {
-    const orcid = url.searchParams.get("orcid") ?? "";
-    if (!ORCID_RE.test(orcid)) return authMessage(env, 400, "Bad dev ORCID", "Use /auth/dev-orcid?orcid=0000-0002-1825-0097&name=…");
-    const signedIn = !!(await currentUser(env, req));
-    return orcidDone(env, req, { orcid, name: url.searchParams.get("name") ?? "" }, signedIn ? "link" : "login", safeNext(url.searchParams.get("next") ?? "/account"));
+  // Local testing without OAuth apps: AUTH_DEV_LOGIN=1 in .dev.vars (never in production). Made-up
+  // accounts; signed in, dev-orcid and dev-google add the account instead (like the real ones).
+  if (env.AUTH_DEV_LOGIN === "1" && isGet && path.startsWith("/auth/dev-")) {
+    const q = url.searchParams;
+    const next = safeNext(q.get("next") ?? "/account");
+    let v: Verified | null = null;
+    let mode: "login" | "link" = "login";
+    if (path === "/auth/dev-login") {
+      const login = q.get("login") ?? "";
+      const ghid = Number(q.get("ghid"));
+      if (/^[A-Za-z0-9-]{1,39}$/.test(login) && Number.isInteger(ghid) && ghid > 0)
+        v = githubVerified({ id: ghid, login, created_at: q.get("created") ?? "2015-01-01T00:00:00Z" });
+      mode = q.get("link") === "1" ? "link" : "login";
+    } else if (path === "/auth/dev-orcid") {
+      const orcid = q.get("orcid") ?? "";
+      if (ORCID_RE.test(orcid)) v = orcidVerified(orcid, q.get("name") ?? "");
+      mode = await startMode(env, req);
+    } else if (path === "/auth/dev-google") {
+      const sub = q.get("sub") ?? "";
+      const email = q.get("email") ?? "";
+      if (/^\d{1,30}$/.test(sub) && /@[a-z0-9.-]+$/i.test(email)) v = googleVerified({ sub, email, name: q.get("name") ?? "" });
+      mode = await startMode(env, req);
+    }
+    if (!v) return authMessage(env, 400, "Bad dev sign-in", "See docs/ACCOUNTS.md for the dev sign-in routes.");
+    return identityDone(env, req, v, mode, next);
   }
 
   return authMessage(env, 404, "Not found", "There's nothing here.");
 }
 
 // ---------------------------------------------------------------------------------------------
-// ORCID
+// providers
+
+interface ProviderConfig {
+  ready(env: Env): boolean;
+  authorize(env: Env, redirectUri: string): { url: string; params: Record<string, string>; pkce: boolean };
+  exchange(env: Env, code: string, verifier: string, redirectUri: string): Promise<Verified | null>;
+}
+
+const form = (o: Record<string, string>) => ({
+  method: "POST",
+  headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": UA },
+  body: new URLSearchParams(o),
+});
+
+// The providers' access tokens are used at most once, to read the profile, and never stored.
+const PROVIDERS: Record<Provider, ProviderConfig> = {
+  github: {
+    ready: (env) => !!(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
+    authorize: (env, redirect_uri) => ({
+      url: "https://github.com/login/oauth/authorize",
+      params: { client_id: env.GITHUB_CLIENT_ID!, redirect_uri, allow_signup: "true" }, // no scopes: public profile only
+      pkce: true,
+    }),
+    async exchange(env, code, code_verifier, redirect_uri) {
+      const tr = await fetch(
+        "https://github.com/login/oauth/access_token",
+        form({ client_id: env.GITHUB_CLIENT_ID!, client_secret: env.GITHUB_CLIENT_SECRET!, code, redirect_uri, code_verifier }),
+      );
+      const tok = (await tr.json().catch(() => null)) as { access_token?: string } | null;
+      if (!tok?.access_token) return null;
+      const ur = await fetch("https://api.github.com/user", {
+        headers: { authorization: `Bearer ${tok.access_token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": UA },
+      });
+      if (!ur.ok) return null;
+      const u = (await ur.json()) as GithubProfile;
+      return typeof u.id === "number" && typeof u.login === "string" ? githubVerified(u) : null;
+    },
+  },
+  google: {
+    ready: (env) => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+    authorize: (env, redirect_uri) => ({
+      url: "https://accounts.google.com/o/oauth2/v2/auth",
+      params: { client_id: env.GOOGLE_CLIENT_ID!, redirect_uri, response_type: "code", scope: "openid email profile", prompt: "select_account" },
+      pkce: true,
+    }),
+    async exchange(env, code, code_verifier, redirect_uri) {
+      const r = await fetch(
+        "https://oauth2.googleapis.com/token",
+        form({ client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!, code, code_verifier, redirect_uri, grant_type: "authorization_code" }),
+      );
+      const j = (await r.json().catch(() => null)) as { id_token?: string } | null;
+      // The ID token comes straight from Google's token endpoint over TLS, so its claims can be read
+      // without checking the signature (OpenID Connect Core 3.1.3.7); we still check who it is for.
+      const c = j?.id_token ? jwtClaims(j.id_token) : null;
+      if (!c || c.aud !== env.GOOGLE_CLIENT_ID || !["https://accounts.google.com", "accounts.google.com"].includes(String(c.iss))) return null;
+      if (typeof c.exp !== "number" || c.exp * 1000 < Date.now() || c.email_verified !== true) return null;
+      if (typeof c.sub !== "string" || typeof c.email !== "string") return null;
+      return googleVerified({ sub: c.sub, email: c.email, name: typeof c.name === "string" ? c.name : "" });
+    },
+  },
+  orcid: {
+    ready: (env) => !!(env.ORCID_CLIENT_ID && env.ORCID_CLIENT_SECRET),
+    authorize: (env, redirect_uri) => ({
+      url: `${orcidBase(env)}/oauth/authorize`,
+      params: { client_id: env.ORCID_CLIENT_ID!, response_type: "code", scope: "/authenticate", redirect_uri },
+      pkce: false, // ORCID's public API doesn't document PKCE; state + the client secret protect the code
+    }),
+    async exchange(env, code, _verifier, redirect_uri) {
+      const r = await fetch(
+        `${orcidBase(env)}/oauth/token`,
+        form({ client_id: env.ORCID_CLIENT_ID!, client_secret: env.ORCID_CLIENT_SECRET!, grant_type: "authorization_code", code, redirect_uri }),
+      );
+      // The token response itself carries the iD and the name.
+      const j = (await r.json().catch(() => null)) as { orcid?: string; name?: string } | null;
+      return j?.orcid && ORCID_RE.test(j.orcid) ? orcidVerified(j.orcid, j.name ?? "") : null;
+    },
+  },
+};
 
 export const ORCID_RE = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
 const orcidBase = (env: Env) => (env.ORCID_BASE || "https://orcid.org").replace(/\/$/, "");
+const orcidVerified = (orcid: string, name: string): Verified => ({
+  provider: "orcid",
+  providerUserId: orcid,
+  handle: orcid,
+  url: `https://orcid.org/${orcid}`,
+  name,
+});
 
-async function orcidProfile(env: Env, code: string, redirectUri: string): Promise<{ orcid: string; name: string } | null> {
-  const r = await fetch(`${orcidBase(env)}/oauth/token`, {
-    method: "POST",
-    headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": UA },
-    body: new URLSearchParams({
-      client_id: env.ORCID_CLIENT_ID!,
-      client_secret: env.ORCID_CLIENT_SECRET!,
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
-    }),
-  });
-  // The token response itself carries the iD and name; the access token is never stored or used.
-  const j = (await r.json().catch(() => null)) as { orcid?: string; name?: string } | null;
-  return j?.orcid && ORCID_RE.test(j.orcid) ? { orcid: j.orcid, name: j.name ?? "" } : null;
-}
+/** Google: keyed on "sub". We keep only the email's domain (shown as "verified @mit.edu" for
+ *  institutions), never the address itself. */
+const googleVerified = (g: { sub: string; email: string; name: string }): Verified => ({
+  provider: "google",
+  providerUserId: g.sub,
+  handle: g.email.slice(g.email.lastIndexOf("@") + 1).toLowerCase(),
+  url: "",
+  name: g.name,
+});
 
-/** After ORCID confirmed an iD: link it to the signed-in account, or sign in with it (creating an
- *  account if it's new). An iD already linked to another account is never moved or merged. */
-async function orcidDone(
-  env: Env,
-  req: Request,
-  o: { orcid: string; name: string },
-  mode: "login" | "link",
-  next: string,
-  extraCookies: string[] = [],
-): Promise<Response> {
-  const owner = await env.DB.prepare(
-    "SELECT i.user_id FROM identities i JOIN users u ON u.id = i.user_id WHERE i.provider = 'orcid' AND i.provider_user_id = ?1 AND u.deleted_at IS NULL",
-  )
-    .bind(o.orcid)
-    .first<{ user_id: string }>();
-  const url = `https://orcid.org/${o.orcid}`;
-  if (mode === "link") {
-    const me = await currentUser(env, req);
-    if (!me || me.via !== "session") return authMessage(env, 401, "Signed out", "Sign in again, then link your ORCID iD.", "/account");
-    if (owner && owner.user_id !== me.user.id)
-      return authMessage(env, 409, "Already linked", "This ORCID iD belongs to another account here. Sign in with it to use that account.", "/account");
-    if (!owner)
-      await env.DB.prepare(
-        "INSERT INTO identities (provider, provider_user_id, user_id, handle, url, public, created_at) VALUES ('orcid', ?1, ?2, ?1, ?3, 1, ?4)",
-      )
-        .bind(o.orcid, me.user.id, url, nowIso())
-        .run();
-    return redirect303("/account?saved=orcid", extraCookies);
+/** Consumer mail domains: a Google sign-in from these says nothing about an institution. */
+export const PERSONAL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
+
+function jwtClaims(jwt: string): Record<string, unknown> | null {
+  const part = jwt.split(".")[1];
+  if (!part) return null;
+  try {
+    const bin = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))) as Record<string, unknown>;
+  } catch {
+    return null;
   }
-  let user: { id: string; display_name: string };
-  if (owner) {
-    const u = await loadUser(env, owner.user_id);
-    if (!u) return authMessage(env, 404, "Sign-in failed", "That account no longer exists.");
-    user = { id: u.id, display_name: u.displayName };
-  } else {
-    // New account from ORCID alone. Use the ORCID name when it's free, else "user-<id>".
-    const id = randomId();
-    const name = o.name && !(await nameProblem(env, "", o.name)) ? cleanName(o.name) : `user-${id}`;
-    const t = nowIso();
-    await env.DB.batch([
-      env.DB.prepare("INSERT INTO users (id, display_name, name_key, role, kind, created_at) VALUES (?1, ?2, ?3, 'member', 'human', ?4)").bind(
-        id,
-        name,
-        nameKey(name),
-        t,
-      ),
-      env.DB.prepare(
-        "INSERT INTO identities (provider, provider_user_id, user_id, handle, url, public, created_at) VALUES ('orcid', ?1, ?2, ?1, ?3, 1, ?4)",
-      ).bind(o.orcid, id, url, t),
-    ]);
-    user = { id, display_name: name };
-  }
-  return redirect303(next, [...extraCookies, ...(await startSession(env, user))]);
 }
 
 // ---------------------------------------------------------------------------------------------
-// identity visibility and removal (on /account)
+// removing a sign-in (on /account)
 
-/** Show or hide an identity on the public profile, or remove it. A person always keeps at least
- *  one public identity: it is what proves who is behind the display name. */
-export async function changeIdentity(
-  env: Env,
-  user: User,
-  provider: string,
-  providerUserId: string,
-  change: "show" | "hide" | "remove",
-): Promise<string | null> {
+/** Remove one of a user's sign-ins. The last one can't go: it is the only way back in (delete the
+ *  account instead). */
+export async function removeIdentity(env: Env, user: User, provider: string, providerUserId: string): Promise<string | null> {
   const mine = user.identities.find((i) => i.provider === provider && i.providerUserId === providerUserId);
   if (!mine) return "No such sign-in on your account.";
-  const others = user.identities.filter((i) => i !== mine);
-  if (change === "show") {
-    await env.DB.prepare("UPDATE identities SET public = 1 WHERE provider = ?1 AND provider_user_id = ?2").bind(provider, providerUserId).run();
-    return null;
-  }
-  if (!others.some((i) => i.public))
-    return change === "hide"
-      ? "Keep at least one sign-in public: it shows readers who is behind your name."
-      : "This is your only public sign-in. Make another one public first, or delete the account.";
-  if (change === "hide")
-    await env.DB.prepare("UPDATE identities SET public = 0 WHERE provider = ?1 AND provider_user_id = ?2").bind(provider, providerUserId).run();
-  else await env.DB.prepare("DELETE FROM identities WHERE provider = ?1 AND provider_user_id = ?2").bind(provider, providerUserId).run();
+  if (user.identities.length < 2) return "This is your only sign-in. Add another first, or delete the account.";
+  await env.DB.prepare("DELETE FROM identities WHERE provider = ?1 AND provider_user_id = ?2 AND user_id = ?3")
+    .bind(provider, providerUserId, user.id)
+    .run();
   return null;
 }
 
@@ -704,9 +737,8 @@ export async function changeIdentity(
 export const NAME_MAX = 40;
 const cleanName = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim();
 
-/** Why a display name can't be used, or null if it can. Checks the shape, the reserved names,
- *  other users' GitHub logins and other users' display names (case-insensitively, after NFKC).
- *  Look-alike letters from other scripts aren't caught; the verified links are the real proof. */
+/** Why a display name can't be used, or null if it can: its shape, the reserved names, and other
+ *  users' display names (case-insensitively, after NFKC). */
 export async function nameProblem(env: Env, userId: string, name: string): Promise<string | null> {
   const n = cleanName(name);
   if (!n) return "Enter a name.";
@@ -714,13 +746,8 @@ export async function nameProblem(env: Env, userId: string, name: string): Promi
   if (!/^[\p{L}\p{M}\p{N} .'’\-_()]+$/u.test(n)) return "Use letters, digits, spaces and . ' - _ ( ) only.";
   const key = nameKey(n);
   if (key === DELETED_NAME || /^user-[a-z2-7]+$/.test(key)) return "That name is reserved.";
-  const [login, taken] = await env.DB.batch([
-    env.DB.prepare("SELECT 1 FROM identities WHERE provider = 'github' AND lower(handle) = ?1 AND user_id != ?2").bind(key, userId),
-    env.DB.prepare("SELECT 1 FROM users WHERE name_key = ?1 AND id != ?2").bind(key, userId),
-  ]);
-  if (login.results.length) return "That is someone else’s GitHub username.";
-  if (taken.results.length) return "Someone else already uses that name.";
-  return null;
+  const taken = await env.DB.prepare("SELECT 1 FROM users WHERE name_key = ?1 AND id != ?2").bind(key, userId).first();
+  return taken ? "Someone else already uses that name." : null;
 }
 
 /** Set a display name (call nameProblem first). Returns the stored, normalized name. */

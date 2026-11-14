@@ -103,7 +103,7 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
       <ul class="nav-links">
         <li><a href="/search">Papers</a></li>
         <li><a href="${env.REPO_URL}">GitHub</a></li>
-        ${(env.GITHUB_CLIENT_ID || env.ORCID_CLIENT_ID || env.AUTH_DEV_LOGIN === "1") && html`<li><a href="/account" class="nav-account">Sign in</a></li>`}
+        ${(env.GITHUB_CLIENT_ID || env.GOOGLE_CLIENT_ID || env.ORCID_CLIENT_ID || env.AUTH_DEV_LOGIN === "1") && html`<li><a href="/account" class="nav-account">Sign in</a></li>`}
       </ul>
       <details class="nav-search">
         <summary title="Search" aria-label="Search">${searchIcon()}</summary>
