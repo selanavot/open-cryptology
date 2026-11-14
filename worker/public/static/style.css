@@ -406,6 +406,22 @@ ul.versions small { display: block; }
 .upload-notice-ok { background: #e7f6e9; border: 1px solid #9fd3a6; color: #1d4d24; }
 .upload-notice-err { background: #fdecea; border: 1px solid #f1aea6; color: #6b1d14; }
 
+/* ---------- accounts: /account and /u/<id> */
+.account, .profile { max-width: 44rem; margin-left: auto; margin-right: auto; }
+.acct-h { font-size: 1rem; font-weight: 700; margin: 1rem 0 .35rem; }
+.acct-list { list-style: none; margin: 0; padding: 0; }
+.acct-list li { margin: 0 0 .35rem; }
+.ident-kind { display: inline-block; min-width: 3.6rem; color: var(--muted); font-size: .85rem; }
+.unverified { color: var(--muted); font-size: .85rem; font-weight: 400; }
+.acct-badge { background: #fff4cc; color: var(--text); border: 1px solid #f0d27a; font-weight: 400; margin-right: .25rem; }
+.profile-meta { color: var(--muted); }
+.acct-form { max-width: 32rem; }
+.acct-link-row { display: flex; gap: .5rem; margin-bottom: .5rem; }
+.acct-link-label { flex: 0 0 9rem; }
+.form-hint { font-size: .85rem; margin: .35rem 0 0; }
+.acct-signout { max-width: 44rem; margin: 1rem auto 0; text-align: right; }
+.nav-account { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---------- year page: list of every paper */
 ol.year-list { list-style: none; margin: 0; padding: 0; }
 ol.year-list li { margin: 0 0 .85rem; line-height: 1.4; }

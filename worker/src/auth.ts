@@ -483,3 +483,143 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
 
   return authMessage(env, 404, "Not found", "There's nothing here.");
 }
+
+// ---------------------------------------------------------------------------------------------
+// display names and links (edited on /account)
+
+export const NAME_MAX = 40;
+const cleanName = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim();
+
+/** Why a display name can't be used, or null if it can. Checks the shape, the reserved names,
+ *  other users' GitHub logins and other users' display names (case-insensitively, after NFKC).
+ *  Look-alike letters from other scripts aren't caught; the verified links are the real proof. */
+export async function nameProblem(env: Env, userId: string, name: string): Promise<string | null> {
+  const n = cleanName(name);
+  if (!n) return "Enter a name.";
+  if ([...n].length > NAME_MAX) return `Names can be at most ${NAME_MAX} characters.`;
+  if (!/^[\p{L}\p{M}\p{N} .'’\-_()]+$/u.test(n)) return "Use letters, digits, spaces and . ' - _ ( ) only.";
+  const key = nameKey(n);
+  if (key === DELETED_NAME || /^user-[a-z2-7]+$/.test(key)) return "That name is reserved.";
+  const [login, taken] = await env.DB.batch([
+    env.DB.prepare("SELECT 1 FROM identities WHERE provider = 'github' AND lower(handle) = ?1 AND user_id != ?2").bind(key, userId),
+    env.DB.prepare("SELECT 1 FROM users WHERE name_key = ?1 AND id != ?2").bind(key, userId),
+  ]);
+  if (login.results.length) return "That is someone else’s GitHub username.";
+  if (taken.results.length) return "Someone else already uses that name.";
+  return null;
+}
+
+/** Set a display name (call nameProblem first). Returns the stored, normalized name. */
+export async function setDisplayName(env: Env, userId: string, name: string): Promise<string> {
+  const n = cleanName(name);
+  await env.DB.prepare("UPDATE users SET display_name = ?2, name_key = ?3 WHERE id = ?1").bind(userId, n, nameKey(n)).run();
+  return n;
+}
+
+export interface UserLink {
+  label: string;
+  url: string;
+}
+export const MAX_LINKS = 5;
+
+export async function userLinks(env: Env, userId: string): Promise<UserLink[]> {
+  const r = await env.DB.prepare("SELECT label, url FROM user_links WHERE user_id = ?1 ORDER BY position").bind(userId).all<UserLink>();
+  return r.results;
+}
+
+/** Replace a user's self-reported links. Each must be http(s); a missing label becomes the host. */
+export async function setUserLinks(env: Env, userId: string, links: UserLink[]): Promise<string | null> {
+  const clean: UserLink[] = [];
+  for (const l of links) {
+    const raw = l.url.trim();
+    if (!raw) continue;
+    let u: URL;
+    try {
+      u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`);
+    } catch {
+      return `“${raw.slice(0, 60)}” isn’t a valid link.`;
+    }
+    if ((u.protocol !== "https:" && u.protocol !== "http:") || raw.length > 300) return `“${raw.slice(0, 60)}” isn’t a web link.`;
+    const label = (cleanName(l.label) || u.hostname.replace(/^www\./, "")).slice(0, 40);
+    clean.push({ label, url: u.toString() });
+  }
+  if (clean.length > MAX_LINKS) return `At most ${MAX_LINKS} links.`;
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM user_links WHERE user_id = ?1").bind(userId),
+    ...clean.map((l, i) =>
+      env.DB.prepare("INSERT INTO user_links (user_id, position, label, url) VALUES (?1, ?2, ?3, ?4)").bind(userId, i, l.label, l.url),
+    ),
+  ]);
+  return null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// public profiles (safe to render into publicly cached pages)
+
+export interface PublicProfile {
+  id: string;
+  displayName: string;
+  role: Role;
+  kind: Kind;
+  owner?: { id: string; displayName: string };
+  banned: boolean;
+  deleted: boolean;
+  createdAt: string;
+  identities: Identity[]; // public ones only
+  links: UserLink[]; // self-reported, unverified
+}
+
+/** Public profiles for many users at once (comment threads, upload credits). Unknown ids are
+ *  left out; deleted users come back as tombstones ("deleted user", no identities or links). */
+export async function publicProfiles(env: Env, userIds: string[]): Promise<Map<string, PublicProfile>> {
+  const out = new Map<string, PublicProfile>();
+  const ids = [...new Set(userIds)];
+  if (!ids.length) return out;
+  const list = JSON.stringify(ids);
+  const [us, is, ls] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT u.id, u.display_name, u.role, u.kind, u.owner_user_id, o.display_name AS owner_name, u.banned, u.deleted_at,
+         u.created_at FROM users u LEFT JOIN users o ON o.id = u.owner_user_id WHERE u.id IN (SELECT value FROM json_each(?1))`,
+    ).bind(list),
+    env.DB.prepare(
+      "SELECT * FROM identities WHERE public = 1 AND user_id IN (SELECT value FROM json_each(?1)) ORDER BY provider, created_at",
+    ).bind(list),
+    env.DB.prepare("SELECT user_id, label, url FROM user_links WHERE user_id IN (SELECT value FROM json_each(?1)) ORDER BY position").bind(list),
+  ]);
+  for (const r of us.results as unknown as (UserRow & { created_at: string })[]) {
+    const deleted = !!r.deleted_at;
+    out.set(r.id, {
+      id: r.id,
+      displayName: deleted ? DELETED_NAME : r.display_name,
+      role: r.role,
+      kind: r.kind,
+      ...(r.owner_user_id && !deleted ? { owner: { id: r.owner_user_id, displayName: r.owner_name ?? DELETED_NAME } } : {}),
+      banned: !!r.banned,
+      deleted,
+      createdAt: r.created_at,
+      identities: [],
+      links: [],
+    });
+  }
+  for (const r of is.results as unknown as IdentityRow[]) {
+    const p = out.get(r.user_id);
+    if (p && !p.deleted) p.identities.push(toIdentity(r));
+  }
+  for (const r of ls.results as unknown as (UserLink & { user_id: string })[]) {
+    const p = out.get(r.user_id);
+    if (p && !p.deleted) p.links.push({ label: r.label, url: r.url });
+  }
+  return out;
+}
+
+/** Is this GitHub numeric id a public identity of a live, unbanned user? (For /avatar.) */
+export async function publicGithubId(env: Env, githubId: string): Promise<boolean> {
+  if (!/^\d{1,12}$/.test(githubId)) return false;
+  const r = await env.DB.prepare(
+    `SELECT 1 FROM identities i JOIN users u ON u.id = i.user_id
+     WHERE i.provider = 'github' AND i.provider_user_id = ?1 AND i.public = 1 AND u.banned = 0 AND u.deleted_at IS NULL`,
+  )
+    .bind(githubId)
+    .first();
+  return !!r;
+}

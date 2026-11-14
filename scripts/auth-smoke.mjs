@@ -130,6 +130,85 @@ test("callback without our state cookie is refused", async () => {
   check("400", r.status === 400, r.status);
 });
 
+// ------------------------------------------------------------------------------------------- step 2
+const form = (c, fields) => c.req("/account", { method: "POST", form: fields });
+
+test("/account: sign-in page when signed out, settings when signed in", async () => {
+  const out = await new Client().req("/account?next=/2024/1");
+  const t = await out.text();
+  check("signed-out page says Sign in", out.status === 200 && /Sign in/.test(t));
+  check("no-store", out.headers.get("cache-control") === "no-store");
+  const c = new Client();
+  await c.login(`dora${RUN}`, 940000 + (RUN % 1e5));
+  const r = await c.req("/account");
+  const body = await r.text();
+  check("settings page shows the name", r.status === 200 && body.includes(`dora${RUN}`));
+  check("settings page no-store", r.headers.get("cache-control") === "no-store");
+});
+
+test("display name rules", async () => {
+  const a = new Client();
+  await a.login(`erin${RUN}`, 950000 + (RUN % 1e5));
+  const b = new Client();
+  await b.login(`frank${RUN}`, 960000 + (RUN % 1e5));
+  let r = await form(a, { action: "name", name: `  Erin   Example ${RUN} ` });
+  check("valid name saved (303)", r.status === 303, r.status);
+  check("oc_login updated", decodeURIComponent(a.jar.get("oc_login") ?? "") === `Erin Example ${RUN}`);
+  const me = (await a.json("/api/me")).body?.user;
+  check("whitespace normalized", me?.displayName === `Erin Example ${RUN}`, me?.displayName);
+  r = await form(b, { action: "name", name: `ERIN EXAMPLE ${RUN}` });
+  check("name taken (case-insensitive) -> 400", r.status === 400 && /already uses/.test(await r.text()), r.status);
+  r = await form(b, { action: "name", name: `erin${RUN}` });
+  check("someone else's GitHub login -> 400", r.status === 400 && /GitHub username/.test(await r.text()), r.status);
+  for (const bad of ["deleted user", "user-abcdefghijkl", "<script>", "x".repeat(41), ""]) {
+    r = await form(b, { action: "name", name: bad });
+    check(`rejected: ${JSON.stringify(bad.slice(0, 20))}`, r.status === 400, r.status);
+  }
+  r = await form(b, { action: "name", name: `Frank Ünïcødé ${RUN}` });
+  check("unicode letters ok", r.status === 303, r.status);
+  r = await c_cross(b);
+  check("cross-site name change refused", r.status === 403, r.status);
+});
+const c_cross = (c) => c.req("/account", { method: "POST", form: { action: "name", name: "Mallory" }, origin: "https://evil.example" });
+
+test("a GitHub login's owner gets their name back from a squatter", async () => {
+  const squatter = new Client();
+  await squatter.login(`sq${RUN}`, 970000 + (RUN % 1e5));
+  const victim = `victim${RUN}`;
+  await form(squatter, { action: "name", name: victim });
+  check("squatter took the name", (await squatter.json("/api/me")).body?.user?.displayName === victim);
+  const v = new Client();
+  await v.login(victim, 980000 + (RUN % 1e5));
+  check("owner gets their login as name", (await v.json("/api/me")).body?.user?.displayName === victim);
+  const sname = (await squatter.json("/api/me")).body?.user?.displayName;
+  check("squatter renamed to user-<id>", /^user-[a-z2-7]{12}$/.test(sname), sname);
+});
+
+test("links: saved, validated, shown as unverified on the cached profile", async () => {
+  const c = new Client();
+  await c.login(`gail${RUN}`, 990000 + (RUN % 1e5));
+  let r = await form(c, { action: "links", label0: "Homepage", url0: "example.org/~gail", label1: "", url1: "https://dblp.org/pid/1" });
+  check("saved", r.status === 303, r.status);
+  r = await form(c, { action: "links", label0: "x", url0: "javascript:alert(1)" });
+  check("javascript: refused", r.status === 400, r.status);
+  const id = (await c.json("/api/me")).body?.user?.id;
+  const p = await new Client().req(`/u/${id}`);
+  const t = await p.text();
+  check("profile 200, publicly cached", p.status === 200 && p.headers.get("cache-control") === "public, max-age=600", `${p.status} ${p.headers.get("cache-control")}`);
+  check("profile is noindex", /<meta name="robots" content="noindex">/.test(t));
+  check("https added, label kept", t.includes('href="https://example.org/~gail"') && t.includes(">Homepage<"));
+  check("blank label -> host", t.includes(">dblp.org<"));
+  check("links are nofollow ugc", /rel="nofollow ugc noopener"/.test(t));
+  check("marked unverified", /unverified/.test(t));
+  check("verified GitHub link shown", t.includes(`https://github.com/gail${RUN}`) && /on GitHub since 2015/.test(t));
+  check("unknown profile 404", (await new Client().req("/u/aaaaaaaaaaaa")).status === 404);
+});
+
+test("navbar renders the static Sign in link (app.js swaps in the name)", async () => {
+  const t = await (await new Client().req("/")).text();
+  check("nav-account link", /class="nav-account">Sign in</.test(t));
+});
+
 // ------------------------------------------------------------------------------------------------
 for (const [name, fn] of tests) {
   console.log(`\n# ${name}`);

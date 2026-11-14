@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "23";
+const ASSET_VER = "24";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -103,6 +103,7 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
       <ul class="nav-links">
         <li><a href="/search">Papers</a></li>
         <li><a href="${env.REPO_URL}">GitHub</a></li>
+        ${(env.GITHUB_CLIENT_ID || env.AUTH_DEV_LOGIN === "1") && html`<li><a href="/account" class="nav-account">Sign in</a></li>`}
       </ul>
       <details class="nav-search">
         <summary title="Search" aria-label="Search">${searchIcon()}</summary>
