@@ -1,0 +1,24 @@
+# Version updates. Security updates (Settings -> Code security) are separate and ignore the cooldown.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /worker
+    schedule:
+      interval: weekly
+    # Wait a week after a release before proposing it, so a compromised publish is likely caught first.
+    cooldown:
+      default-days: 7
+    groups:
+      # workers-types and wrangler release several times a week; one PR for both.
+      cloudflare:
+        patterns: ["@cloudflare/*", "wrangler"]
+      minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
