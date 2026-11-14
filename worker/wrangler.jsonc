@@ -18,8 +18,7 @@
   // Cron every 4 hours: metadata-harvest staleness alarm (src/staleness.ts), review reminders and
   // IndexNow pings for new/changed papers (src/indexnow.ts; only with the INDEXNOW_KEY secret).
   // The metadata harvest itself runs on GitHub Actions (.github/workflows/harvest.yml) because
-  // ePrint's Cloudflare challenges Workers; the Worker's own harvest (src/harvest.ts) runs only
-  // with HARVEST_ENABLED = "1".
+  // ePrint's Cloudflare challenges Workers.
   "routes": [
     { "pattern": "opencryptology.org", "custom_domain": true },
     { "pattern": "www.opencryptology.org", "custom_domain": true }
@@ -45,7 +44,6 @@
     // Cloudflare Access for /review (maintainer only). ACCESS_AUD lists allowed Access app audience tags.
     "ACCESS_TEAM_DOMAIN": "fragrant-field-7a23.cloudflareaccess.com",
     "ACCESS_AUD": "bd600dd65d2bf3a6d35a8fc6100a53bbb8bcd4f920dee84d8422510ed839b911,5c5a332aefd1a1532265210b6452e66d78092dceca2034ebe44867464af87a26",
-    "REQUIRE_ACCESS": "0",
-    "HARVEST_ENABLED": "0"
+    "REQUIRE_ACCESS": "0"
   }
 }

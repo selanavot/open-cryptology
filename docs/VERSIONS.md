@@ -19,7 +19,7 @@ category, license, history ending in "YYYY-MM-DD: withdrawn") and shows
 Data: `papers.withdrawn_on` (YYYY-MM-DD) and `papers.affiliations` (JSON array parallel to
 `authors`). OAI-PMH deleted records carry no metadata, so:
 
-- `worker/src/oai.ts` and `pipeline/harvest_oai.py`: a deleted record for an existing row only
+- `pipeline/harvest_oai.py` and `pipeline/harvest_remote.py`: a deleted record for an existing row only
   sets `withdrawn=1`, `updated` and `withdrawn_on` (= the record's datestamp unless a date is
   already known); metadata and PDFs stay. A live record for a withdrawn row clears `withdrawn_on`.
 - `pipeline/backfill_withdrawn.py` filled the metadata of the rows that were already withdrawn
@@ -64,8 +64,8 @@ CDX digests), `size`, `source` (`github-mirror` | `wayback` | `upload`), `source
    client, >= 5 s apart, cached per page in `data/cache/discover/`), filtered server-side to
    `/YYYY/NNNN.pdf` URLs with `fl=original,timestamp,length,mimetype,statuscode,digest`.
 2. `existing`: the helper Worker hashes every PDF already in R2 at the legacy key (sha256 + sha1)
-   and records it as a version (source/url/date from `papers.pdf_*`, or the prefill results file
-   for rows not updated yet). Also fills `papers.pdf_sha256` where NULL.
+   and records it as a version (source/url/date from `papers.pdf_*`). Also fills
+   `papers.pdf_sha256` where NULL.
 3. `plan`: per paper, the distinct digests of 200 `application/pdf` captures, minus those we
    hold; plus the GitHub-mirror snapshot (from `sources`) unless GitHub is already a version.
 4. `copy`: the helper Worker fetches each planned copy inside Cloudflare, checks that it is a
@@ -90,7 +90,7 @@ python3 -c "import secrets;print(secrets.token_urlsafe(32))" > ../data/versions/
 npx --no-install wrangler secret put VERSIONS_KEY --name open-cryptology-versions < ../data/versions/.versions-key
 cd ..
 python3 -I pipeline/discover_versions.py list
-python3 -I pipeline/discover_versions.py existing --prefill-results data/prefill/results.jsonl
+python3 -I pipeline/discover_versions.py existing
 python3 -I pipeline/discover_versions.py plan
 python3 -I pipeline/discover_versions.py copy        # long: hours; applies what it stored every 15 min
 python3 -I pipeline/discover_versions.py apply       # incremental (only copies not yet applied)
@@ -101,4 +101,4 @@ cd worker && npx --no-install wrangler delete --name open-cryptology-versions
 ```
 
 Re-running later only copies what's new (the plan drops digests already held and keys already
-copied). Uploads, once verified, should be added as `source='upload'` version rows the same way.
+copied). Accepted uploads get `source='upload'` version rows too.

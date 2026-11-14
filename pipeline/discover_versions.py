@@ -9,8 +9,8 @@ Stages (each resumable; state lives in data/versions/, gitignored):
             API, same as discover_sources.py, ~170 pages, >= 5 s apart, cached per page)
             -> data/versions/cdx-rows.json. Fields: original,timestamp,length,mimetype,status,digest.
   existing  Hash the PDFs already in R2 at the legacy key pdf/<id>.pdf (in Cloudflare, /hash) and
-            record each as a version (source/url/captured_at from papers.pdf_* or the prefill
-            results). Also fills papers.pdf_sha256 where it is NULL.
+            record each as a version (source/url/captured_at from papers.pdf_*). Also fills
+            papers.pdf_sha256 where it is NULL.
   plan      Per paper: distinct Wayback digests (SHA-1 of the payload) among 200 application/pdf
             captures, each dated by its EARLIEST capture, plus the GitHub-mirror snapshot.
             Anything whose digest is already held is dropped -> data/versions/plan.json.
@@ -27,7 +27,7 @@ Stages (each resumable; state lives in data/versions/, gitignored):
   stats     Counts.
 
   python3 -I pipeline/discover_versions.py list
-  python3 -I pipeline/discover_versions.py existing [--prefill-results PATH]
+  python3 -I pipeline/discover_versions.py existing
   python3 -I pipeline/discover_versions.py plan
   python3 -I pipeline/discover_versions.py copy [--limit N] [--apply-every SECONDS]
   python3 -I pipeline/discover_versions.py apply [--all] [--watch MIN [--until-pid PID]]
@@ -138,15 +138,10 @@ def cmd_existing(a):
                     "(SELECT url FROM sources s WHERE s.paper_id = p.id AND s.kind = p.pdf_source) AS src_url "
                     "FROM papers p")
     have = {r["r2_key"] for r in remote("SELECT r2_key FROM versions")}
-    prefill = {}
-    if a.prefill_results and os.path.exists(a.prefill_results):
-        for j in read_jsonl(a.prefill_results):
-            if j.get("ok"):
-                prefill[j["id"]] = j
     done = {j["key"] for j in read_jsonl(EXISTING)}
-    # Only papers that plausibly have an object at the legacy key: pdf_key set, or prefilled.
+    # Only papers that plausibly have an object at the legacy key: pdf_key set.
     todo = [p for p in papers
-            if (p["pdf_key"] or p["id"] in prefill)
+            if p["pdf_key"]
             and f"pdf/{p['id']}.pdf" not in have and f"pdf/{p['id']}.pdf" not in done]
     log(f"hashing {len(todo)} legacy objects in R2 via helper")
     lock = threading.Lock()
@@ -159,12 +154,11 @@ def cmd_existing(a):
         with lock:
             for p in batch:
                 r = by.get(p["id"], {"ok": False, "error": "no result"})
-                pf = prefill.get(p["id"], {})
-                src = p["pdf_source"] or pf.get("source") or "other"
+                src = p["pdf_source"] or "other"
                 rec = {"id": p["id"], "key": f"pdf/{p['id']}.pdf", **{k: r.get(k) for k in ("ok", "error", "sha256", "sha1", "size")},
                        "source": src,
-                       "source_url": p["src_url"] if p["pdf_source"] else pf.get("url"),
-                       "captured_at": p["pdf_source_date"] or pf.get("captured_at")}
+                       "source_url": p["src_url"] if p["pdf_source"] else None,
+                       "captured_at": p["pdf_source_date"]}
                 out.write(json.dumps(rec) + "\n")
                 cnt[0] += 1
             out.flush()
@@ -498,8 +492,6 @@ def cmd_stats(_a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("stage", choices=["list", "existing", "plan", "copy", "apply", "stats"])
-    ap.add_argument("--prefill-results", default=os.path.join(DATA_DIR, "prefill", "results.jsonl"),
-                    help="prefill_via_worker.py results (source/url/date for objects whose D1 row isn't updated yet)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--kind", choices=["wayback", "github-mirror"])
     ap.add_argument("--apply-every", type=int, default=900,

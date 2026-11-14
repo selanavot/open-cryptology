@@ -10,8 +10,8 @@ GitHub Actions runners get real OAI-PMH XML. This script:
      is needed because a new paper's datestamp is its submission time, but it only appears in OAI
      once an editor approves it, often days later: harvesting strictly from the watermark missed
      those papers (2026-11: 2026/2809-2827),
-  3. upserts each record that is new or whose datestamp changed, exactly like worker/src/oai.ts
-     `upsert` (FTS delete -> guarded upsert -> FTS insert, one transaction per record batch);
+  3. upserts each record that is new or whose datestamp changed (FTS delete -> guarded upsert ->
+     FTS insert, one transaction per record batch);
      records we already hold unchanged are skipped (no D1 writes),
   4. reads ePrint's RSS feed once (the 100 most recently changed papers, each with its current
      PDF's byte size) and records that size; a paper we hold a PDF for is "may be outdated"
@@ -54,7 +54,7 @@ LOOKBACK_DAYS = 30  # covers ePrint's approval delay; ~640 records (2 pages) per
 USER_AGENT = ("open-cryptology-harvester/0.1 (unofficial non-commercial ePrint mirror; "
               "https://opencryptology.org)")
 PAGE_GAP_S = 3.0
-# Same set as worker/src/license.ts LICENSE_CODES: the Worker maps anything else to NULL.
+# The codes the Worker has license deeds for (worker/src/license.ts); anything else -> NULL.
 LICENSE_CODES = {"CC BY", "CC BY-SA", "CC BY-NC", "CC BY-NC-SA", "CC BY-NC-ND", "CC0"}
 RECORDS_PER_BATCH = 50  # 3 statements each
 
@@ -126,7 +126,7 @@ def meta_stmt(key, value):
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value", [key, value])
 
 
-# --------------------------------------------------------------------------- upsert (= oai.ts)
+# --------------------------------------------------------------------------- upsert
 
 GUARD = "WHERE papers.updated IS NULL OR excluded.updated >= papers.updated"
 FTS_DELETE = ("INSERT INTO papers_fts(papers_fts, rowid, id, title, authors, abstract) "
@@ -145,7 +145,7 @@ LIVE_COLS = ["id", "year", "num"] + META_COLS
 # ePrint changed the paper after our copy was captured -> our PDF may be an older revision
 # ("may be outdated": yellow on /missing, upload accepted). Only when the datestamp actually
 # moves forward, so re-fetching the same record (OAI from= is inclusive) never re-flags a copy an
-# upload has confirmed since. Same expression in worker/src/oai.ts and harvest_oai.py.
+# upload has confirmed since. Same expression in harvest_oai.py.
 STALE_SET = (
     "pdf_maybe_stale=CASE WHEN papers.pdf_key IS NOT NULL "
     "AND (papers.updated IS NULL OR excluded.updated > papers.updated) "
@@ -164,7 +164,7 @@ LIVE_SQL = (
 
 
 def normalize(r):
-    """Align harvest_oai.parse_page output with worker/src/oai.ts parseGetRecord."""
+    """Keep only license codes the Worker knows (see LICENSE_CODES)."""
     if r.get("license_code") not in LICENSE_CODES:
         r["license_code"] = None
     return r

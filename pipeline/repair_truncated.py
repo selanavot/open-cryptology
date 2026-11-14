@@ -15,7 +15,7 @@ Stages (state in data/repair-truncated/, gitignored):
                  --max-wayback per paper; probed one at a time, >= 3 s apart).
             Papers with none lose their PDF (live papers show in /missing; withdrawn ones show as
             withdrawn without a copy, where uploads are accepted too).
-            "May be outdated" (pdf_maybe_stale, see worker/src/oai.ts): a repaired paper is flagged
+            "May be outdated" (pdf_maybe_stale, see harvest_remote.py): a repaired paper is flagged
             if it already was, if ePrint's datestamp is after the replacement's capture (the
             harvest's rule), or if the truncated capture was a different, later file (its bytes are
             not the first 1 MiB of the replacement), so the paper asks for an upload. Withdrawn

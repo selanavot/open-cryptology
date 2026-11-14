@@ -152,8 +152,3 @@ def d1_query(sql, remote=False):
 def r2_put(key, path, content_type="application/pdf", remote=False):
     _wrangler(["r2", "object", "put", f"{R2_BUCKET}/{key}", "--remote" if remote else "--local",
                "--file", os.path.abspath(path), "--content-type", content_type])
-
-
-def r2_get(key, path, remote=False):
-    _wrangler(["r2", "object", "get", f"{R2_BUCKET}/{key}", "--remote" if remote else "--local",
-               "--file", os.path.abspath(path)])
