@@ -209,6 +209,49 @@ test("navbar renders the static Sign in link (app.js swaps in the name)", async 
   check("nav-account link", /class="nav-account">Sign in</.test(t));
 });
 
+// ------------------------------------------------------------------------------------------- step 3
+async function newToken(c, name = "agent", scopes = ["comment", "upload"], forId) {
+  const f = new URLSearchParams({ action: "token-create", name });
+  for (const s of scopes) f.append("scope", s);
+  if (forId) f.set("for", forId);
+  const r = await c.req("/account", { method: "POST", raw: f.toString(), headers: { "content-type": "application/x-www-form-urlencoded" } });
+  const t = await r.text();
+  return { status: r.status, token: /id="new-token"[^>]*>(oct_[A-Za-z0-9_-]+)</.exec(t)?.[1], html: t };
+}
+const bearer = (tok) => ({ headers: { authorization: `Bearer ${tok}` } });
+
+test("tokens: create, use, scopes, revoke", async () => {
+  const c = new Client();
+  await c.login(`hank${RUN}`, 1000000 + (RUN % 1e5));
+  const { status, token } = await newToken(c, "my agent", ["comment"]);
+  check("created, shown once", status === 200 && /^oct_[A-Za-z0-9_-]{43}$/.test(token ?? ""), status);
+  const page = await (await c.req("/account")).text();
+  check("secret not shown again", !page.includes(token) && page.includes("my agent"));
+  const agent = new Client();
+  const me = await agent.json("/api/me", bearer(token));
+  check("bearer works", me.status === 200 && me.body?.via === "token", me.status);
+  check("scopes reported", JSON.stringify(me.body?.scopes) === '["comment"]', JSON.stringify(me.body?.scopes));
+  check("same user", me.body?.user?.displayName === `hank${RUN}`);
+  const viaToken = await agent.req("/account", { method: "POST", form: { action: "name", name: "Agent Smith" }, origin: null, ...bearer(token) });
+  check("tokens can't change account settings", viaToken.status === 403, viaToken.status);
+  check("garbage bearer -> 401", (await agent.json("/api/me", bearer("oct_nope"))).status === 401);
+  const id = /name="id" value="([a-z2-7]{12})"/.exec(page)?.[1];
+  const other = new Client();
+  await other.login(`ivy${RUN}`, 1010000 + (RUN % 1e5));
+  const steal = await other.req("/account", { method: "POST", form: { action: "token-revoke", id } });
+  check("someone else can't revoke it", steal.status === 404, steal.status);
+  const rv = await c.req("/account", { method: "POST", form: { action: "token-revoke", id } });
+  check("revoked (303)", rv.status === 303, rv.status);
+  check("revoked token -> 401", (await agent.json("/api/me", bearer(token))).status === 401);
+});
+
+test("tokens: need a name and a scope", async () => {
+  const c = new Client();
+  await c.login(`jo${RUN}`, 1020000 + (RUN % 1e5));
+  check("no scope -> 400", (await newToken(c, "x", [])).status === 400);
+  check("no name -> 400", (await newToken(c, "   ")).status === 400);
+});
+
 // ------------------------------------------------------------------------------------------------
 for (const [name, fn] of tests) {
   console.log(`\n# ${name}`);

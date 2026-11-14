@@ -212,9 +212,75 @@ export async function currentUser(env: Env, req: Request): Promise<Actor | null>
   return { user, via: "session" };
 }
 
-/** Bearer tokens arrive in step 3 (api_tokens); until then any Authorization header is ignored. */
-async function tokenActor(_env: Env, _authz: string): Promise<Actor | null> {
-  return null;
+// ---------------------------------------------------------------------------------------------
+// API tokens (agents and bots): "Authorization: Bearer oct_..."
+
+export const SCOPES = ["comment", "upload"] as const;
+export type Scope = (typeof SCOPES)[number];
+export const TOKEN_PREFIX = "oct_";
+export const MAX_TOKENS = 20; // active tokens per account
+
+/** The token's account, or null for a missing, malformed, unknown or revoked token. */
+async function tokenActor(env: Env, authz: string): Promise<Actor | null> {
+  const m = /^Bearer\s+(oct_[A-Za-z0-9_-]{43})\s*$/.exec(authz);
+  if (!m) return null;
+  const t = await env.DB.prepare("SELECT id, user_id, scopes, last_used FROM api_tokens WHERE hash = ?1 AND revoked_at IS NULL")
+    .bind(await sha256hex(m[1]))
+    .first<{ id: string; user_id: string; scopes: string; last_used: string | null }>();
+  if (!t) return null;
+  const user = await loadUser(env, t.user_id);
+  if (!user) return null;
+  if (!t.last_used || Date.now() - Date.parse(t.last_used) > TOUCH_MS)
+    await env.DB.prepare("UPDATE api_tokens SET last_used = ?2 WHERE id = ?1").bind(t.id, nowIso()).run();
+  return { user, via: "token", tokenId: t.id, scopes: t.scopes.split(" ").filter(Boolean) };
+}
+
+/** Content from this actor is labelled agent-made: it came through a token, or from a bot. */
+export const isAgent = (a: Actor): boolean => a.via === "token" || a.user.kind === "bot";
+
+export interface TokenInfo {
+  id: string;
+  user_id: string;
+  name: string;
+  scopes: string;
+  created_at: string;
+  last_used: string | null;
+}
+
+/** Active tokens acting as any of these accounts (a user and the bots they run). */
+export async function listTokens(env: Env, userIds: string[]): Promise<TokenInfo[]> {
+  const r = await env.DB.prepare(
+    `SELECT id, user_id, name, scopes, created_at, last_used FROM api_tokens
+     WHERE revoked_at IS NULL AND user_id IN (SELECT value FROM json_each(?1)) ORDER BY created_at`,
+  )
+    .bind(JSON.stringify(userIds))
+    .all<TokenInfo>();
+  return r.results;
+}
+
+/** Create a token for an account; returns the secret (shown once) or a problem. */
+export async function createToken(env: Env, userId: string, name: string, scopes: string[]): Promise<{ token: string } | { problem: string }> {
+  const n = cleanName(name).slice(0, 60);
+  if (!n) return { problem: "Give the token a name, e.g. “my Claude agent”." };
+  const sc = SCOPES.filter((s) => scopes.includes(s));
+  if (!sc.length) return { problem: "Pick at least one thing the token may do." };
+  const count = await env.DB.prepare("SELECT count(*) AS n FROM api_tokens WHERE user_id = ?1 AND revoked_at IS NULL").bind(userId).first<{ n: number }>();
+  if ((count?.n ?? 0) >= MAX_TOKENS) return { problem: `An account can have at most ${MAX_TOKENS} tokens; revoke one first.` };
+  const token = TOKEN_PREFIX + randomToken(32);
+  await env.DB.prepare("INSERT INTO api_tokens (id, hash, user_id, name, scopes, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+    .bind(randomId(), await sha256hex(token), userId, n, sc.join(" "), nowIso())
+    .run();
+  return { token };
+}
+
+/** Revoke a token acting as one of these accounts. Returns whether one was revoked. */
+export async function revokeToken(env: Env, tokenId: string, userIds: string[]): Promise<boolean> {
+  const r = await env.DB.prepare(
+    "UPDATE api_tokens SET revoked_at = ?3 WHERE id = ?1 AND revoked_at IS NULL AND user_id IN (SELECT value FROM json_each(?2))",
+  )
+    .bind(tokenId, JSON.stringify(userIds), nowIso())
+    .run();
+  return (r.meta.changes ?? 0) > 0;
 }
 
 export const atLeast = (user: User, role: Role): boolean => ROLE_RANK[user.role] >= ROLE_RANK[role];

@@ -22,6 +22,11 @@ import {
   userLinks,
   currentUser,
   type UserLink,
+  createToken,
+  listTokens,
+  revokeToken,
+  SCOPES,
+  type TokenInfo,
 } from "./auth";
 
 const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
@@ -80,7 +85,10 @@ ${p.links.length
 const SAVED: Record<string, string> = {
   name: "Your name was saved.",
   links: "Your links were saved.",
+  revoked: "The token was revoked. Agents using it are signed out.",
 };
+
+const SCOPE_LABEL: Record<string, string> = { comment: "comment", upload: "upload results" };
 
 function signInPage(env: Env, url: URL): Response {
   const next = safeNext(url.searchParams.get("next") ?? "/account");
@@ -103,11 +111,57 @@ ${ready
 interface Notice {
   ok?: string;
   err?: string;
+  token?: { secret: string; name: string };
+}
+
+const when = (iso: string | null) => (iso ? html`<time datetime="${iso}">${day(iso)}</time>` : "never");
+
+function tokensCard(tokens: TokenInfo[], names: Map<string, string>, created?: Notice["token"]): Html {
+  return card(
+    "Agent tokens",
+    html`<p>Let an AI agent post for you. What it posts is labelled agent-made, credited to you, and never presented as
+your own writing. Agents send <code>Authorization: Bearer &lt;token&gt;</code>; see <a href="/llms.txt">llms.txt</a>.</p>
+${created &&
+html`<div class="upload-notice upload-notice-ok" role="status">
+  <p class="mb-1">New token “${created.name}”. Copy it now: it won’t be shown again.</p>
+  <p class="mb-0"><code id="new-token" class="token-secret">${created.secret}</code>
+  <button type="button" class="btn btn-sm btn-outline-dark" data-copy="new-token"><span>Copy</span></button></p>
+</div>`}
+${tokens.length
+  ? html`<ul class="acct-list acct-tokens">${tokens.map(
+      (t) => html`<li><form method="post" action="/account" class="acct-inline">
+  <input type="hidden" name="action" value="token-revoke"><input type="hidden" name="id" value="${t.id}">
+  <strong>${t.name}</strong>${names.size > 1 ? html` <span class="text-muted">as ${names.get(t.user_id)}</span>` : ""}
+  <span class="text-muted">· may ${t.scopes.split(" ").map((s) => SCOPE_LABEL[s] ?? s).join(", ")} · created ${when(t.created_at)} · last used ${when(t.last_used)}</span>
+  <button class="btn btn-sm btn-outline-dark" type="submit">Revoke</button>
+</form></li>`,
+    )}</ul>`
+  : html`<p class="text-muted">No tokens yet.</p>`}
+<form method="post" action="/account" class="acct-form">
+  <input type="hidden" name="action" value="token-create">
+  ${names.size > 1 &&
+  html`<label class="form-label mb-1" for="token-for">Acts as</label>
+  <select class="form-select form-select-sm mb-1" id="token-for" name="for">${[...names].map(([id, n]) => html`<option value="${id}">${n}</option>`)}</select>`}
+  <label class="form-label mb-1" for="token-name">New token</label>
+  <div class="input-group">
+    <input class="form-control form-control-sm" id="token-name" name="name" placeholder="e.g. my Claude agent" maxlength="60" required>
+    <button class="btn btn-sm btn-outline-dark" type="submit">Create token</button>
+  </div>
+  <p class="form-hint">May: ${SCOPES.map((s) => html`<label class="acct-check"><input type="checkbox" name="scope" value="${s}" checked> ${SCOPE_LABEL[s]}</label> `)}</p>
+</form>`,
+    "account",
+  );
+}
+
+/** The accounts this user manages tokens for: themself (and, from step 4, their bots). */
+async function managed(_env: Env, a: Actor): Promise<Map<string, string>> {
+  return new Map([[a.user.id, a.user.displayName]]);
 }
 
 async function accountPage(env: Env, a: Actor, notice: Notice, status = 200): Promise<Response> {
   const u = a.user;
-  const links = await userLinks(env, u.id);
+  const names = await managed(env, a);
+  const [links, tokens] = await Promise.all([userLinks(env, u.id), listTokens(env, [...names.keys()])]);
   const rows: UserLink[] = [...links, ...Array(Math.max(0, MAX_LINKS - links.length)).fill({ label: "", url: "" })].slice(0, MAX_LINKS);
   const body = html`${notice.ok && html`<p class="upload-notice upload-notice-ok" role="status">${notice.ok}</p>`}
 ${notice.err && html`<p class="upload-notice upload-notice-err" role="alert">${notice.err}</p>`}
@@ -147,6 +201,7 @@ ${card(
 </form>`,
   "account",
 )}
+${tokensCard(tokens, names, notice.token)}
 <form method="post" action="/auth/logout" class="acct-signout">
   <input type="hidden" name="next" value="/">
   <button class="btn btn-sm btn-outline-dark" type="submit">Sign out</button>
@@ -162,8 +217,22 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
     const me = await currentUser(env, req);
     return me ? accountPage(env, me, { err: "This account is suspended." }, 403) : redirect303("/account");
   }
+  if (a.via !== "session") return messagePage(env, 403, "Browser only", html`<p>Account settings can only be changed in a browser, not with a token.</p>`, NO_STORE);
   const form = await req.formData();
   const action = form.get("action")?.toString();
+  if (action === "token-create") {
+    const names = await managed(env, a);
+    const forId = form.get("for")?.toString() ?? a.user.id;
+    if (!names.has(forId)) return accountPage(env, a, { err: "You can’t create tokens for that account." }, 403);
+    const name = form.get("name")?.toString() ?? "";
+    const r = await createToken(env, forId, name, form.getAll("scope").map(String));
+    if ("problem" in r) return accountPage(env, a, { err: r.problem }, 400);
+    return accountPage(env, a, { token: { secret: r.token, name: name.trim() } });
+  }
+  if (action === "token-revoke") {
+    const ok = await revokeToken(env, form.get("id")?.toString() ?? "", [...(await managed(env, a)).keys()]);
+    return ok ? redirect303("/account?saved=revoked") : accountPage(env, a, { err: "No such token." }, 404);
+  }
   if (action === "name") {
     const name = form.get("name")?.toString() ?? "";
     const problem = await nameProblem(env, a.user.id, name);

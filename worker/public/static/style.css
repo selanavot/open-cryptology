@@ -420,6 +420,11 @@ ul.versions small { display: block; }
 .acct-link-label { flex: 0 0 9rem; }
 .form-hint { font-size: .85rem; margin: .35rem 0 0; }
 .acct-signout { max-width: 44rem; margin: 1rem auto 0; text-align: right; }
+.acct-inline { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem; }
+.acct-inline .btn { margin-left: auto; }
+.acct-tokens li { padding: .35rem 0; border-bottom: 1px solid #eee; }
+.acct-check { margin-right: .75rem; white-space: nowrap; }
+.token-secret { display: inline-block; padding: .2rem .4rem; background: #fff; border: 1px solid var(--border); border-radius: .2rem; word-break: break-all; }
 .nav-account { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- year page: list of every paper */
