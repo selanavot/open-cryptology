@@ -14,12 +14,11 @@ pipeline against Wrangler's emulated D1/R2 instead (`pipeline/README.md`).
   costs no D1 writes; the `lookback_days` workflow input does a longer catch-up), following
   resumptionTokens (<= 30 pages per run,
   >= 3 s between pages, one client, descriptive User-Agent), written straight to production D1
-  through the Cloudflare D1 HTTP API with the same parsing and upsert as `worker/src/oai.ts`.
+  through the Cloudflare D1 HTTP API with the same parsing and upsert as `pipeline/harvest_oai.py`.
   Upserts touch metadata columns only, never move a record backwards in time
   (`excluded.updated >= papers.updated`) and never touch `pdf_*`. On success it advances
   `meta.last_harvest` and writes `meta.harvest_last_run` (JSON summary) and `meta.harvest_last_ok`.
   It runs on GitHub because ePrint's Cloudflare challenges requests from Cloudflare Workers.
-  The Worker's own harvest (`worker/src/harvest.ts`) is kept but off (`HARVEST_ENABLED = "0"`).
   - **Secret:** repository secret `CLOUDFLARE_API_TOKEN`, a Cloudflare API token with
     *Account > D1 > Edit* on the maintainer's account (Settings > Secrets and variables > Actions).
   - **Failure alerts:** the script exits non-zero (and the run fails) on any HTTP status other
@@ -31,19 +30,16 @@ pipeline against Wrangler's emulated D1/R2 instead (`pipeline/README.md`).
   - **Staleness alarm:** the Worker cron (every 4 h, `worker/src/staleness.ts`) emails
     `CONTACT_TO` "[Open Cryptology] Metadata harvest is stale" when `meta.harvest_last_ok` is
     missing or older than 26 h, at most once per 24 h (`meta.harvest_stale_alert_at`).
-- **On demand:** a paper page for an id not yet in D1 does a single OAI `GetRecord`
-  (`worker/src/oai.ts`), so brand-new papers appear before the next cron run.
 
 ## PDFs
 
 The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
 
-- **Prefill (one-off):** R2 was filled from existing public copies (the community GitHub mirror
+- **Public copies:** R2 was filled from existing public copies (the community GitHub mirror
   `arturo-kong/IACR-eprint-mirror` and Wayback Machine `id_` captures, as listed in `sources` by
   `pipeline/discover_sources.py`) by a temporary helper Worker that streams source -> R2 inside
-  Cloudflare. Tooling: `prefill-worker/`, `pipeline/prefill_via_worker.py`,
-  `pipeline/apply_prefill.py`, `pipeline/missing_report.py`; all to be removed after the backfill.
-  It can be re-run occasionally to pick up new public copies.
+  Cloudflare. `pipeline/discover_versions.py` with `versions-worker/` does this now and can be
+  re-run occasionally to pick up new public copies (`docs/VERSIONS.md`).
 - **Uploads:** anyone can upload a PDF for a paper that lacks an up-to-date copy (web form, or
   the agent API `POST /api/upload/YYYY/NNNN`). A file whose first two pages show the title and an
   author's name (`worker/src/match.ts`, measured with `pipeline/verify_bench.mjs`) goes live at
@@ -70,8 +66,7 @@ The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
 ## Lessons and numbers
 
 - **D1 free plan: 100k row writes/day.** The one-time bulk metadata import used ~219k, so bulk
-  loads (metadata or `pdf_*` updates) must be split across days (`apply_prefill.py` writes in
-  chunks for this reason) or run on Workers Paid.
+  loads (metadata or `pdf_*` updates) must be split across days or run on Workers Paid.
 - Sizes (2026-11-10): 28,512 OAI records (839 deleted/withdrawn); ~35 MB of metadata in D1; the
   GitHub mirror holds ~25.8k PDFs, 19.6 GB, so R2 storage exceeds the 10 GB free tier (a few
   cents a month). Some public copy exists for ~96% of live papers (100% of 1996-2025 except

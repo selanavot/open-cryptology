@@ -10,10 +10,10 @@ obtain and search for humans and AI assistants, while respecting each paper's li
   behind a Cloudflare challenge; we do not bypass it. PDFs come from existing public copies
   (community GitHub mirror, Wayback Machine, arXiv/open-access copies) and verified uploads.
 - **Metadata from OAI-PMH** (`https://eprint.iacr.org/oai`, CC0), harvested incrementally with
-  `from=<last datestamp>`, politely (≥1 s between requests).
+  `from=<last datestamp>`, politely (≥3 s between requests).
 - **No bulk data on laptops.** Locally we use Wrangler's emulated D1/R2 with a ~20-paper PDF
   sample. Bulk copies run inside Cloudflare and stream source → R2.
-- **Polite to IACR.** Metadata is harvested every 4 hours at most; PDFs are never fetched from
+- **Polite to IACR.** Metadata is harvested every 8 hours at most; PDFs are never fetched from
   eprint.iacr.org.
 
 ## Components
@@ -24,14 +24,14 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 | PDFs | Cloudflare R2 bucket `open-cryptology-pdfs` | `pdf/YYYY/NNNN.pdf`; more versions `pdf/YYYY/NNNN/<stamp>.pdf`; uploads under `quarantine/` |
 | Site + API | Cloudflare Worker (`worker/`) | server-rendered HTML, JSON API, `llms.txt` |
 | Pipeline | `pipeline/` (Python, stdlib) | initial OAI harvest → D1; source discovery; local-dev PDF sample |
-| Updates | GitHub Actions every 8 h (`.github/workflows/harvest.yml`) | incremental OAI `from=` metadata harvest (30-day look-back) + RSS PDF sizes → D1 via the D1 HTTP API (`pipeline/harvest_remote.py`); PDFs prefilled separately |
+| Updates | GitHub Actions every 8 h (`.github/workflows/harvest.yml`) | incremental OAI `from=` metadata harvest (30-day look-back) + RSS PDF sizes → D1 via the D1 HTTP API (`pipeline/harvest_remote.py`); PDFs come from public copies and uploads (`docs/INGESTION.md`) |
 | Monitoring | Worker Cron Trigger every 4 h | emails the maintainer if the harvest hasn't succeeded for 26 h (`worker/src/staleness.ts`); failed workflow runs email via GitHub; also pings IndexNow (`worker/src/indexnow.ts`) |
 
 ## Routes (Worker)
 
 - `/` — purpose, search box, stats, recent papers, license guidance, issues link
 - `/search?q=` — FTS over title/authors/abstract
-- `/YYYY/NNNN` — paper page (ePrint-like layout, orange theme): title, authors, abstract,
+- `/YYYY/NNNN` — paper page (ePrint-like layout, yellow theme): title, authors, abstract,
   metadata (category, license, dates), PDF link if mirrored else upload form, link to the
   original ePrint page, BibTeX
 - `/YYYY/NNNN.pdf` — PDF from R2 with license headers (`Link: <license>; rel="license"`)
@@ -40,8 +40,10 @@ obtain and search for humans and AI assistants, while respecting each paper's li
   (POST) — the same for agents, JSON: 201 live, 202 queued for review
 - `/review`, `/review/<uploadId>` — maintainer review of quarantined uploads (Cloudflare Access)
 - `/api/papers/YYYY/NNNN` — JSON metadata; `/api/search?q=` — JSON search
-- `/llms.txt`, `/robots.txt`, `/about` (license guidance for humans and agents)
-- `/YYYY` — a year: coverage tiles and one square per paper (green = PDF here, grey = missing), then
+- `/missing`, `/api/missing` — papers that need a PDF (missing or outdated), as a page and as JSON
+- `/llms.txt` (guidance for agents), `/robots.txt`, `/support` (hosting costs), `/contact` (POST:
+  contact form on the homepage)
+- `/YYYY` — a year: coverage tiles and one square per paper (green = PDF here, yellow = may be outdated, grey = missing), then
   every paper of the year (indexable: search is `noindex`, so this is how crawlers reach papers)
 - `/sitemap.xml` (homepage, year pages, every paper page); `/<INDEXNOW_KEY>.txt` (IndexNow key file)
 

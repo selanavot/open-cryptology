@@ -2,7 +2,6 @@ import { apiUpload } from "./apiupload";
 import { handleReview, isReviewPath } from "./review";
 import { notifyReview } from "./quarantine";
 import { handleContact } from "./contact";
-import { runHarvest } from "./harvest";
 import { checkHarvestStaleness } from "./staleness";
 import { canonicalId, type Env } from "./db";
 import { html } from "./html";
@@ -175,19 +174,12 @@ export default {
     }
   },
   async scheduled(_ctrl: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    // The metadata harvest normally runs on GitHub Actions; runHarvest is a no-op unless
-    // HARVEST_ENABLED=1. The staleness check emails the maintainer if that harvest stops succeeding.
+    // The metadata harvest runs on GitHub Actions; this emails the maintainer if it stops succeeding.
     ctx.waitUntil(
-      runHarvest(env)
-        .then(
-          (r) => console.log("harvest", JSON.stringify(r)),
-          (e) => console.error("harvest failed", e instanceof Error ? e.stack : String(e)),
-        )
-        .then(() => checkHarvestStaleness(env))
-        .then(
-          (r) => console.log("harvest staleness", JSON.stringify(r)),
-          (e) => console.error("harvest staleness check failed", e instanceof Error ? e.stack : String(e)),
-        ),
+      checkHarvestStaleness(env).then(
+        (r) => console.log("harvest staleness", JSON.stringify(r)),
+        (e) => console.error("harvest staleness check failed", e instanceof Error ? e.stack : String(e)),
+      ),
     );
     // Tell search engines (IndexNow) about new and changed paper pages.
     ctx.waitUntil(

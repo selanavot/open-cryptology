@@ -1,8 +1,6 @@
 import type { Paper } from "./db";
 import { parseAuthors } from "./db";
 
-export const LICENSE_CODES = ["CC BY", "CC BY-SA", "CC BY-NC", "CC BY-NC-SA", "CC BY-NC-ND", "CC0"] as const;
-
 const DEFAULT_DEEDS: Record<string, string> = {
   "CC BY": "https://creativecommons.org/licenses/by/4.0/",
   "CC BY-SA": "https://creativecommons.org/licenses/by-sa/4.0/",
@@ -11,17 +9,6 @@ const DEFAULT_DEEDS: Record<string, string> = {
   "CC BY-NC-ND": "https://creativecommons.org/licenses/by-nc-nd/4.0/",
   CC0: "https://creativecommons.org/publicdomain/zero/1.0/",
 };
-
-/** Same normalization as pipeline/harvest_oai.py:license_code, restricted to known codes. */
-export function licenseCode(url: string | null | undefined): string | null {
-  if (!url) return null;
-  const u = url.trim().toLowerCase();
-  if (u.includes("publicdomain/zero")) return "CC0";
-  const m = /creativecommons\.org\/licenses\/([a-z-]+)\//.exec(u);
-  if (!m) return null;
-  const code = "CC " + m[1].toUpperCase();
-  return (LICENSE_CODES as readonly string[]).includes(code) ? code : null;
-}
 
 export interface LicenseInfo {
   code: string | null;

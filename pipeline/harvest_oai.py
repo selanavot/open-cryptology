@@ -96,8 +96,8 @@ def parse_page(xml_bytes):
     return out, token or None, None
 
 
-# ePrint changed the paper after our copy was captured -> the PDF may be outdated (see
-# harvest_remote.py; same expression in worker/src/oai.ts).
+# ePrint changed the paper after our copy was captured -> the PDF may be outdated (same
+# expression in harvest_remote.py).
 STALE_SET = (
     "pdf_maybe_stale=CASE WHEN papers.pdf_key IS NOT NULL "
     "AND (papers.updated IS NULL OR excluded.updated > papers.updated) "

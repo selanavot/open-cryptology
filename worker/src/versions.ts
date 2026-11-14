@@ -12,8 +12,6 @@ const SOURCE_SHORT: Record<string, string> = {
   other: "public copy",
 };
 
-export const STAMP_RE = /^\d{8}T\d{6}Z$/;
-
 export const versionPath = (id: string, v: Pick<Version, "stamp">): string => `/${id}/versions/${v.stamp}.pdf`;
 
 export function fmtSize(n: number | null): string {

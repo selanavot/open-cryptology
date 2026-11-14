@@ -14,7 +14,7 @@ into R2 is described in `docs/INGESTION.md`.
 | Script | Does | Network |
 |---|---|---|
 | `harvest_oai.py` | OAI-PMH ListRecords (oai_dc) -> `papers`, FTS rebuild, `meta.last_harvest` | eprint.iacr.org/oai, one client, >= 3 s/request, stops at first 403/429 |
-| `harvest_remote.py` | production harvest (run by GitHub Actions): OAI-PMH ListRecords from `meta.last_harvest` minus `--lookback-days` (30) -> remote D1 via the D1 HTTP API (same upsert as `worker/src/oai.ts`, unchanged records skipped), then one RSS read for current PDF sizes (`pdf_latest_size`, sets/clears `pdf_maybe_stale`; problems only warn), `meta.harvest_last_run` / `harvest_last_ok`; exits non-zero on block pages, HTTP != 200, OAI or D1 errors. Env: `CLOUDFLARE_API_TOKEN` (D1 Edit), optional `OAI_BASE`, `RSS_URL` (`off` to skip) | eprint.iacr.org/oai + /rss/rss.xml, one client, >= 3 s/request, <= 30 pages/run |
+| `harvest_remote.py` | production harvest (run by GitHub Actions): OAI-PMH ListRecords from `meta.last_harvest` minus `--lookback-days` (30) -> remote D1 via the D1 HTTP API (same upsert as `harvest_oai.py`, unchanged records skipped), then one RSS read for current PDF sizes (`pdf_latest_size`, sets/clears `pdf_maybe_stale`; problems only warn), `meta.harvest_last_run` / `harvest_last_ok`; exits non-zero on block pages, HTTP != 200, OAI or D1 errors. Env: `CLOUDFLARE_API_TOKEN` (D1 Edit), optional `OAI_BASE`, `RSS_URL` (`off` to skip) | eprint.iacr.org/oai + /rss/rss.xml, one client, >= 3 s/request, <= 30 pages/run |
 | `rss_backfill.py` | one-off: ePrint PDF sizes from archived RSS snapshots (Wayback) -> SQL file of the harvest's guarded UPDATEs, for papers unchanged since the snapshot | web.archive.org, >= 2 s/request |
 | `discover_sources.py` | where PDFs can be fetched -> `sources` (no downloads) + coverage table | `gh api`; web.archive.org CDX, >= 5 s/request |
 | `ingest_sample.py` | ~20 PDFs -> local R2 `pdf/YYYY/NNNN.pdf` + `papers.pdf_*` (local dev only: the only way to get PDFs into the emulated R2, to exercise the PDF route and paper pages with a mirrored copy) | raw.githubusercontent.com, web.archive.org |
@@ -53,18 +53,6 @@ npx --no-install wrangler d1 execute DB --local --command \
   "SELECT id FROM papers_fts WHERE papers_fts MATCH 'isogeny' LIMIT 3"
 npx --no-install wrangler r2 object get open-cryptology-pdfs/pdf/2024/1731.pdf --local --file /tmp/x.pdf
 ```
-
-## One-off tooling (historical; remove after the PDF backfill)
-
-These drove the one-time prefill of R2 from public copies (community GitHub mirror, Wayback
-Machine). They are not part of the regular pipeline and get deleted once the backfill is done.
-
-| What | Does |
-|---|---|
-| `../prefill-worker/` | temporary Worker `open-cryptology-prefill`: copies PDFs from the allowed public mirrors into R2 inside Cloudflare (shared-key protected). Delete with `npx wrangler delete --name open-cryptology-prefill` |
-| `prefill_via_worker.py` | sends (id, source URL) batches to that Worker; resumable results log. Env: `PREFILL_WORKER_URL` (defaults to the deployed Worker) |
-| `apply_prefill.py` | writes the results into remote D1 `papers.pdf_*` in chunks (free-plan D1 write quota). Env: `CLOUDFLARE_ACCOUNT_ID` if your Wrangler login sees several accounts |
-| `missing_report.py` | CSV of live papers still without a PDF after the prefill |
 
 ## Data notes
 
