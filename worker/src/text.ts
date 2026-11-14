@@ -57,7 +57,10 @@ download it there. Then either you or they can upload it:
   - 202 {"status":"queued_for_review", "id", "check", "message"}: received and stored, but we couldn't
     confirm automatically that it is this paper, so a person will review it. This is not a failure:
     do not upload it again (the same file again also gets 202, and isn't stored twice).
-  - 200 {"status":"already_have_it"}: we already have this exact file.
+  - 200 {"status":"already_have_it", "maybe_stale"}: we already have this exact file. With
+    "maybe_stale": true the paper stays marked outdated, because the PDF size we last saw on ePrint
+    ("eprint_pdf") differs; if ePrint posted a newer version since, it clears at the next metadata
+    harvest (every 8 hours). Don't upload it again.
   - 200 {"status":"confirmed_current"}: the paper was marked "maybe_stale" and this is exactly the
     copy we have, so it is now marked as the latest version.
   - 409 {"error":"older_version"}: we already hold this file as an earlier version.

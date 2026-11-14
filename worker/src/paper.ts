@@ -121,6 +121,10 @@ const UPLOAD_NOTICES: Record<string, { ok: boolean; text: string }> = {
   live: { ok: true, text: "Thank you! The PDF is now live." },
   review: { ok: true, text: "Thank you! It will appear after review." },
   have: { ok: true, text: "We already have that exact file." },
+  have_flagged: {
+    ok: true,
+    text: "We already have that exact file, but it’s still marked outdated: the PDF size we last saw on ePrint is different. If ePrint posted a new version recently, we check again within 8 hours. No need to upload it again.",
+  },
   confirmed: { ok: true, text: "Same file as ours: now marked as the latest. Thank you!" },
   older: { ok: false, text: "That’s an earlier version. Please upload the latest from ePrint." },
   cross_site: { ok: false, text: "Cross-site uploads aren’t accepted." },
@@ -149,10 +153,10 @@ function uploadRedirect(url: URL, id: string, code: keyof typeof UPLOAD_NOTICES)
 }
 
 /** An upload of a file we already hold: the current copy (confirms an outdated one) or an older one. */
-async function knownSha(env: Env, url: URL, p: Paper, sha: string): Promise<"have" | "confirmed" | "older" | null> {
+async function knownSha(env: Env, url: URL, p: Paper, sha: string): Promise<"have" | "have_flagged" | "confirmed" | "older" | null> {
   const k = await knownCopy(env, p, sha);
   if (k === "current") {
-    if (!(await confirmCurrent(env, p))) return "have";
+    if (!(await confirmCurrent(env, p))) return p.pdf_maybe_stale ? "have_flagged" : "have";
     await coverageChanged(url.origin, p.id);
     return "confirmed";
   }
