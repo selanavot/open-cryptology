@@ -8,14 +8,12 @@ import {
   type Actor,
   type Identity,
   type PublicProfile,
-  isAuthFailure,
   loginCookie,
   MAX_LINKS,
   NAME_MAX,
   nameProblem,
   publicProfiles,
   redirect303,
-  requireUser,
   safeNext,
   setDisplayName,
   setUserLinks,
@@ -27,6 +25,15 @@ import {
   revokeToken,
   SCOPES,
   type TokenInfo,
+  atLeast,
+  bannedUsers,
+  clearCookies,
+  createBot,
+  deleteAccounts,
+  listBots,
+  resolveUser,
+  sameOrigin,
+  setBanned,
 } from "./auth";
 
 const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
@@ -86,6 +93,10 @@ const SAVED: Record<string, string> = {
   name: "Your name was saved.",
   links: "Your links were saved.",
   revoked: "The token was revoked. Agents using it are signed out.",
+  bot: "Bot created. Give it a token below.",
+  "bot-deleted": "The bot was deleted; what it posted stays, credited to “deleted user”.",
+  banned: "The account is suspended.",
+  unbanned: "The suspension was lifted.",
 };
 
 const SCOPE_LABEL: Record<string, string> = { comment: "comment", upload: "upload results" };
@@ -153,9 +164,70 @@ ${tokens.length
   );
 }
 
-/** The accounts this user manages tokens for: themself (and, from step 4, their bots). */
-async function managed(_env: Env, a: Actor): Promise<Map<string, string>> {
-  return new Map([[a.user.id, a.user.displayName]]);
+/** The accounts this user manages tokens for: themself and the bots they run. */
+async function managed(env: Env, a: Actor): Promise<Map<string, string>> {
+  const bots = await listBots(env, a.user.id);
+  return new Map([[a.user.id, a.user.displayName], ...bots.map((b) => [b.id, `${b.display_name} (bot)`] as [string, string])]);
+}
+
+/** Maintainers: bot accounts and bans. */
+async function moderationCard(env: Env, a: Actor): Promise<Html> {
+  const [bots, banned] = await Promise.all([listBots(env, a.user.id), bannedUsers(env)]);
+  return card(
+    "Moderation",
+    html`<h4 class="acct-h">Bots you run</h4>
+<p class="text-muted">Automated accounts, such as an AI reviewer. A bot can’t sign in; give it a token in “Agent tokens” above.
+Its profile says it is operated by you.</p>
+${bots.length
+  ? html`<ul class="acct-list">${bots.map(
+      (b) => html`<li><form method="post" action="/account" class="acct-inline">
+  <input type="hidden" name="action" value="bot-delete"><input type="hidden" name="id" value="${b.id}">
+  <a href="/u/${b.id}">${b.display_name}</a>
+  <button class="btn btn-sm btn-outline-dark" type="submit">Delete bot</button>
+</form></li>`,
+    )}</ul>`
+  : ""}
+<form method="post" action="/account" class="acct-form">
+  <input type="hidden" name="action" value="bot-create">
+  <div class="input-group">
+    <input class="form-control form-control-sm" name="name" placeholder="Bot name, e.g. Open Cryptology reviewer" maxlength="${NAME_MAX * 2}" required aria-label="Bot name">
+    <button class="btn btn-sm btn-outline-dark" type="submit">Create bot</button>
+  </div>
+</form>
+<h4 class="acct-h">Suspend an account</h4>
+<p class="text-muted">A suspended account can’t post or change its profile, and its tokens stop working.</p>
+<form method="post" action="/account" class="acct-form">
+  <input type="hidden" name="action" value="ban">
+  <div class="input-group">
+    <input class="form-control form-control-sm" name="user" placeholder="Profile link or GitHub username" required aria-label="Account to suspend">
+    <button class="btn btn-sm btn-outline-dark" type="submit">Suspend</button>
+  </div>
+</form>
+${banned.length
+  ? html`<ul class="acct-list mt-2">${banned.map(
+      (b) => html`<li><form method="post" action="/account" class="acct-inline">
+  <input type="hidden" name="action" value="unban"><input type="hidden" name="id" value="${b.id}">
+  <a href="/u/${b.id}">${b.display_name}</a> <span class="text-muted">suspended</span>
+  <button class="btn btn-sm btn-outline-dark" type="submit">Lift suspension</button>
+</form></li>`,
+    )}</ul>`
+  : ""}`,
+    "account",
+  );
+}
+
+function deleteCard(): Html {
+  return card(
+    "Delete your account",
+    html`<p>This signs you out everywhere, removes your sign-ins, links, tokens and any bots you run, and frees your name.
+What you posted stays, credited to “deleted user”. It can’t be undone.</p>
+<form method="post" action="/account" class="acct-form">
+  <input type="hidden" name="action" value="delete">
+  <label class="acct-check"><input type="checkbox" name="confirm" value="yes" required> I understand, delete my account</label>
+  <button class="btn btn-sm btn-outline-dark" type="submit">Delete account</button>
+</form>`,
+    "account",
+  );
 }
 
 async function accountPage(env: Env, a: Actor, notice: Notice, status = 200): Promise<Response> {
@@ -202,6 +274,8 @@ ${card(
   "account",
 )}
 ${tokensCard(tokens, names, notice.token)}
+${atLeast(u, "maintainer") && (await moderationCard(env, a))}
+${deleteCard()}
 <form method="post" action="/auth/logout" class="acct-signout">
   <input type="hidden" name="next" value="/">
   <button class="btn btn-sm btn-outline-dark" type="submit">Sign out</button>
@@ -210,16 +284,42 @@ ${tokensCard(tokens, names, notice.token)}
 }
 
 async function accountPost(env: Env, req: Request): Promise<Response> {
-  const a = await requireUser(env, req);
-  if (isAuthFailure(a)) {
-    if (a.code === "signin") return redirect303("/account");
-    if (a.code === "origin") return messagePage(env, 403, "Rejected", html`<p>Cross-site requests aren’t accepted.</p>`, NO_STORE);
-    const me = await currentUser(env, req);
-    return me ? accountPage(env, me, { err: "This account is suspended." }, 403) : redirect303("/account");
-  }
+  if (!sameOrigin(req, env)) return messagePage(env, 403, "Rejected", html`<p>Cross-site requests aren’t accepted.</p>`, NO_STORE);
+  const a = await currentUser(env, req);
+  if (!a) return redirect303("/account");
   if (a.via !== "session") return messagePage(env, 403, "Browser only", html`<p>Account settings can only be changed in a browser, not with a token.</p>`, NO_STORE);
   const form = await req.formData();
   const action = form.get("action")?.toString();
+  if (action === "delete") {
+    if (form.get("confirm") !== "yes") return accountPage(env, a, { err: "Tick the box to confirm." }, 400);
+    await deleteAccounts(env, [a.user.id]);
+    return redirect303("/?account=deleted", clearCookies());
+  }
+  // A suspended account can still delete itself, and nothing else.
+  if (a.user.banned) return accountPage(env, a, { err: "This account is suspended." }, 403);
+  const maint = atLeast(a.user, "maintainer");
+  if (action === "bot-create" || action === "bot-delete" || action === "ban" || action === "unban") {
+    if (!maint) return accountPage(env, a, { err: "Only maintainers can do that." }, 403);
+    if (action === "bot-create") {
+      const r = await createBot(env, a.user.id, form.get("name")?.toString() ?? "");
+      return "problem" in r ? accountPage(env, a, { err: r.problem }, 400) : redirect303("/account?saved=bot");
+    }
+    if (action === "bot-delete") {
+      const id = form.get("id")?.toString() ?? "";
+      if (!(await listBots(env, a.user.id)).some((b) => b.id === id)) return accountPage(env, a, { err: "No such bot." }, 404);
+      await deleteAccounts(env, [id]);
+      return redirect303("/account?saved=bot-deleted");
+    }
+    if (action === "ban") {
+      const t = await resolveUser(env, form.get("user")?.toString() ?? "");
+      if (!t) return accountPage(env, a, { err: "No such account." }, 404);
+      if (t.role === "maintainer") return accountPage(env, a, { err: "Maintainers can’t be suspended here." }, 400);
+      await setBanned(env, t.id, true);
+      return redirect303("/account?saved=banned");
+    }
+    await setBanned(env, form.get("id")?.toString() ?? "", false);
+    return redirect303("/account?saved=unbanned");
+  }
   if (action === "token-create") {
     const names = await managed(env, a);
     const forId = form.get("for")?.toString() ?? a.user.id;

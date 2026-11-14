@@ -336,7 +336,7 @@ const cookieAttrs = (maxAge: number) => `Path=/; Max-Age=${maxAge}; Secure; Same
 export const loginCookie = (displayName: string): string =>
   `${LOGIN_COOKIE}=${encodeURIComponent(displayName)}; ${cookieAttrs(COOKIE_MAX_AGE)}`;
 
-function clearCookies(): string[] {
+export function clearCookies(): string[] {
   return [`${SESSION_COOKIE}=; HttpOnly; ${cookieAttrs(0)}`, `${LOGIN_COOKIE}=; ${cookieAttrs(0)}`];
 }
 
@@ -688,4 +688,73 @@ export async function publicGithubId(env: Env, githubId: string): Promise<boolea
     .bind(githubId)
     .first();
   return !!r;
+}
+
+// ---------------------------------------------------------------------------------------------
+// bots, bans and deletion
+
+/** Live bots run by this user. */
+export async function listBots(env: Env, ownerId: string): Promise<{ id: string; display_name: string }[]> {
+  const r = await env.DB.prepare("SELECT id, display_name FROM users WHERE owner_user_id = ?1 AND kind = 'bot' AND deleted_at IS NULL ORDER BY created_at")
+    .bind(ownerId)
+    .all<{ id: string; display_name: string }>();
+  return r.results;
+}
+
+/** A bot account run by a human (maintainers only, enforced by the caller). Bots have no
+ *  identities and can't sign in; they act only through tokens their owner creates. */
+export async function createBot(env: Env, ownerId: string, name: string): Promise<{ id: string } | { problem: string }> {
+  const problem = await nameProblem(env, "", name);
+  if (problem) return { problem };
+  const n = cleanName(name);
+  const id = randomId();
+  await env.DB.prepare(
+    "INSERT INTO users (id, display_name, name_key, role, kind, owner_user_id, created_at) VALUES (?1, ?2, ?3, 'member', 'bot', ?4, ?5)",
+  )
+    .bind(id, n, nameKey(n), ownerId, nowIso())
+    .run();
+  return { id };
+}
+
+/** Delete accounts, keeping tombstones so their content stays attributed to "deleted user":
+ *  sign-ins, sessions, links and tokens go; the users row stays with deleted_at set. A person's
+ *  bots go with them. */
+export async function deleteAccounts(env: Env, userIds: string[]): Promise<void> {
+  if (!userIds.length) return;
+  const bots = (await Promise.all(userIds.map((id) => listBots(env, id)))).flat().map((b) => b.id);
+  const ids = JSON.stringify([...userIds, ...bots]);
+  const inIds = "IN (SELECT value FROM json_each(?1))";
+  const t = nowIso();
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE api_tokens SET revoked_at = ?2 WHERE revoked_at IS NULL AND user_id ${inIds}`).bind(ids, t),
+    env.DB.prepare(`DELETE FROM sessions WHERE user_id ${inIds}`).bind(ids),
+    env.DB.prepare(`DELETE FROM identities WHERE user_id ${inIds}`).bind(ids),
+    env.DB.prepare(`DELETE FROM user_links WHERE user_id ${inIds}`).bind(ids),
+    env.DB.prepare(`UPDATE users SET display_name = '${DELETED_NAME}', name_key = NULL, deleted_at = ?2 WHERE deleted_at IS NULL AND id ${inIds}`).bind(ids, t),
+  ]);
+}
+
+/** Find a user from what a maintainer pastes: a profile URL, an id, or a GitHub login. */
+export async function resolveUser(env: Env, ref: string): Promise<{ id: string; display_name: string; role: Role } | null> {
+  const s = ref.trim();
+  const id = /(?:^|\/u\/)([a-z2-7]{12})\/?$/.exec(s)?.[1];
+  const sql = id
+    ? env.DB.prepare("SELECT id, display_name, role FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id)
+    : env.DB.prepare(
+        `SELECT u.id, u.display_name, u.role FROM identities i JOIN users u ON u.id = i.user_id
+         WHERE i.provider = 'github' AND lower(i.handle) = lower(?1) AND u.deleted_at IS NULL`,
+      ).bind(s.replace(/^@/, "").replace(/^https:\/\/github\.com\//, "").replace(/\/$/, ""));
+  return sql.first<{ id: string; display_name: string; role: Role }>();
+}
+
+export async function setBanned(env: Env, userId: string, banned: boolean): Promise<void> {
+  await env.DB.prepare("UPDATE users SET banned = ?2 WHERE id = ?1").bind(userId, banned ? 1 : 0).run();
+}
+
+export async function bannedUsers(env: Env): Promise<{ id: string; display_name: string }[]> {
+  const r = await env.DB.prepare("SELECT id, display_name FROM users WHERE banned = 1 AND deleted_at IS NULL ORDER BY display_name LIMIT 200").all<{
+    id: string;
+    display_name: string;
+  }>();
+  return r.results;
 }
