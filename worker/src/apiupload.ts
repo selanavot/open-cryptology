@@ -1,4 +1,4 @@
-import { canonicalId, confirmCurrent, getPaper, knownCopy, parseAuthors, STALE_AFTER_UPLOAD, type Env } from "./db";
+import { canonicalId, confirmCurrent, eprintSize, getPaper, knownCopy, parseAuthors, STALE_AFTER_UPLOAD, type Env } from "./db";
 import { coverageChanged } from "./years";
 import { pendingDuplicate, queueForReview } from "./quarantine";
 import { activeContentScan, API_LIMITS, ipHash, overLimit, reviewQueueFull, scanPdf } from "./uploadguard";
@@ -59,7 +59,20 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
     // The copy we serve: for an outdated paper, that confirms it is ePrint's latest version.
     const confirmed = await confirmCurrent(env, p);
     if (confirmed) await coverageChanged(url.origin, id);
-    return j(200, { status: confirmed ? "confirmed_current" : "already_have_it", id, pdf_url: pdfUrl, sha256: sha });
+    if (confirmed || !p.pdf_maybe_stale) return j(200, { status: confirmed ? "confirmed_current" : "already_have_it", id, pdf_url: pdfUrl, sha256: sha, maybe_stale: false });
+    // Still flagged: the size we last saw on ePrint (RSS, for its revision of pdf_latest_at) differs
+    // from this file. Either ePrint posted a newer revision since our last harvest (the flag then
+    // clears by itself at the next one) or the file isn't ePrint's.
+    const latest = eprintSize(p);
+    return j(200, {
+      status: "already_have_it", id, pdf_url: pdfUrl, sha256: sha, maybe_stale: true,
+      eprint_pdf: { size: latest, as_of: p.pdf_latest_at },
+      message:
+        `This is the copy we serve, but the paper stays marked outdated: ePrint's PDF was ${latest} bytes ` +
+        `as of its ${p.pdf_latest_at} version, this file is ${buf.byteLength} bytes. If ePrint posted a newer ` +
+        `version since, the flag clears at the next metadata harvest (every 8 hours) once the sizes match. ` +
+        `No need to upload it again.`,
+    });
   }
   if (known === "older")
     return j(409, {
