@@ -204,6 +204,13 @@ test("links: saved, validated, shown as unverified on the cached profile", async
   check("unknown profile 404", (await new Client().req("/u/aaaaaaaaaaaa")).status === 404);
 });
 
+test("a stale oc_login cookie is cleared by /account", async () => {
+  const c = new Client();
+  c.jar.set("oc_login", "Ghost");
+  await c.req("/account");
+  check("cleared", !c.jar.has("oc_login"));
+});
+
 test("navbar renders the static Sign in link (app.js swaps in the name)", async () => {
   const t = await (await new Client().req("/")).text();
   check("nav-account link", /class="nav-account">Sign in</.test(t));

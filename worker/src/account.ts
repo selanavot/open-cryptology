@@ -9,6 +9,7 @@ import {
   type Identity,
   type PublicProfile,
   loginCookie,
+  LOGIN_COOKIE,
   MAX_LINKS,
   NAME_MAX,
   nameProblem,
@@ -399,6 +400,11 @@ export async function handleAccount(req: Request, env: Env, url: URL): Promise<R
   if (req.method === "POST") return accountPost(env, req);
   if (!isGet) return messagePage(env, 405, "Method not allowed", html`<p>Use the forms on this page.</p>`, NO_STORE);
   const a = await currentUser(env, req);
-  if (!a) return signInPage(env, url);
+  if (!a) {
+    const res = signInPage(env, url);
+    // The session expired (or was revoked) but the navbar's display cookie remains: clear it.
+    if (req.headers.get("cookie")?.includes(`${LOGIN_COOKIE}=`)) res.headers.append("set-cookie", `${LOGIN_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Lax`);
+    return res;
+  }
   return accountPage(env, a, { ok: SAVED[url.searchParams.get("saved") ?? ""] });
 }
