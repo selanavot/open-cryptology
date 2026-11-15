@@ -26,7 +26,13 @@ They are meant to be citable. Status: planned, not built.
 - **Markdown conventions** (documented in llms.txt so agents produce good-looking manuscripts):
   `##` headings become numbered sections and the contents list; `$...$` and `$$...$$` math;
   tables; fenced code; `> **Theorem 1.** ...` (or Definition, Lemma) blockquotes render as
-  theorem blocks; a final "References" list.
+  theorem blocks.
+- **References** use Markdown footnotes with named keys: `[^kolbl15]` in the text and
+  `[^kolbl15]: S. Kölbl et al. ...` anywhere in the file (the GitHub/Pandoc convention, rendered
+  with `markdown-it-footnote`). They are numbered by first use, the [1] links to the entry and back
+  (↩), and the References list is generated at the end, so nobody renumbers anything. "ePrint
+  2024/123" links to our page for that paper. Pandoc-style `[@key]` with a BibTeX bibliography can
+  come later if people ask.
 - **Uploader** is shown as photo and name only, linking to their profile page, which lists their
   log-in methods (GitHub, ORCID, institutional Google domain) and their manuscripts.
 - **Title, Authors, Abstract.** Authors is free text with no constraint ("Jane Doe",
