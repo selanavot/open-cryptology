@@ -151,10 +151,6 @@ const photoFrom = (ids: Identity[]): string => {
 /** The name the log-in methods give, ignoring a custom name (for "Reset to …" on /account). */
 export const nameFromIds = (u: User): string => nameFrom(u.identities);
 
-/** Where the derived name comes from (for "From ORCID" on /account). */
-export const nameSource = (u: User): Provider | null =>
-  u.customName ? null : (NAME_ORDER.find((p) => u.identities.some((i) => i.provider === p && i.name)) ?? null);
-
 /** Why a custom name can't be used, or null if it can. */
 export function nameProblem(name: string): string | null {
   const n = cleanName(name);

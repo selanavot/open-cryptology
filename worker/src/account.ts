@@ -23,7 +23,6 @@ import {
   NAME_MAX,
   nameProblem,
   nameFromIds,
-  nameSource,
   pendingMerge,
   PERSONAL_DOMAINS,
   PROVIDER_LABEL,
@@ -130,7 +129,6 @@ interface Notice {
 
 function accountPage(env: Env, a: Actor, notice: Notice, status = 200): Response {
   const u = a.user;
-  const src = nameSource(u);
   const missing = PROVIDERS.filter((p) => !u.identities.some((i) => i.provider === p));
   const order = (i: Identity) => PROVIDERS.indexOf(i.provider);
   return settingsPage(
@@ -159,7 +157,6 @@ ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert"
         <button class="settings-link" type="submit">Reset to ${nameFromIds(u)}</button>
       </form>`}
     </details>
-    ${src && html`<p class="settings-sub">From ${PROVIDER_LABEL[src]}</p>`}
   </div>
   <form method="post" action="/auth/logout" class="settings-logout"><input type="hidden" name="next" value="/">
     <button class="btn btn-sm btn-outline-dark" type="submit">Log out</button></form>
