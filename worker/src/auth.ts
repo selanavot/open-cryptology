@@ -614,7 +614,7 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
       );
       // The token response itself carries the iD and the name.
       const j = (await r.json().catch(() => null)) as { orcid?: string; name?: string } | null;
-      return j?.orcid && ORCID_RE.test(j.orcid) ? orcidVerified(j.orcid, j.name ?? "") : null;
+      return j?.orcid && ORCID_RE.test(j.orcid) ? orcidVerified(j.orcid, j.name ?? "", orcidBase(env)) : null;
     },
   },
 };
@@ -634,11 +634,11 @@ const githubVerified = (gh: { id: number; login: string; name: string; avatar: s
 
 export const ORCID_RE = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
 const orcidBase = (env: Env) => (env.ORCID_BASE || "https://orcid.org").replace(/\/$/, "");
-const orcidVerified = (orcid: string, name: string): Verified => ({
+const orcidVerified = (orcid: string, name: string, base = "https://orcid.org"): Verified => ({
   provider: "orcid",
   providerUserId: orcid,
   handle: orcid,
-  url: `https://orcid.org/${orcid}`,
+  url: `${base}/${orcid}`, // the sandbox's iDs live on sandbox.orcid.org
   name,
   avatar: "",
 });

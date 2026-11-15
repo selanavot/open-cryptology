@@ -74,6 +74,12 @@ const people = await publicUsers(env, userIds); // names, photos and log-ins for
 Sign-in shows up in the navbar once any provider's client id is set; the sign-in page offers the
 configured ones. Register one GitHub OAuth app for localhost and one for production.
 
+ORCID testing: register a Public API client on a `sandbox.orcid.org` account (the sandbox only
+emails `@mailinator.com` addresses) and set `ORCID_BASE=https://sandbox.orcid.org`. The sandbox
+refuses `localhost` redirect URIs but accepts `http://127.0.0.1:8788/auth/orcid/callback`, so run
+that test at `http://127.0.0.1:8788` with `AUTH_ORIGIN` set to it. Production ORCID accepts only
+`https` redirect URIs.
+
 Google setup: Google Cloud console → "Google Auth Platform": app name, homepage, privacy policy URL
 (`/privacy`), authorized domain `opencryptology.org`; scopes `openid`, `email`, `profile` only (no
 Google review needed); then a "Web application" client with the redirect URI above.
