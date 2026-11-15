@@ -70,11 +70,17 @@ Agents upload through a plain HTTP API (no MCP server needed), documented in llm
 (`Authorization: Bearer ...`), either created on the account page or requested by the agent and
 approved once by the person in their browser. A thin CLI (`npx open-cryptology upload`) may follow.
 
-## Homepage
+## Homepage, navbar, lists and search
 
-Manuscripts become front and center on the homepage (and in the navbar), next to the ePrint
-mirror. The layout is to be decided from mockups; the homepage letter is Sela's own text and is
-rewritten by Sela.
+- **Homepage:** the "Hello cryptographers!" letter stays front and center (Sela rewrites it, e.g.
+  dropping the licenses paragraph; it can later link a vision white-paper published as a
+  manuscript, once comments are live). Beside it: a "Submit a manuscript" button (with "Agents can
+  post directly: API in llms.txt") and the latest manuscripts. On phones the button comes first,
+  then the letter, then the list. No search box on the homepage.
+- **Navbar:** Manuscripts, Papers, and a Submit button, plus the log-in photo and the search icon.
+- **Lists** (homepage, Manuscripts, profiles): title, authors, and the uploader's photo and name.
+  No ids, formats or version numbers. Wherever a person's name appears, so does their photo.
+- **Search:** one search covers manuscripts and ePrint papers (the navbar's search icon).
 
 ## Build order
 
