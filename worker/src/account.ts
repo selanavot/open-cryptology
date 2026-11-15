@@ -36,6 +36,8 @@ import {
   sameOrigin,
   setBanned,
   removeIdentity,
+  signOutOthers,
+  devLogin,
   PERSONAL_DOMAINS,
   PROVIDER_LABEL,
   type Provider,
@@ -60,12 +62,13 @@ export function identityLink(i: Identity): Html {
  *  only) a made-up account. Null when neither is available. */
 function providerHref(env: Env, p: Provider, next: string, link: boolean): string | null {
   const n = encodeURIComponent(next);
+  const l = link ? "link=1&" : "";
   const real = { github: env.GITHUB_CLIENT_ID, google: env.GOOGLE_CLIENT_ID, orcid: env.ORCID_CLIENT_ID }[p];
-  if (real) return `/auth/${p}?next=${n}`;
-  if (env.AUTH_DEV_LOGIN !== "1") return null;
-  if (p === "github") return `/auth/dev-login?login=dev-user&ghid=1${link ? "&link=1" : ""}&next=${n}`;
-  if (p === "google") return `/auth/dev-google?sub=1&email=dev%40example.edu&name=Dev%20User&next=${n}`;
-  return `/auth/dev-orcid?orcid=0000-0002-1825-0097&name=Dev%20User&next=${n}`;
+  if (real) return `/auth/${p}?${l}next=${n}`;
+  if (!devLogin(env)) return null;
+  if (p === "github") return `/auth/dev-login?${l}login=dev-user&ghid=1&next=${n}`;
+  if (p === "google") return `/auth/dev-google?${l}sub=1&email=dev%40example.edu&name=Dev%20User&next=${n}`;
+  return `/auth/dev-orcid?${l}orcid=0000-0002-1825-0097&name=Dev%20User&next=${n}`;
 }
 
 function signInPage(env: Env, url: URL): Response {
@@ -80,7 +83,7 @@ function signInPage(env: Env, url: URL): Response {
 You can add your other accounts afterwards and sign in with any of them.</p>
 ${buttons.length
   ? html`<p class="acct-signin">${buttons.map(([p, h]) => html`<a class="btn btn-outline-dark" href="${h}">Sign in with ${PROVIDER_LABEL[p]}</a>`)}</p>
-${env.AUTH_DEV_LOGIN === "1" && html`<p class="text-muted">Local test server: buttons without a configured app sign in as made-up accounts.</p>`}`
+${devLogin(env) && html`<p class="text-muted">Local test server: buttons without a configured app sign in as made-up accounts.</p>`}`
   : html`<p class="text-muted">Sign-in isn’t switched on yet.</p>`}
 <p class="form-hint text-muted">We keep the account’s id and public name (GitHub username, ORCID iD, or your Google
 address’s domain), and nothing else: no email address, no password, no access to your repositories or records.
@@ -153,7 +156,8 @@ const SAVED: Record<string, string> = {
   banned: "The account is suspended.",
   unbanned: "The suspension was lifted.",
   linked: "The account was added. You can sign in with it too.",
-  identity: "The sign-in was removed.",
+  identity: "The sign-in was removed, and your other browsers were signed out.",
+  sessions: "Your other browsers were signed out.",
 };
 
 const SCOPE_LABEL: Record<string, string> = { comment: "comment", upload: "upload results" };
@@ -248,7 +252,9 @@ ${banned.length
   ? html`<ul class="acct-list mt-2">${banned.map(
       (b) => html`<li><form method="post" action="/account" class="acct-inline">
   <input type="hidden" name="action" value="unban"><input type="hidden" name="id" value="${b.id}">
-  <a href="/u/${b.id}">${b.display_name}</a> <span class="text-muted">suspended</span>
+  ${b.deleted
+    ? html`<span>deleted account <code>${b.id}</code></span> <span class="text-muted">suspended, then deleted: its sign-ins stay blocked</span>`
+    : html`<a href="/u/${b.id}">${b.display_name}</a> <span class="text-muted">suspended</span>`}
   <button class="btn btn-sm btn-outline-dark" type="submit">Lift suspension</button>
 </form></li>`,
     )}</ul>`
@@ -313,10 +319,16 @@ ${card(
 ${tokensCard(tokens, names, notice.token)}
 ${atLeast(u, "maintainer") && (await moderationCard(env, a))}
 ${deleteCard()}
-<form method="post" action="/auth/logout" class="acct-signout">
+<div class="acct-signout">
+<form method="post" action="/auth/logout" class="acct-inline">
   <input type="hidden" name="next" value="/">
   <button class="btn btn-sm btn-outline-dark" type="submit">Sign out</button>
-</form>`;
+</form>
+<form method="post" action="/account" class="acct-inline">
+  <input type="hidden" name="action" value="sessions">
+  <button class="btn btn-sm btn-outline-dark" type="submit">Sign out other browsers</button>
+</form>
+</div>`;
   return page(env, { title: "Your account", status, ...NO_STORE, body });
 }
 
@@ -336,8 +348,12 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
   if (a.user.banned) return accountPage(env, a, { err: "This account is suspended." }, 403);
   if (action === "identity") {
     if (form.get("change") !== "remove") return accountPage(env, a, { err: "Unknown change." }, 400);
-    const problem = await removeIdentity(env, a.user, form.get("provider")?.toString() ?? "", form.get("pid")?.toString() ?? "");
+    const problem = await removeIdentity(env, a.user, form.get("provider")?.toString() ?? "", form.get("pid")?.toString() ?? "", a.sessionId);
     return problem ? accountPage(env, a, { err: problem }, 400) : redirect303(`/account?saved=identity`);
+  }
+  if (action === "sessions") {
+    await signOutOthers(env, a.user.id, a.sessionId);
+    return redirect303("/account?saved=sessions");
   }
   const maint = atLeast(a.user, "maintainer");
   if (action === "bot-create" || action === "bot-delete" || action === "ban" || action === "unban") {
@@ -354,6 +370,7 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
     }
     if (action === "ban") {
       const t = await resolveUser(env, form.get("user")?.toString() ?? "");
+      if (t === "ambiguous") return accountPage(env, a, { err: "Several accounts have had that GitHub username. Paste the profile link instead." }, 409);
       if (!t) return accountPage(env, a, { err: "No such account." }, 404);
       if (t.role === "maintainer") return accountPage(env, a, { err: "Maintainers can’t be suspended here." }, 400);
       await setBanned(env, t.id, true);
@@ -402,7 +419,8 @@ export async function handleAccount(req: Request, env: Env, url: URL): Promise<R
   if (req.method === "POST") return accountPost(env, req);
   if (!isGet) return messagePage(env, 405, "Method not allowed", html`<p>Use the forms on this page.</p>`, NO_STORE);
   const a = await currentUser(env, req);
-  if (!a) {
+  // Settings are for browsers: a token (an agent) gets the sign-in page, not the account page.
+  if (!a || a.via !== "session") {
     const res = signInPage(env, url);
     // The session expired (or was revoked) but the navbar's display cookie remains: clear it.
     if (req.headers.get("cookie")?.includes(`${LOGIN_COOKIE}=`)) res.headers.append("set-cookie", `${LOGIN_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Lax`);

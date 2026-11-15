@@ -19,6 +19,8 @@ class Client {
   jar = new Map();
   async req(path, { method = "GET", form, headers = {}, origin = BASE, raw } = {}) {
     const h = new Headers(headers);
+    // Like a click on one of our own pages (tests of cross-site requests override it).
+    if (!h.has("sec-fetch-site")) h.set("sec-fetch-site", "same-origin");
     if (this.jar.size) h.set("cookie", [...this.jar].map(([k, v]) => `${k}=${v}`).join("; "));
     let body;
     if (form) {
@@ -89,9 +91,8 @@ test("signing in again finds the same user (by numeric id, not login)", async ()
 });
 
 test("next= only accepts same-origin paths", async () => {
-  const c = new Client();
   for (const bad of ["https://evil.example/", "//evil.example/", "/\\evil.example", "javascript:alert(1)"]) {
-    const r = await c.login(`n${RUN}`, 920000 + (RUN % 1e5), bad);
+    const r = await new Client().login(`n${RUN}`, 920000 + (RUN % 1e5), bad);
     check(`next=${bad} -> /`, r.headers.get("location") === "/", r.headers.get("location"));
   }
 });
@@ -327,7 +328,7 @@ const orcidOf = (n) => {
   return `${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}-${s.slice(12)}`;
 };
 const devOrcid = (c, orcid, name = "", next = "/account") =>
-  c.req(`/auth/dev-orcid?orcid=${orcid}&name=${encodeURIComponent(name)}&next=${encodeURIComponent(next)}`);
+  c.req(`/auth/dev-orcid?link=1&orcid=${orcid}&name=${encodeURIComponent(name)}&next=${encodeURIComponent(next)}`);
 const identityForm = (c, provider, pid, change) => form(c, { action: "identity", provider, pid, change });
 
 test("ORCID: link to a GitHub account, then sign in with either", async () => {
@@ -363,7 +364,7 @@ test("ORCID-only accounts", async () => {
 
 // ------------------------------------------------------------------------------------------- step 6
 const devGoogle = (c, sub, email, name = "", next = "/account") =>
-  c.req(`/auth/dev-google?sub=${sub}&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&next=${encodeURIComponent(next)}`);
+  c.req(`/auth/dev-google?link=1&sub=${sub}&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&next=${encodeURIComponent(next)}`);
 const removeForm = (c, provider, pid) => form(c, { action: "identity", provider, pid, change: "remove" });
 
 test("Google: sign in first, keeps only the email domain", async () => {
@@ -426,6 +427,86 @@ test("sign-in page offers all three providers", async () => {
   const r = await new Client().req("/auth/google?next=/");
   const loc = r.headers.get("location") ?? "";
   check("Google: 503 page or PKCE redirect", r.status === 503 || (loc.startsWith("https://accounts.google.com/") && /code_challenge_method=S256/.test(loc)), `${r.status} ${loc}`);
+});
+
+// ------------------------------------------------------------------------------- security review fixes
+test("adding a sign-in needs link=1 from our own page", async () => {
+  const c = new Client();
+  await c.login(`tess${RUN}`, 1120000 + (RUN % 1e5));
+  const orcid = orcidOf(6);
+  let r = await c.req(`/auth/dev-orcid?link=1&orcid=${orcid}`, { headers: { "sec-fetch-site": "cross-site" } });
+  check("cross-site: not linked, sent to /account", r.status === 303 && r.headers.get("location") === "/account", `${r.status} ${r.headers.get("location")}`);
+  r = await c.req(`/auth/dev-orcid?orcid=${orcid}`);
+  check("no link=1: not linked", r.status === 303 && r.headers.get("location") === "/account", `${r.status} ${r.headers.get("location")}`);
+  const ids = (await c.json("/api/me")).body?.user?.identities?.length;
+  check("still one sign-in", ids === 1, ids);
+});
+
+test("removing a sign-in signs out other browsers; so does the button", async () => {
+  const a = new Client();
+  const ghid = 1130000 + (RUN % 1e5);
+  await a.login(`uma${RUN}`, ghid);
+  const orcid = orcidOf(7);
+  await devOrcid(a, orcid);
+  const b = new Client();
+  await devOrcid(b, orcid);
+  check("browser B is in", (await b.json("/api/me")).status === 200);
+  let r = await removeForm(a, "orcid", orcid);
+  check("ORCID removed", r.status === 303, r.status);
+  check("browser B is signed out", (await b.json("/api/me")).status === 401);
+  check("browser A stays in", (await a.json("/api/me")).status === 200);
+  const c2 = new Client();
+  await c2.login(`uma${RUN}`, ghid);
+  r = await form(a, { action: "sessions" });
+  check("sign out other browsers (303)", r.status === 303, r.status);
+  check("the other browser is out", (await c2.json("/api/me")).status === 401);
+  check("this one is still in", (await a.json("/api/me")).status === 200);
+});
+
+test("tokens get the sign-in page at /account, not the settings", async () => {
+  const c = new Client();
+  await c.login(`vic${RUN}`, 1140000 + (RUN % 1e5));
+  const { token } = await newToken(c, "agent");
+  const t = await (await new Client().req("/account", bearer(token))).text();
+  check("no settings for a token", /Sign in with/.test(t) && !/Agent tokens/.test(t));
+});
+
+test("a suspension survives deleting the account", async () => {
+  const m = new Client();
+  await m.login(`maint${RUN}`, MAINT_GHID);
+  const u = new Client();
+  const ghid = 1150000 + (RUN % 1e5);
+  await u.login(`wes${RUN}`, ghid);
+  const id = (await u.json("/api/me")).body?.user?.id;
+  await form(m, { action: "ban", user: `/u/${id}` });
+  let r = await devOrcid(u, orcidOf(8));
+  check("a suspended account can't add sign-ins", r.status === 403, r.status);
+  r = await form(u, { action: "delete", confirm: "yes" });
+  check("it can still delete itself", r.status === 303, r.status);
+  const again = new Client();
+  r = await again.login(`wes${RUN}`, ghid);
+  check("signing up again with the same GitHub: refused", r.status === 403 && (await again.json("/api/me")).status === 401, r.status);
+  const page = await (await m.req("/account")).text();
+  check("maintainers see it as a deleted, suspended account", page.includes(`<code>${id}</code>`));
+  r = await form(m, { action: "unban", id });
+  const fresh = new Client();
+  await fresh.login(`wes${RUN}`, ghid);
+  const me = (await fresh.json("/api/me")).body?.user;
+  check("after lifting it, a fresh account", !!me && me.id !== id && !me.banned, JSON.stringify(me));
+});
+
+// Last: it takes the maintainer's GitHub sign-in off their account.
+test("the maintainer role follows the GitHub sign-in", async () => {
+  const m = new Client();
+  await m.login(`maint${RUN}`, MAINT_GHID);
+  const sub = String(2300000000 + RUN);
+  await devGoogle(m, sub, `maint${RUN}@uni.example`);
+  const r = await removeForm(m, "github", String(MAINT_GHID));
+  check("GitHub removed", r.status === 303, r.status);
+  const me = (await m.json("/api/me")).body?.user;
+  check("no longer a maintainer", me?.role === "member", me?.role);
+  const prof = await (await new Client().req(`/u/${me?.id}`)).text();
+  check("profile shows no maintainer badge", !/maintainer/i.test(prof));
 });
 
 

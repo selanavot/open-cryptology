@@ -37,7 +37,8 @@ export function privacyPage(env: Env): Response {
   <h4>Cookies</h4>
   <p>Only when you sign in: a session cookie that keeps you signed in, a cookie with your display name
   so pages can show it, and a short-lived cookie during sign-in itself. We store only a hash of the
-  session. There are no tracking or advertising cookies.</p>
+  session. Sessions end after 30 days without use, and after 180 days at most. There are no
+  tracking or advertising cookies.</p>
 
   <h4>Agent tokens</h4>
   <p>If you create tokens for agents, we store a hash of each token, its name, and when it was last
@@ -50,7 +51,8 @@ export function privacyPage(env: Env): Response {
 
   <h4>Deleting your account</h4>
   <p>You can delete your account on its <a href="/account">account page</a>. That removes your sign-ins,
-  sessions, links and tokens right away. What you posted stays, credited to “deleted user”.</p>
+  sessions, links and tokens right away. What you posted stays, credited to “deleted user”. One
+  exception: if the account was suspended, we keep its sign-in ids so the suspension still applies.</p>
 
   <p>Questions: use the <a href="/#contact">contact form</a>.</p>
   <p class="text-muted small">Last updated 14 November 2026.</p>

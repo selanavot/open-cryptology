@@ -8,8 +8,10 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **Users and identities.** A *user* is a person or a bot; content points at `users.id`. An
   *identity* is a verified sign-in (GitHub, Google or ORCID) that belongs to one user, keyed on the
   provider's stable id (GitHub's numeric id, Google's `sub`, the ORCID iD; never a login or email).
-  People start with any of the three and add the others on `/account` (starting a provider's
-  sign-in while signed in adds it). Each one then signs in to the same account. An identity that
+  People start with any of the three and add the others with the "Add" buttons on `/account`.
+  Adding needs `link=1` and a same-origin navigation (`Sec-Fetch-Site`), so another site can't
+  attach an account to a signed-in browser; a signed-in browser sent to `/auth/<provider>` any other
+  way just lands on `/account`. Each sign-in then reaches the same account. An identity that
   belongs to another account is refused, never moved or merged (not even by email). The last
   identity can't be removed.
 - **What we store.** No passwords, no provider access tokens (used once to read the profile), no
@@ -17,15 +19,18 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
   institutions and as just "Google account" for gmail.com. Sessions and API tokens are stored as
   SHA-256 hashes only.
 - **Sessions.** The `__Host-oc_session` cookie (HttpOnly, Secure, SameSite=Lax) holds 32 random
-  bytes. Expiry is enforced in D1 and slides 30 days from the last use; `last_seen` is written at
-  most once an hour.
+  bytes. Expiry is enforced in D1 and slides 30 days from the last use, with an absolute limit of
+  180 days; `last_seen` is written at most once an hour. Removing a sign-in, or "Sign out other
+  browsers", ends every other session of the account.
 - **Cached pages.** Paper pages are publicly cached, so they never contain signed-in state. The
   display-only `oc_login` cookie (the URI-encoded display name) lets `app.js` show who is signed in;
   the server never trusts it. The session is looked up only on POSTs, `/api/me` and the no-store
   account pages.
 - **CSRF.** Cookie-authenticated POSTs must carry our Origin (or `Sec-Fetch-Site: same-origin`).
   Redirect targets (`next=`) must be same-origin paths.
-- **Maintainers.** GitHub ids listed in `MAINTAINER_GITHUB_IDS` get the maintainer role at sign-in.
+- **Maintainers.** An account is a maintainer exactly while one of its sign-ins is a GitHub id
+  listed in `MAINTAINER_GITHUB_IDS`. This is checked on every request, so removing the id from the
+  list, or the GitHub sign-in from the account, takes the role away.
 - **Display names** are unique (case-insensitive, after NFKC) and shown with the person's
   sign-ins. A new account takes the provider's name (GitHub login, Google or ORCID name) when it is
   free, else `user-<id>`.
@@ -40,7 +45,9 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
   profile says who operates them.
 - **Suspension and deletion.** Maintainers suspend accounts (they can't post; tokens are refused).
   Deleting an account keeps a "deleted user" tombstone so its content keeps an author; sign-ins,
-  sessions, links, tokens and the person's bots are removed.
+  sessions, links, tokens and the person's bots are removed. A suspended account's sign-ins stay on
+  its tombstone, so deleting it and signing up again doesn't lift the suspension; maintainers see
+  such accounts in the suspended list, and lifting the suspension frees the sign-ins.
 
 ## Using it from another feature
 
@@ -63,7 +70,7 @@ if (isAuthFailure(a)) return authJson(a); // API; an HTML form redirects back to
 | `ORCID_CLIENT_SECRET` | secret | |
 | `ORCID_BASE` | var, optional | `https://sandbox.orcid.org` for testing; default `https://orcid.org` |
 | `AUTH_ORIGIN` | `.dev.vars` only | `http://localhost:8788`: wrangler dev rewrites URLs to the production host |
-| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables made-up accounts: `/auth/dev-login?login=<x>&ghid=<n>[&link=1]`, `/auth/dev-google?sub=<n>&email=<a@b>&name=<n>`, `/auth/dev-orcid?orcid=<iD>&name=<n>` (the last two add to the account when signed in). Never in production. |
+| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables made-up accounts, but only together with a localhost `AUTH_ORIGIN`: `/auth/dev-login?login=<x>&ghid=<n>`, `/auth/dev-google?sub=<n>&email=<a@b>&name=<n>`, `/auth/dev-orcid?orcid=<iD>&name=<n>`. With `link=1` (and a same-origin click) they add to the signed-in account, like the real routes. Never in production. |
 
 Sign-in shows up in the navbar once any provider's client id is set; the sign-in page offers the
 configured ones.
