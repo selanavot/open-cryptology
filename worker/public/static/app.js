@@ -176,6 +176,58 @@
     }
   }
 
+  // Submit an original manuscript: "+ Add author" / remove rows, and fill the title and abstract
+  // from the chosen Markdown file (its first "# " heading and its "## Abstract" section).
+  function setupManuscriptForm() {
+    var list = document.querySelector(".sb-authors");
+    var add = document.querySelector(".sb-add");
+    if (list && add) {
+      var refresh = function () {
+        var rows = list.querySelectorAll(".sb-author");
+        rows.forEach(function (r) { r.querySelector(".sb-remove").hidden = rows.length < 2; });
+      };
+      add.hidden = false;
+      add.addEventListener("click", function () {
+        var row = list.querySelector(".sb-author").cloneNode(true);
+        var input = row.querySelector("input");
+        input.value = "";
+        input.setAttribute("aria-label", "Author " + (list.children.length + 1));
+        list.appendChild(row);
+        refresh();
+        input.focus();
+      });
+      list.addEventListener("click", function (e) {
+        var btn = e.target.closest(".sb-remove");
+        if (btn) { btn.closest(".sb-author").remove(); refresh(); }
+      });
+      refresh();
+    }
+    var file = document.getElementById("sb-file");
+    if (!file) return;
+    var drop = file.closest(".sb-drop");
+    ["dragenter", "dragover"].forEach(function (t) { drop.addEventListener(t, function () { drop.classList.add("is-over"); }); });
+    ["dragleave", "drop"].forEach(function (t) { drop.addEventListener(t, function () { drop.classList.remove("is-over"); }); });
+    file.addEventListener("change", function () {
+      var f = file.files && file.files[0];
+      var name = drop.querySelector(".sb-name");
+      if (name) name.textContent = f ? f.name : "Drop a Markdown file here";
+      if (!f || !/\.(md|markdown)$/i.test(f.name)) return;
+      f.text().then(function (text) {
+        var lines = text.replace(/\r\n?/g, "\n").split("\n");
+        var title = document.getElementById("sb-title");
+        var abs = document.getElementById("sb-abstract");
+        var h = lines.find(function (l) { return /^#\s+\S/.test(l); });
+        if (h && title && !title.value.trim()) title.value = h.replace(/^#\s+/, "").trim();
+        var a = lines.findIndex(function (l) { return /^##\s+abstract\s*$/i.test(l); });
+        if (a !== -1 && abs && !abs.value.trim()) {
+          var out = [];
+          for (var i = a + 1; i < lines.length && !/^#{1,2}\s/.test(lines[i]); i++) out.push(lines[i]);
+          abs.value = out.join("\n").trim();
+        }
+      });
+    });
+  }
+
   renderTex();
   setupAccountLink();
   scrollToUpload();
@@ -183,6 +235,7 @@
   setupCopy();
   setupUpload();
   setupNavSearch();
+  setupManuscriptForm();
 })();
 
 // Open the contact panel when arriving via #contact or clicking a #contact link.

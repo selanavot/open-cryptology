@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "29";
+const ASSET_VER = "31";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -143,6 +143,7 @@ function footer(env: Env): Html {
     <a href="${env.REPO_URL}">Source on GitHub</a> ·
     <a href="/support">Support me</a> ·
     <a href="/privacy">Privacy</a> ·
+    <a href="/terms">Terms</a> ·
     <a href="${env.ISSUES_URL}">Report an issue</a>
   </nav>
   <p>${env.SITE_NAME} is an unofficial, non-commercial mirror of the

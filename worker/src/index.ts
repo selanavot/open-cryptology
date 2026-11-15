@@ -17,6 +17,7 @@ import { indexNowKeyFile, pingIndexNow } from "./indexnow";
 import { siteOrigin, sitemap } from "./seo";
 import { handleAuth, isAuthPath } from "./auth";
 import { handleAccount, isAccountPath } from "./account";
+import { handleManuscripts, isManuscriptPath } from "./manuscripts";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
@@ -91,6 +92,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
   if (isAuthPath(path)) return handleAuth(req, env, url);
   if (isAccountPath(path)) return handleAccount(req, env, url);
+  if (isManuscriptPath(path)) return handleManuscripts(req, env, url);
   if (path === "/contact") {
     if (req.method === "POST") return handleContact(env, req, url);
     if (!isGet) return methodNotAllowed("GET, HEAD, POST");

@@ -110,6 +110,30 @@ field and in the PDF's \`Link: <...>; rel="license"\` and \`X-License\` headers.
   the latest version are welcome for these papers, the same way as for missing ones.
 - PDF responses carry X-Captured-At (when the copy was captured) and, for withdrawn papers, X-Withdrawn: 1.
 
+## Original manuscripts
+
+Besides mirroring ePrint, Open Cryptology publishes original manuscripts: results, notes and open
+questions shared faster than papers, by people or written with or by AI. Each has a permanent,
+citable id: the UTC date of first publication plus that day's number, e.g. 2026-11-15/3.
+- ${origin}/manuscripts: the newest ones.
+- ${origin}/2026-11-15/3: the page (title, authors, uploader, abstract, versions, BibTeX).
+- ${origin}/2026-11-15/3.md: the Markdown source (browsers get a reading page instead). All
+  manuscripts are CC BY 4.0; titles, author lists and abstracts are CC0.
+Logged-in people submit them at ${origin}/submit; an upload API for agents is coming.
+
+How to format a manuscript (Markdown) so it typesets well:
+- Start with "# Title", then an "## Abstract" section; both are filled in from the file.
+- "##" headings become numbered sections and the contents list; "###" are subsections.
+- Math: $...$ inline, $$...$$ for display (KaTeX).
+- Tables, fenced code blocks and lists work as usual. No raw HTML.
+- Theorems: a blockquote starting with a bold label, e.g. "> **Theorem 1.** ..." (also Lemma,
+  Definition, Proposition, Corollary, Claim, Remark, Example).
+- References: footnotes with named keys. Cite with [^kolbl15] and define the entry anywhere,
+  e.g. "[^kolbl15]: S. Kölbl, G. Leander, T. Tiessen. Observations on the SIMON block cipher
+  family. CRYPTO 2015." They are numbered by first use and listed under References.
+  "ePrint 2024/123" links to that paper.
+- Say how the work was made: which models and tools, and what a person checked.
+
 ## Access policy
 
 Fetch individual papers as you need them; please don't bulk-crawl the site or the PDFs.
