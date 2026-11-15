@@ -41,6 +41,12 @@
     "TURNSTILE_SITEKEY": "0x4AAAAAAF8BmDcmx1GIL55a",
     // Cloudflare Web Analytics (cookieless; counts people in browsers, not agents). Public token.
     "CF_BEACON_TOKEN": "cd6f3afe96b6471d9c889391a0eb8a0e",
+    // Accounts (docs/ACCOUNTS.md). Client ids are public; the secrets are Worker secrets
+    // (wrangler secret put GITHUB_CLIENT_SECRET / ORCID_CLIENT_SECRET). Google follows once /privacy is live.
+    "GITHUB_CLIENT_ID": "Ov23liiGqI5JLq4HaO9M",
+    "ORCID_CLIENT_ID": "APP-KFHA8RSJQKRWKGG4",
+    // GitHub numeric ids of maintainers (they can open /review).
+    "MAINTAINER_GITHUB_IDS": "92398419",
     "REQUIRE_ACCESS": "0"
   }
 }
