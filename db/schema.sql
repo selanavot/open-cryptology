@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS users (
   display_name  TEXT NOT NULL,               -- chosen name; 'deleted user' for tombstones
   name_key      TEXT,                        -- normalized display_name for uniqueness; NULL = not reserved
   created_at    TEXT NOT NULL,
-  deleted_at    TEXT                         -- set = tombstone
+  deleted_at    TEXT,                        -- set = tombstone
+  merged_into   TEXT                         -- tombstone of a merge: its content is credited to this user
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_name_key ON users(name_key) WHERE name_key IS NOT NULL;
 
@@ -147,3 +148,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   last_seen   TEXT NOT NULL                  -- written at most once an hour
 );
 CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+
+-- A merge offered on /account/merge: the signed-in user added a sign-in that belongs to another
+-- account. Valid for 10 minutes; the browser holds the token in a cookie, D1 only its SHA-256.
+CREATE TABLE IF NOT EXISTS pending_merges (
+  id                TEXT PRIMARY KEY,        -- hex SHA-256 of the cookie token
+  user_id           TEXT NOT NULL,           -- the signed-in account (kept)
+  other_user_id     TEXT NOT NULL,           -- the account to merge in
+  provider          TEXT NOT NULL,           -- the sign-in that was just used
+  provider_user_id  TEXT NOT NULL,
+  expires_at        TEXT NOT NULL
+);

@@ -238,7 +238,9 @@ test("ORCID: link to a GitHub account, then sign in with either", async () => {
   const other = new Client();
   await other.login(`otto${RUN}`, 1070000 + (RUN % 1e5));
   const steal = await devOrcid(other, orcid);
-  check("an iD linked elsewhere can't be linked again (409)", steal.status === 409, steal.status);
+  check("an iD linked elsewhere: offers a merge, nothing moved yet", steal.status === 303 && steal.headers.get("location") === "/account/merge" && (await other.json("/api/me")).body?.user?.identities?.length === 1, `${steal.status} ${steal.headers.get("location")}`);
+  check("cancelling the merge leaves both accounts as they were", (await form(other, { action: "merge-cancel" })).headers.get("location") === "/account?saved=merge-cancelled");
+  check("the iD still reaches its own account", (await viaOrcid.json("/api/me")).body?.user?.id === me?.id);
 });
 
 test("ORCID-only accounts", async () => {
@@ -301,7 +303,8 @@ test("any first sign-in, then add the others; each one signs in to the same acco
   const other = new Client();
   await other.login(`sam${RUN}`, 1110000 + (RUN % 1e5));
   r = await devGoogle(other, sub, `ray${RUN}@uni.example`);
-  check("someone else's Google account can't be added (409)", r.status === 409, r.status);
+  check("someone else's Google account: merge offered, not added", r.status === 303 && r.headers.get("location") === "/account/merge", `${r.status} ${r.headers.get("location")}`);
+  await form(other, { action: "merge-cancel" });
   r = await removeForm(c, "google", sub);
   check("Google removed", r.status === 303, r.status);
   r = await removeForm(c, "orcid", orcid);
@@ -318,6 +321,34 @@ test("sign-in page offers all three providers", async () => {
   const r = await new Client().req("/auth/google?next=/");
   const loc = r.headers.get("location") ?? "";
   check("Google: 503 page or PKCE redirect", r.status === 503 || (loc.startsWith("https://accounts.google.com/") && /code_challenge_method=S256/.test(loc)), `${r.status} ${loc}`);
+});
+
+// ------------------------------------------------------------------------------------------ merging
+test("merging: adding another account's sign-in merges that account in, after confirming", async () => {
+  const a = new Client();
+  await a.login(`xena${RUN}`, 1160000 + (RUN % 1e5));
+  const aId = (await a.json("/api/me")).body?.user?.id;
+  const b = new Client();
+  const orcid = orcidOf(9);
+  await devOrcid(b, orcid, `Yuki ${RUN}`);
+  const bId = (await b.json("/api/me")).body?.user?.id;
+  let r = await devOrcid(a, orcid);
+  check("redirects to the merge screen", r.status === 303 && r.headers.get("location") === "/account/merge", `${r.status} ${r.headers.get("location")}`);
+  const page = await (await a.req("/account/merge")).text();
+  check("the screen names both accounts", page.includes(`Keep: xena${RUN}`) && page.includes(`Merge in: Yuki ${RUN}`));
+  r = await a.req("/account", { method: "POST", form: { action: "merge" }, origin: "https://evil.example" });
+  check("cross-site confirm refused", r.status === 403, r.status);
+  check("a different signed-in user can't use the offer", (await form(b, { action: "merge" })).status === 410);
+  r = await form(a, { action: "merge" });
+  check("merged (303 saved=merged)", r.status === 303 && r.headers.get("location") === "/account?saved=merged", `${r.status} ${r.headers.get("location")}`);
+  const me = (await a.json("/api/me")).body?.user;
+  check("kept account has both sign-ins and its own name", me?.id === aId && me?.displayName === `xena${RUN}` && me?.identities?.map((i) => i.provider).sort().join(",") === "github,orcid", JSON.stringify(me));
+  check("the merged account's sessions ended", (await b.json("/api/me")).status === 401);
+  const viaOrcid = new Client();
+  await devOrcid(viaOrcid, orcid);
+  check("the ORCID iD now reaches the kept account", (await viaOrcid.json("/api/me")).body?.user?.id === aId, bId);
+  check("the offer is used up", (await form(a, { action: "merge" })).status === 410);
+  check("its name is free again", (await form(a, { action: "name", name: `Yuki ${RUN}` })).status === 303);
 });
 
 // ------------------------------------------------------------------------------- security review fixes

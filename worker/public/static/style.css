@@ -415,6 +415,10 @@ ul.versions small { display: block; }
 .acct-inline > .btn { margin-left: auto; }
 .acct-signin .btn { margin: 0 .5rem .5rem 0; }
 .acct-check { margin-right: .75rem; white-space: nowrap; }
+.acct-merge { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin: .75rem 0; }
+@media (max-width: 576px) { .acct-merge { grid-template-columns: 1fr; } }
+.acct-actions-row { display: flex; gap: .5rem; flex-wrap: wrap; }
+.acct-actions-row .acct-inline > .btn { margin-left: 0; }
 .nav-account { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- year page: list of every paper */

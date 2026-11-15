@@ -7,8 +7,13 @@ import { card, messagePage, page } from "./layout";
 import {
   type Actor,
   type Identity,
+  type MergeOffer,
   type Provider,
   clearCookies,
+  clearMergeCookie,
+  dropMerge,
+  mergeAccounts,
+  pendingMerge,
   currentUser,
   deleteAccount,
   devLogin,
@@ -26,7 +31,7 @@ import {
   signOutOthers,
 } from "./auth";
 
-export const isAccountPath = (path: string): boolean => path === "/account";
+export const isAccountPath = (path: string): boolean => path === "/account" || path === "/account/merge";
 
 const NO_STORE = { cache: "no-store", noindex: true } as const;
 const PROVIDERS: Provider[] = ["github", "google", "orcid"];
@@ -90,7 +95,40 @@ ${add.length > 0 &&
   html`<p class="mt-2 acct-signin">${add.map(([p, h]) => html`<a class="btn btn-sm btn-outline-dark" href="${h}">Add ${PROVIDER_LABEL[p]}</a>`)}</p>`}`;
 }
 
+/** /account/merge: the sign-in just added belongs to another account; merge it into this one? */
+function mergePage(a: Actor, m: MergeOffer, env: Env): Response {
+  const list = (ids: Identity[]) => html`<ul class="acct-list acct-idents">${ids.map((i) => html`<li>${identityLink(i)}</li>`)}</ul>`;
+  return page(env, {
+    title: "Merge accounts?",
+    ...NO_STORE,
+    body: card(
+      "Merge accounts?",
+      html`<p>The ${PROVIDER_LABEL[m.via.provider]} sign-in you just used already belongs to another account here,
+<strong>${m.other.displayName}</strong>. You can merge that account into the one you’re signed in to.</p>
+<div class="acct-merge">
+  <div><h4 class="acct-h">Keep: ${a.user.displayName}</h4><p class="text-muted mb-1">The account you’re signed in to.</p>${list(a.user.identities)}</div>
+  <div><h4 class="acct-h">Merge in: ${m.other.displayName}</h4><p class="text-muted mb-1">The account the ${PROVIDER_LABEL[m.via.provider]} sign-in belongs to.</p>${list(m.other.identities)}</div>
+</div>
+<p>After merging, every sign-in above reaches <strong>${a.user.displayName}</strong>, and what
+${m.other.displayName} posted is credited to ${a.user.displayName}. The name “${m.other.displayName}” is freed. This can’t be undone.</p>
+<div class="acct-actions-row">
+<form method="post" action="/account" class="acct-inline">
+  <input type="hidden" name="action" value="merge">
+  <button class="btn btn-sm btn-outline-dark" type="submit">Merge accounts</button>
+</form>
+<form method="post" action="/account" class="acct-inline">
+  <input type="hidden" name="action" value="merge-cancel">
+  <button class="btn btn-sm btn-outline-dark" type="submit">Cancel</button>
+</form>
+</div>`,
+      "account",
+    ),
+  });
+}
+
 const SAVED: Record<string, string> = {
+  merged: "The accounts were merged. All their sign-ins now reach this one.",
+  "merge-cancelled": "Nothing was merged.",
   name: "Your name was saved.",
   linked: "The account was added. You can sign in with it too.",
   identity: "The sign-in was removed, and your other browsers were signed out.",
@@ -161,6 +199,16 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
     const problem = await removeIdentity(env, a.user, form.get("provider")?.toString() ?? "", form.get("pid")?.toString() ?? "", a.sessionId);
     return problem ? accountPage(env, a, { err: problem }, 400) : redirect303("/account?saved=identity");
   }
+  if (action === "merge" || action === "merge-cancel") {
+    const m = await pendingMerge(env, req, a.user.id);
+    if (!m) return accountPage(env, a, { err: "That merge expired. Add the sign-in again to start over." }, 410);
+    if (action === "merge-cancel") {
+      await dropMerge(env, m.id);
+      return redirect303("/account?saved=merge-cancelled", [clearMergeCookie]);
+    }
+    await mergeAccounts(env, a.user.id, m.other.id, m.id);
+    return redirect303("/account?saved=merged", [clearMergeCookie]);
+  }
   if (action === "sessions") {
     await signOutOthers(env, a.user.id, a.sessionId);
     return redirect303("/account?saved=sessions");
@@ -184,6 +232,10 @@ export async function handleAccount(req: Request, env: Env, url: URL): Promise<R
     // The session expired (or was revoked) but the navbar's display cookie remains: clear it.
     if (req.headers.get("cookie")?.includes(`${LOGIN_COOKIE}=`)) res.headers.append("set-cookie", `${LOGIN_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Lax`);
     return res;
+  }
+  if (url.pathname === "/account/merge") {
+    const m = await pendingMerge(env, req, a.user.id);
+    return m ? mergePage(a, m, env) : redirect303("/account");
   }
   return accountPage(env, a, { ok: SAVED[url.searchParams.get("saved") ?? ""] });
 }

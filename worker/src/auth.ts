@@ -178,24 +178,38 @@ export async function loadUser(env: Env, id: string): Promise<User | null> {
   return { id: row.id, displayName: row.display_name, role: roleOf(env, identities), identities };
 }
 
-/** Names and sign-ins for many users at once (e.g. comment bylines). Unknown ids are left out;
- *  deleted users come back as "deleted user" with no sign-ins. Safe for cached pages. */
+/** Names and sign-ins for many users at once (e.g. bylines), keyed by the ids asked for. An
+ *  account merged into another comes back as that account; deleted users come back as
+ *  "deleted user" with no sign-ins; unknown ids are left out. Safe for cached pages. */
 export async function publicUsers(env: Env, userIds: string[]): Promise<Map<string, User & { deleted: boolean }>> {
   const out = new Map<string, User & { deleted: boolean }>();
   const ids = [...new Set(userIds)];
   if (!ids.length) return out;
   const list = JSON.stringify(ids);
   const [us, is] = await env.DB.batch([
-    env.DB.prepare("SELECT id, display_name, deleted_at FROM users WHERE id IN (SELECT value FROM json_each(?1))").bind(list),
-    env.DB.prepare("SELECT * FROM identities WHERE user_id IN (SELECT value FROM json_each(?1)) ORDER BY provider, created_at").bind(list),
+    env.DB.prepare(
+      `SELECT u.id AS asked, e.id, e.display_name, e.deleted_at FROM users u JOIN users e ON e.id = COALESCE(u.merged_into, u.id)
+       WHERE u.id IN (SELECT value FROM json_each(?1))`,
+    ).bind(list),
+    env.DB.prepare(
+      `SELECT * FROM identities WHERE user_id IN
+         (SELECT COALESCE(merged_into, id) FROM users WHERE id IN (SELECT value FROM json_each(?1))) ORDER BY provider, created_at`,
+    ).bind(list),
   ]);
-  for (const r of us.results as { id: string; display_name: string; deleted_at: string | null }[])
-    out.set(r.id, { id: r.id, displayName: r.deleted_at ? DELETED_NAME : r.display_name, role: "member", identities: [], deleted: !!r.deleted_at });
+  const byId = new Map<string, User & { deleted: boolean }>();
+  for (const r of us.results as { asked: string; id: string; display_name: string; deleted_at: string | null }[]) {
+    let p = byId.get(r.id);
+    if (!p) {
+      p = { id: r.id, displayName: r.deleted_at ? DELETED_NAME : r.display_name, role: "member", identities: [], deleted: !!r.deleted_at };
+      byId.set(r.id, p);
+    }
+    out.set(r.asked, p);
+  }
   for (const r of is.results as unknown as IdentityRow[]) {
-    const p = out.get(r.user_id);
+    const p = byId.get(r.user_id);
     if (p && !p.deleted) p.identities.push(toIdentity(r));
   }
-  for (const p of out.values()) p.role = roleOf(env, p.identities);
+  for (const p of byId.values()) p.role = roleOf(env, p.identities);
   return out;
 }
 
@@ -323,22 +337,16 @@ export async function signInWith(env: Env, v: Verified): Promise<{ id: string; d
   return { id, display_name: name };
 }
 
-/** Add a verified identity to a signed-in user. Refuses one that belongs to another account:
- *  identities are never moved or merged. Returns a problem, or null. */
-export async function linkIdentity(env: Env, userId: string, v: Verified): Promise<string | null> {
-  const owner = await identityOwner(env, v);
-  if (owner && owner !== userId) return `This ${PROVIDER_LABEL[v.provider]} account already belongs to another account here. Sign in with it to use that account.`;
-  if (!owner) await insertIdentity(env, v, userId, nowIso()).run();
-  return null;
-}
-
-/** The end of every provider's callback: link to the signed-in account, or sign in. */
+/** The end of every provider's callback: link to the signed-in account, or sign in. Adding a
+ *  sign-in that already belongs to another account offers to merge the two (/account/merge):
+ *  having just signed in with it, the person can reach that account anyway. */
 async function identityDone(env: Env, req: Request, v: Verified, mode: "login" | "link", next: string, extraCookies: string[] = []): Promise<Response> {
   if (mode === "link") {
     const me = await currentUser(env, req);
     if (!me) return authMessage(env, 401, "Signed out", "Sign in again, then add the account.", "/account", extraCookies);
-    const problem = await linkIdentity(env, me.user.id, v);
-    if (problem) return authMessage(env, 409, "Already in use", problem, "/account", extraCookies);
+    const owner = await identityOwner(env, v);
+    if (owner && owner !== me.user.id) return redirect303("/account/merge", [...extraCookies, await offerMerge(env, me.user.id, owner, v)]);
+    if (!owner) await insertIdentity(env, v, me.user.id, nowIso()).run();
     return redirect303("/account?saved=linked", extraCookies);
   }
   const user = await signInWith(env, v);
@@ -641,6 +649,69 @@ export async function removeIdentity(env: Env, user: User, provider: string, pro
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id != ?2").bind(user.id, keepSessionId),
   ]);
   return null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// merging two accounts (/account/merge)
+
+const MERGE_COOKIE = "__Host-oc_merge";
+const MERGE_MINUTES = 10;
+export const clearMergeCookie = `${MERGE_COOKIE}=; HttpOnly; ${cookieAttrs(0)}`;
+
+/** Remember, for a few minutes, that this browser proved it controls a sign-in of another account.
+ *  Returns the cookie that points at the offer; D1 keeps only its hash. */
+async function offerMerge(env: Env, userId: string, otherId: string, v: Verified): Promise<string> {
+  const tok = randomToken();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM pending_merges WHERE user_id = ?1 OR expires_at < ?2").bind(userId, nowIso()),
+    env.DB.prepare(
+      "INSERT INTO pending_merges (id, user_id, other_user_id, provider, provider_user_id, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    ).bind(await sha256hex(tok), userId, otherId, v.provider, v.providerUserId, later(MERGE_MINUTES * 60_000)),
+  ]);
+  return `${MERGE_COOKIE}=${tok}; HttpOnly; ${cookieAttrs(MERGE_MINUTES * 60)}`;
+}
+
+export interface MergeOffer {
+  id: string;
+  other: User;
+  via: Identity; // the sign-in that was just used, now on the other account
+}
+
+/** The merge this browser was offered, if it is still valid: same signed-in user, not expired,
+ *  and the other account still exists and still holds the sign-in. */
+export async function pendingMerge(env: Env, req: Request, userId: string): Promise<MergeOffer | null> {
+  const tok = cookies(req).get(MERGE_COOKIE);
+  if (!tok) return null;
+  const id = await sha256hex(tok);
+  const r = await env.DB.prepare("SELECT other_user_id, provider, provider_user_id FROM pending_merges WHERE id = ?1 AND user_id = ?2 AND expires_at > ?3")
+    .bind(id, userId, nowIso())
+    .first<{ other_user_id: string; provider: string; provider_user_id: string }>();
+  if (!r) return null;
+  const other = await loadUser(env, r.other_user_id);
+  const via = other?.identities.find((i) => i.provider === r.provider && i.providerUserId === r.provider_user_id);
+  return other && via ? { id, other, via } : null;
+}
+
+/** Merge `goneId` into `keepId`: its sign-ins move over, its sessions end, and it becomes a
+ *  tombstone pointing at `keepId` (merged_into), so what it posted is credited to the kept account
+ *  without touching other tables. The kept account keeps its name. */
+export async function mergeAccounts(env: Env, keepId: string, goneId: string, offerId: string): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare("UPDATE identities SET user_id = ?1 WHERE user_id = ?2").bind(keepId, goneId),
+    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(goneId),
+    env.DB.prepare("UPDATE users SET merged_into = ?1 WHERE merged_into = ?2").bind(keepId, goneId),
+    env.DB.prepare("UPDATE users SET display_name = ?3, name_key = NULL, deleted_at = ?4, merged_into = ?1 WHERE id = ?2 AND deleted_at IS NULL").bind(
+      keepId,
+      goneId,
+      DELETED_NAME,
+      nowIso(),
+    ),
+    env.DB.prepare("DELETE FROM pending_merges WHERE id = ?1 OR other_user_id = ?2 OR user_id = ?2").bind(offerId, goneId),
+  ]);
+}
+
+export async function dropMerge(env: Env, offerId: string): Promise<void> {
+  await env.DB.prepare("DELETE FROM pending_merges WHERE id = ?1").bind(offerId).run();
 }
 
 /** Delete an account, keeping a tombstone so what it posted stays attributed to "deleted user":

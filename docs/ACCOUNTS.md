@@ -10,8 +10,13 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
   verified sign-in (GitHub, Google or ORCID) that belongs to one user, keyed on the provider's stable
   id (GitHub's numeric id, Google's `sub`, the ORCID iD; never a login or email). People start with
   any of the three and add the others with the "Add" buttons on `/account`; each then reaches the
-  same account. An identity that belongs to another account is refused, never moved or merged. The
-  last identity can't be removed.
+  same account. The last identity can't be removed.
+- **Merging.** Adding a sign-in that already belongs to another account doesn't take it over: it
+  leads to `/account/merge`, which shows both accounts and asks to merge the other one into the
+  signed-in one. Having just signed in with that sign-in, the person can reach the other account
+  anyway. The offer lives 10 minutes (a cookie token; D1 keeps its hash). Merging moves the other
+  account's sign-ins over, ends its sessions and turns it into a tombstone with `merged_into` set,
+  so `publicUsers` credits its content to the kept account without touching other tables.
 - **Adding needs a click on our page:** `link=1` and a same-origin navigation (`Sec-Fetch-Site`), so
   another site can't attach an account to a signed-in browser. A signed-in browser sent to
   `/auth/<provider>` any other way just lands on `/account`.
