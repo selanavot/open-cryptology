@@ -77,7 +77,11 @@ approved once by the person in their browser. A thin CLI (`npx open-cryptology u
   manuscript, once comments are live). Beside it: a "Submit a manuscript" button (with "Agents can
   post directly: API in llms.txt") and the latest manuscripts. On phones the button comes first,
   then the letter, then the list. No search box on the homepage.
-- **Navbar:** Manuscripts, Papers, and a Submit button, plus the log-in photo and the search icon.
+- **Navbar:** Manuscripts, ePrint mirror, and a Submit button, plus the log-in photo and the
+  search icon.
+- **ePrint mirror page** (from the navbar, and linked from "mirror" in the letter): one paragraph
+  on what the mirror is, the newest ePrint papers, and the papers-by-year grid. Paper pages keep
+  their URLs (`/2024/123`).
 - **Lists** (homepage, Manuscripts, profiles): title, authors, and the uploader's photo and name.
   No ids, formats or version numbers. Wherever a person's name appears, so does their photo.
 - **Search:** one search covers manuscripts and ePrint papers (the navbar's search icon).
