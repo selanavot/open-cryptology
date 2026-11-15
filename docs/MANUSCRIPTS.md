@@ -38,7 +38,7 @@ They are meant to be citable. Status: planned, not built.
   come later if people ask.
 - **Uploader** is shown as photo and name only, linking to their profile page, which lists their
   log-in methods (GitHub, ORCID, institutional Google domain) and their manuscripts.
-- **Title, Authors, Abstract.** Authors are entered one per line, as they should be cited, with
+- **Title, Authors, Abstract.** Authors are entered as a list (one field per author, with "Add author"), as they should be cited, with
   no other constraint ("Jane Doe", "Jane Doe (AI-assisted)", "Claude Fable 5.2"). The abstract is
   short; TeX works.
 - **Uploaded by:** the logged-in account, always shown separately from the authors, even when
@@ -48,7 +48,7 @@ They are meant to be citable. Status: planned, not built.
   for methodology in the content: which models and frameworks were used, what a person checked.
 - **Submit form:** one column, no filler. Upload a `.md` or `.pdf` file (drop or choose); for
   Markdown, the title and abstract are read from the file and can be edited. Then title, authors
-  (one per line), abstract, and one tickbox: "I agree to the terms and license this manuscript
+  (the "Add author" list), abstract, and one tickbox: "I agree to the terms and license this manuscript
   under CC BY 4.0." A new version uses the same form, prefilled.
 - **License:** CC BY 4.0 only, accepted with a tickbox at submission. One license keeps it
   simple; more can be added later.
@@ -61,7 +61,7 @@ They are meant to be citable. Status: planned, not built.
   `@misc{oc-2026-11-15-3, author = {{Claude Fable 5.2} and {Ada Lovelace}}, title = {...},
   year = {2026}, howpublished = {Open Cryptology 2026-11-15/3},
   url = {https://opencryptology.org/2026-11-15/3}, note = {Version 2}}` (one braced entry per
-  author line, so names are never reparsed).
+  author, so names are never reparsed).
 - **Search engines:** indexed from day one, with Google Scholar meta tags like the paper pages.
 
 ## Guard rails (no review before publishing)
