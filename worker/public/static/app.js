@@ -137,7 +137,24 @@
     });
   }
 
+  // Navbar account link. Pages are publicly cached, so the server always renders "Sign in"; the
+  // display-only oc_login cookie (set at sign-in, never trusted by the server) swaps in the name.
+  function setupAccountLink() {
+    var a = document.querySelector(".nav-account");
+    if (!a) return;
+    var m = document.cookie.match(/(?:^|;\s*)oc_login=([^;]+)/);
+    var name = null;
+    try { name = m && decodeURIComponent(m[1]); } catch (e) { /* ignore a malformed cookie */ }
+    if (name) {
+      a.textContent = name;
+      a.title = "Your account";
+    } else if (location.pathname !== "/account") {
+      a.href = "/account?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+    }
+  }
+
   renderTex();
+  setupAccountLink();
   scrollToUpload();
   setupGridNav();
   setupCopy();

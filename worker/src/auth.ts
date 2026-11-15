@@ -1,0 +1,654 @@
+// Accounts: sign-in with GitHub, Google or ORCID, linking them into one account, and browser
+// sessions; plus the helpers other features use to find out who is asking (design:
+// docs/ACCOUNTS.md; tables: the "accounts" section of db/schema.sql). No passwords, and the
+// providers' access tokens are dropped as soon as the profile is read.
+//
+// Sessions: the __Host-oc_session cookie holds 32 random bytes; D1 keeps only their SHA-256.
+// Pages are publicly cached, so nothing signed-in is rendered into them: app.js reads the
+// display-only oc_login cookie, and the session itself is looked up only on POSTs, /api/me and
+// the no-store account page (currentUser / requireUser).
+import type { Env } from "./db";
+import { html } from "./html";
+import { messagePage } from "./layout";
+
+export type Role = "member" | "maintainer";
+
+export interface Identity {
+  provider: Provider;
+  providerUserId: string; // GitHub numeric id / Google sub / ORCID iD
+  handle: string; // GitHub login / Google email domain / ORCID iD
+  url: string; // https://github.com/<login> | https://orcid.org/<iD> | "" (Google)
+}
+export interface User {
+  id: string;
+  displayName: string;
+  role: Role;
+  identities: Identity[];
+}
+export interface Actor {
+  user: User;
+  sessionId: string; // hash of the session cookie
+}
+export type FailureCode = "signin" | "role" | "origin";
+export interface AuthFailure {
+  code: FailureCode;
+  status: 401 | 403;
+}
+
+export const SESSION_COOKIE = "__Host-oc_session";
+export const LOGIN_COOKIE = "oc_login"; // display only: URI-encoded display name, never trusted
+const OAUTH_COOKIE = "__Host-oc_oauth";
+const SESSION_DAYS = 30; // sliding expiry, enforced in D1
+const SESSION_MAX_DAYS = 180; // absolute limit: sign in again after this, however active
+const COOKIE_MAX_AGE = 400 * 86400; // browsers cap cookies at 400 days; D1 decides validity
+const TOUCH_MS = 3600_000; // refresh last_seen at most once an hour
+const DAY_MS = 86400_000;
+
+// ---------------------------------------------------------------------------------------------
+// small helpers
+
+const nowIso = () => new Date().toISOString();
+const later = (ms: number) => new Date(Date.now() + ms).toISOString();
+
+function b64url(bytes: Uint8Array): string {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+export const randomToken = (n = 32): string => b64url(crypto.getRandomValues(new Uint8Array(n)));
+
+const B32 = "abcdefghijklmnopqrstuvwxyz234567";
+/** Random lowercase base32 id (12 chars = 60 bits). */
+export function randomId(len = 12): string {
+  return [...crypto.getRandomValues(new Uint8Array(len))].map((b) => B32[b & 31]).join("");
+}
+
+export async function sha256hex(s: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function cookies(req: Request): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const part of (req.headers.get("cookie") ?? "").split(";")) {
+    const i = part.indexOf("=");
+    if (i > 0) m.set(part.slice(0, i).trim(), part.slice(i + 1).trim());
+  }
+  return m;
+}
+
+/** The origin OAuth providers redirect back to. wrangler dev rewrites request URLs to the
+ *  production host, so local runs set AUTH_ORIGIN=http://localhost:8788 in .dev.vars. */
+export function authOrigin(env: Env, url: URL): string {
+  return (env.AUTH_ORIGIN || url.origin).replace(/\/$/, "");
+}
+
+/** Only same-origin paths may be redirect targets ("/x", not "//host" or "/\host"). */
+export function safeNext(n: string | null | undefined): string {
+  if (!n || n.length > 500 || !n.startsWith("/") || n.startsWith("//") || n.startsWith("/\\")) return "/";
+  if (/[\u0000-\u001f\u007f]/.test(n)) return "/";
+  return n;
+}
+
+/** CSRF check for cookie-authenticated non-GET requests: the browser's Origin (or, failing that,
+ *  Sec-Fetch-Site) must say the request came from our own pages. */
+export function sameOrigin(req: Request, env: Env): boolean {
+  const url = new URL(req.url);
+  const origin = req.headers.get("origin");
+  if (origin) return origin === url.origin || origin === authOrigin(env, url);
+  const site = req.headers.get("sec-fetch-site");
+  return !site || site === "same-origin" || site === "none";
+}
+
+const noStore = { "cache-control": "no-store", "x-robots-tag": "noindex" };
+
+export function redirect303(location: string, setCookies: string[] = []): Response {
+  const h = new Headers({ location, ...noStore });
+  for (const c of setCookies) h.append("set-cookie", c);
+  return new Response(null, { status: 303, headers: h });
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data, null, 2) + "\n", {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "x-content-type-options": "nosniff", ...noStore },
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// display names
+
+export const DELETED_NAME = "deleted user";
+/** Uniqueness key: NFKC, case-folded, whitespace collapsed. */
+export const nameKey = (s: string): string => s.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+export const NAME_MAX = 40;
+const cleanName = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim();
+
+/** Why a display name can't be used, or null if it can: its shape, the reserved names, and other
+ *  users' display names (case-insensitively, after NFKC). */
+export async function nameProblem(env: Env, userId: string, name: string): Promise<string | null> {
+  const n = cleanName(name);
+  if (!n) return "Enter a name.";
+  if ([...n].length > NAME_MAX) return `Names can be at most ${NAME_MAX} characters.`;
+  if (!/^[\p{L}\p{M}\p{N} .'’\-_()]+$/u.test(n)) return "Use letters, digits, spaces and . ' - _ ( ) only.";
+  const key = nameKey(n);
+  if (key === DELETED_NAME || /^user-[a-z2-7]+$/.test(key)) return "That name is reserved.";
+  const taken = await env.DB.prepare("SELECT 1 FROM users WHERE name_key = ?1 AND id != ?2").bind(key, userId).first();
+  return taken ? "Someone else already uses that name." : null;
+}
+
+/** Set a display name (call nameProblem first). Returns the stored, normalized name. */
+export async function setDisplayName(env: Env, userId: string, name: string): Promise<string> {
+  const n = cleanName(name);
+  await env.DB.prepare("UPDATE users SET display_name = ?2, name_key = ?3 WHERE id = ?1").bind(userId, n, nameKey(n)).run();
+  return n;
+}
+
+// ---------------------------------------------------------------------------------------------
+// loading users
+
+interface IdentityRow {
+  provider: Provider;
+  provider_user_id: string;
+  user_id: string;
+  handle: string;
+  url: string;
+}
+const toIdentity = (r: IdentityRow): Identity => ({ provider: r.provider, providerUserId: r.provider_user_id, handle: r.handle, url: r.url });
+
+const maintainerIds = (env: Env): string[] =>
+  (env.MAINTAINER_GITHUB_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+
+/** Maintainer exactly while one of the sign-ins is a GitHub id in MAINTAINER_GITHUB_IDS, so
+ *  removing either takes the role away. */
+const roleOf = (env: Env, ids: Identity[]): Role => {
+  const m = maintainerIds(env);
+  return ids.some((i) => i.provider === "github" && m.includes(i.providerUserId)) ? "maintainer" : "member";
+};
+
+/** A live (not deleted) user with all identities, or null. */
+export async function loadUser(env: Env, id: string): Promise<User | null> {
+  const [u, ids] = await env.DB.batch([
+    env.DB.prepare("SELECT id, display_name FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id),
+    env.DB.prepare("SELECT * FROM identities WHERE user_id = ?1 ORDER BY provider, created_at").bind(id),
+  ]);
+  const row = (u.results as { id: string; display_name: string }[])[0];
+  if (!row) return null;
+  const identities = (ids.results as unknown as IdentityRow[]).map(toIdentity);
+  return { id: row.id, displayName: row.display_name, role: roleOf(env, identities), identities };
+}
+
+/** Names and sign-ins for many users at once (e.g. comment bylines). Unknown ids are left out;
+ *  deleted users come back as "deleted user" with no sign-ins. Safe for cached pages. */
+export async function publicUsers(env: Env, userIds: string[]): Promise<Map<string, User & { deleted: boolean }>> {
+  const out = new Map<string, User & { deleted: boolean }>();
+  const ids = [...new Set(userIds)];
+  if (!ids.length) return out;
+  const list = JSON.stringify(ids);
+  const [us, is] = await env.DB.batch([
+    env.DB.prepare("SELECT id, display_name, deleted_at FROM users WHERE id IN (SELECT value FROM json_each(?1))").bind(list),
+    env.DB.prepare("SELECT * FROM identities WHERE user_id IN (SELECT value FROM json_each(?1)) ORDER BY provider, created_at").bind(list),
+  ]);
+  for (const r of us.results as { id: string; display_name: string; deleted_at: string | null }[])
+    out.set(r.id, { id: r.id, displayName: r.deleted_at ? DELETED_NAME : r.display_name, role: "member", identities: [], deleted: !!r.deleted_at });
+  for (const r of is.results as unknown as IdentityRow[]) {
+    const p = out.get(r.user_id);
+    if (p && !p.deleted) p.identities.push(toIdentity(r));
+  }
+  for (const p of out.values()) p.role = roleOf(env, p.identities);
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// who is asking
+
+/** The signed-in user, or null. Reads D1: call it only on POSTs, /api/me and no-store pages,
+ *  never on publicly cached page views. */
+export async function currentUser(env: Env, req: Request): Promise<Actor | null> {
+  const tok = cookies(req).get(SESSION_COOKIE);
+  if (!tok) return null;
+  const id = await sha256hex(tok);
+  const s = await env.DB.prepare("SELECT user_id, last_seen FROM sessions WHERE id = ?1 AND expires_at > ?2 AND created_at > ?3")
+    .bind(id, nowIso(), later(-SESSION_MAX_DAYS * DAY_MS))
+    .first<{ user_id: string; last_seen: string }>();
+  if (!s) return null;
+  const user = await loadUser(env, s.user_id);
+  if (!user) return null;
+  if (Date.now() - Date.parse(s.last_seen) > TOUCH_MS) {
+    await env.DB.prepare("UPDATE sessions SET last_seen = ?2, expires_at = ?3 WHERE id = ?1")
+      .bind(id, nowIso(), later(SESSION_DAYS * DAY_MS))
+      .run();
+  }
+  return { user, sessionId: id };
+}
+
+export const isAuthFailure = (x: Actor | AuthFailure): x is AuthFailure => "code" in x && !("user" in x);
+
+/** The signed-in user, or why not. Non-GET requests must come from our own pages. */
+export async function requireUser(env: Env, req: Request, opts: { role?: Role } = {}): Promise<Actor | AuthFailure> {
+  if (req.method !== "GET" && req.method !== "HEAD" && !sameOrigin(req, env)) return { code: "origin", status: 403 };
+  const a = await currentUser(env, req);
+  if (!a) return { code: "signin", status: 401 };
+  if (opts.role === "maintainer" && a.user.role !== "maintainer") return { code: "role", status: 403 };
+  return a;
+}
+
+const FAILURE_MESSAGES: Record<FailureCode, string> = {
+  signin: "Sign in first.",
+  role: "Your account isn't allowed to do this.",
+  origin: "Cross-site requests aren't accepted.",
+};
+/** JSON error for API callers. HTML forms redirect back to their page instead. */
+export function authJson(f: AuthFailure): Response {
+  return json({ error: f.code, message: FAILURE_MESSAGES[f.code] }, f.status);
+}
+
+/** End all of a user's browser sessions except one (the browser asking). */
+export async function signOutOthers(env: Env, userId: string, keepSessionId = ""): Promise<void> {
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id != ?2").bind(userId, keepSessionId).run();
+}
+
+// ---------------------------------------------------------------------------------------------
+// sessions and cookies
+
+const cookieAttrs = (maxAge: number) => `Path=/; Max-Age=${maxAge}; Secure; SameSite=Lax`;
+
+export const loginCookie = (displayName: string): string =>
+  `${LOGIN_COOKIE}=${encodeURIComponent(displayName)}; ${cookieAttrs(COOKIE_MAX_AGE)}`;
+
+export function clearCookies(): string[] {
+  return [`${SESSION_COOKIE}=; HttpOnly; ${cookieAttrs(0)}`, `${LOGIN_COOKIE}=; ${cookieAttrs(0)}`];
+}
+
+async function startSession(env: Env, user: { id: string; display_name: string }): Promise<string[]> {
+  const tok = randomToken();
+  const t = nowIso();
+  await env.DB.prepare("INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen) VALUES (?1, ?2, ?3, ?4, ?3)")
+    .bind(await sha256hex(tok), user.id, t, later(SESSION_DAYS * DAY_MS))
+    .run();
+  return [`${SESSION_COOKIE}=${tok}; HttpOnly; ${cookieAttrs(COOKIE_MAX_AGE)}`, loginCookie(user.display_name)];
+}
+
+// ---------------------------------------------------------------------------------------------
+// signing in with, or linking, a verified identity (any provider)
+
+export type Provider = "github" | "google" | "orcid";
+export const PROVIDER_LABEL: Record<Provider, string> = { github: "GitHub", google: "Google", orcid: "ORCID" };
+
+/** What a provider confirmed about the person. */
+export interface Verified {
+  provider: Provider;
+  providerUserId: string; // stable id: GitHub numeric id, Google "sub", ORCID iD
+  handle: string; // GitHub login, Google email domain, ORCID iD
+  url: string; // public link, or "" (Google has none)
+  name: string; // suggested display name for a new account
+}
+
+async function identityOwner(env: Env, v: Verified): Promise<string | null> {
+  const r = await env.DB.prepare(
+    "SELECT i.user_id FROM identities i JOIN users u ON u.id = i.user_id WHERE i.provider = ?1 AND i.provider_user_id = ?2 AND u.deleted_at IS NULL",
+  )
+    .bind(v.provider, v.providerUserId)
+    .first<{ user_id: string }>();
+  return r?.user_id ?? null;
+}
+
+const insertIdentity = (env: Env, v: Verified, userId: string, t: string) =>
+  env.DB.prepare("INSERT INTO identities (provider, provider_user_id, user_id, handle, url, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(
+    v.provider,
+    v.providerUserId,
+    userId,
+    v.handle,
+    v.url,
+    t,
+  );
+
+/** Find or create the user for a verified identity, refreshing what the provider told us. A new
+ *  account takes the suggested name if it is free, else "user-<id>" (changeable on /account). */
+export async function signInWith(env: Env, v: Verified): Promise<{ id: string; display_name: string }> {
+  const owner = await identityOwner(env, v);
+  if (owner) {
+    await env.DB.prepare("UPDATE identities SET handle = ?3, url = ?4 WHERE provider = ?1 AND provider_user_id = ?2")
+      .bind(v.provider, v.providerUserId, v.handle, v.url)
+      .run();
+    return (await env.DB.prepare("SELECT id, display_name FROM users WHERE id = ?1").bind(owner).first<{ id: string; display_name: string }>())!;
+  }
+  const id = randomId();
+  const t = nowIso();
+  const name = v.name && !(await nameProblem(env, "", v.name)) ? cleanName(v.name) : `user-${id}`;
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO users (id, display_name, name_key, created_at) VALUES (?1, ?2, ?3, ?4)").bind(id, name, nameKey(name), t),
+    insertIdentity(env, v, id, t),
+  ]);
+  return { id, display_name: name };
+}
+
+/** Add a verified identity to a signed-in user. Refuses one that belongs to another account:
+ *  identities are never moved or merged. Returns a problem, or null. */
+export async function linkIdentity(env: Env, userId: string, v: Verified): Promise<string | null> {
+  const owner = await identityOwner(env, v);
+  if (owner && owner !== userId) return `This ${PROVIDER_LABEL[v.provider]} account already belongs to another account here. Sign in with it to use that account.`;
+  if (!owner) await insertIdentity(env, v, userId, nowIso()).run();
+  return null;
+}
+
+/** The end of every provider's callback: link to the signed-in account, or sign in. */
+async function identityDone(env: Env, req: Request, v: Verified, mode: "login" | "link", next: string, extraCookies: string[] = []): Promise<Response> {
+  if (mode === "link") {
+    const me = await currentUser(env, req);
+    if (!me) return authMessage(env, 401, "Signed out", "Sign in again, then add the account.", "/account", extraCookies);
+    const problem = await linkIdentity(env, me.user.id, v);
+    if (problem) return authMessage(env, 409, "Already in use", problem, "/account", extraCookies);
+    return redirect303("/account?saved=linked", extraCookies);
+  }
+  const user = await signInWith(env, v);
+  // Drop the session this browser held before, if any, rather than leaving it valid.
+  const old = cookies(req).get(SESSION_COOKIE);
+  if (old) await env.DB.prepare("DELETE FROM sessions WHERE id = ?1").bind(await sha256hex(old)).run();
+  return redirect303(safeNext(next), [...extraCookies, ...(await startSession(env, user))]);
+}
+
+/** Adding a sign-in to an account takes a deliberate click on /account: link=1 and a same-origin
+ *  navigation (Sec-Fetch-Site). Otherwise another site could send a signed-in browser to
+ *  /auth/<provider> and, where the provider skips its consent screen, attach the person's
+ *  account without them noticing. Signed in without that: "signed-in" (we just go to /account). */
+async function startMode(env: Env, req: Request, url: URL): Promise<"login" | "link" | "signed-in"> {
+  if (!(await currentUser(env, req))) return "login";
+  return url.searchParams.get("link") === "1" && req.headers.get("sec-fetch-site") === "same-origin" ? "link" : "signed-in";
+}
+
+// ---------------------------------------------------------------------------------------------
+// OAuth plumbing
+
+interface OAuthState {
+  s: string; // state
+  v: string; // PKCE verifier
+  n: string; // where to go afterwards
+  m: "login" | "link";
+}
+
+async function pkceChallenge(verifier: string): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return b64url(new Uint8Array(d));
+}
+
+function readOAuthCookie(req: Request): OAuthState | null {
+  const raw = cookies(req).get(OAUTH_COOKIE);
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(atob(raw.replace(/-/g, "+").replace(/_/g, "/"))) as OAuthState;
+    return typeof o.s === "string" && typeof o.v === "string" ? o : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Start an OAuth round trip: remember state + PKCE verifier in a short-lived cookie (the
+ *  __Host- prefix means only we can set it), then send the browser to the provider. */
+async function oauthRedirect(authorizeUrl: string, params: Record<string, string>, st: Omit<OAuthState, "s" | "v">, pkce = true): Promise<Response> {
+  const s = randomToken(16);
+  const v = randomToken(32);
+  const u = new URL(authorizeUrl);
+  for (const [k, val] of Object.entries(params)) u.searchParams.set(k, val);
+  u.searchParams.set("state", s);
+  if (pkce) {
+    u.searchParams.set("code_challenge", await pkceChallenge(v));
+    u.searchParams.set("code_challenge_method", "S256");
+  }
+  const cookie = b64url(new TextEncoder().encode(JSON.stringify({ s, v, ...st })));
+  return redirect303(u.toString(), [`${OAUTH_COOKIE}=${cookie}; HttpOnly; ${cookieAttrs(600)}`]);
+}
+
+/** Check the provider's callback against our cookie. Returns the saved state, or null. */
+function oauthCallbackState(req: Request, url: URL): OAuthState | null {
+  const st = readOAuthCookie(req);
+  return st && url.searchParams.get("state") === st.s && url.searchParams.get("code") ? st : null;
+}
+const clearOAuthCookie = `${OAUTH_COOKIE}=; HttpOnly; ${cookieAttrs(0)}`;
+
+const UA = "open-cryptology (+https://github.com/selanavot/open-cryptology)";
+
+function authMessage(env: Env, status: number, title: string, text: string, next = "/", setCookies: string[] = []): Response {
+  const res = messagePage(env, status, title, html`<p>${text}</p><p><a href="${safeNext(next)}">Go back</a></p>`, {
+    cache: "no-store",
+    noindex: true,
+  });
+  for (const c of setCookies) res.headers.append("set-cookie", c);
+  return res;
+}
+
+// ---------------------------------------------------------------------------------------------
+// routes: /auth/*, /api/me
+
+/** Made-up test accounts: local test servers only (AUTH_DEV_LOGIN=1 and a localhost AUTH_ORIGIN). */
+export const devLogin = (env: Env): boolean =>
+  env.AUTH_DEV_LOGIN === "1" && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(env.AUTH_ORIGIN ?? "");
+
+export function isAuthPath(path: string): boolean {
+  return path.startsWith("/auth/") || path === "/api/me";
+}
+
+export async function handleAuth(req: Request, env: Env, url: URL): Promise<Response> {
+  const path = url.pathname;
+  const isGet = req.method === "GET" || req.method === "HEAD";
+
+  if (path === "/api/me") {
+    if (!isGet) return json({ error: "method_not_allowed" }, 405);
+    const a = await currentUser(env, req);
+    if (!a) return authJson({ code: "signin", status: 401 });
+    const u = a.user;
+    return json({ user: { id: u.id, displayName: u.displayName, role: u.role, identities: u.identities } });
+  }
+
+  if (path === "/auth/logout") {
+    if (req.method !== "POST") return authMessage(env, 405, "Use the sign-out button", "Signing out needs the button on the account page.");
+    if (!sameOrigin(req, env)) return authMessage(env, 403, "Rejected", "Cross-site requests aren't accepted.");
+    const tok = cookies(req).get(SESSION_COOKIE);
+    if (tok) await env.DB.prepare("DELETE FROM sessions WHERE id = ?1").bind(await sha256hex(tok)).run();
+    const form = await req.formData().catch(() => null);
+    return redirect303(safeNext(form?.get("next")?.toString()), clearCookies());
+  }
+
+  // /auth/<provider> starts a sign-in (or, with link=1 from /account, adds the account); the
+  // provider sends the browser back to /auth/<provider>/callback.
+  const pm = /^\/auth\/(github|google|orcid)(\/callback)?$/.exec(path);
+  if (pm && isGet) {
+    const p = PROVIDERS[pm[1] as Provider];
+    const label = PROVIDER_LABEL[pm[1] as Provider];
+    const redirectUri = `${authOrigin(env, url)}/auth/${pm[1]}/callback`;
+    if (!pm[2]) {
+      const next = safeNext(url.searchParams.get("next"));
+      if (!p.ready(env)) return authMessage(env, 503, "Sign-in isn't set up", `${label} sign-in isn't configured on this server yet.`, next);
+      const mode = await startMode(env, req, url);
+      if (mode === "signed-in") return redirect303("/account");
+      const a = p.authorize(env, redirectUri);
+      return oauthRedirect(a.url, a.params, { n: next, m: mode }, a.pkce);
+    }
+    const st = oauthCallbackState(req, url);
+    if (!st) {
+      const cancelled = url.searchParams.get("error") === "access_denied";
+      return authMessage(env, 400, cancelled ? "Sign-in cancelled" : "Sign-in failed",
+        cancelled ? `You didn't authorize the ${label} sign-in.` : "The sign-in link expired or was already used. Please try again.");
+    }
+    if (!p.ready(env)) return authMessage(env, 503, "Sign-in isn't set up", `${label} sign-in isn't configured on this server yet.`);
+    const v = await p.exchange(env, url.searchParams.get("code")!, st.v, redirectUri);
+    if (!v) return authMessage(env, 502, "Sign-in failed", `${label} didn't confirm the sign-in. Please try again.`, st.n, [clearOAuthCookie]);
+    return identityDone(env, req, v, st.m, st.n, [clearOAuthCookie]);
+  }
+
+  // Local testing without OAuth apps: made-up accounts. Needs AUTH_DEV_LOGIN=1 *and* a localhost
+  // AUTH_ORIGIN (both only in .dev.vars), so one stray setting can't switch it on in production.
+  // Like the real routes, they sign in, or with link=1 from /account add the account.
+  if (devLogin(env) && isGet && path.startsWith("/auth/dev-")) {
+    const q = url.searchParams;
+    const next = safeNext(q.get("next") ?? "/account");
+    let v: Verified | null = null;
+    if (path === "/auth/dev-login") {
+      const login = q.get("login") ?? "";
+      const ghid = Number(q.get("ghid"));
+      if (/^[A-Za-z0-9-]{1,39}$/.test(login) && Number.isInteger(ghid) && ghid > 0) v = githubVerified({ id: ghid, login });
+    } else if (path === "/auth/dev-orcid") {
+      const orcid = q.get("orcid") ?? "";
+      if (ORCID_RE.test(orcid)) v = orcidVerified(orcid, q.get("name") ?? "");
+    } else if (path === "/auth/dev-google") {
+      const sub = q.get("sub") ?? "";
+      const email = q.get("email") ?? "";
+      if (/^\d{1,30}$/.test(sub) && /@[a-z0-9.-]+$/i.test(email)) v = googleVerified({ sub, email, name: q.get("name") ?? "" });
+    }
+    if (!v) return authMessage(env, 400, "Bad dev sign-in", "See docs/ACCOUNTS.md for the dev sign-in routes.");
+    const mode = await startMode(env, req, url);
+    if (mode === "signed-in") return redirect303("/account");
+    return identityDone(env, req, v, mode, next);
+  }
+
+  return authMessage(env, 404, "Not found", "There's nothing here.");
+}
+
+// ---------------------------------------------------------------------------------------------
+// providers
+
+interface ProviderConfig {
+  ready(env: Env): boolean;
+  authorize(env: Env, redirectUri: string): { url: string; params: Record<string, string>; pkce: boolean };
+  exchange(env: Env, code: string, verifier: string, redirectUri: string): Promise<Verified | null>;
+}
+
+const form = (o: Record<string, string>) => ({
+  method: "POST",
+  headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded", "user-agent": UA },
+  body: new URLSearchParams(o),
+});
+
+// The providers' access tokens are used at most once, to read the profile, and never stored.
+const PROVIDERS: Record<Provider, ProviderConfig> = {
+  github: {
+    ready: (env) => !!(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
+    authorize: (env, redirect_uri) => ({
+      url: "https://github.com/login/oauth/authorize",
+      params: { client_id: env.GITHUB_CLIENT_ID!, redirect_uri, allow_signup: "true" }, // no scopes: public profile only
+      pkce: true,
+    }),
+    async exchange(env, code, code_verifier, redirect_uri) {
+      const tr = await fetch(
+        "https://github.com/login/oauth/access_token",
+        form({ client_id: env.GITHUB_CLIENT_ID!, client_secret: env.GITHUB_CLIENT_SECRET!, code, redirect_uri, code_verifier }),
+      );
+      const tok = (await tr.json().catch(() => null)) as { access_token?: string } | null;
+      if (!tok?.access_token) return null;
+      const ur = await fetch("https://api.github.com/user", {
+        headers: { authorization: `Bearer ${tok.access_token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": UA },
+      });
+      if (!ur.ok) return null;
+      const u = (await ur.json()) as { id?: unknown; login?: unknown };
+      return typeof u.id === "number" && typeof u.login === "string" ? githubVerified({ id: u.id, login: u.login }) : null;
+    },
+  },
+  google: {
+    ready: (env) => !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+    authorize: (env, redirect_uri) => ({
+      url: "https://accounts.google.com/o/oauth2/v2/auth",
+      params: { client_id: env.GOOGLE_CLIENT_ID!, redirect_uri, response_type: "code", scope: "openid email profile", prompt: "select_account" },
+      pkce: true,
+    }),
+    async exchange(env, code, code_verifier, redirect_uri) {
+      const r = await fetch(
+        "https://oauth2.googleapis.com/token",
+        form({ client_id: env.GOOGLE_CLIENT_ID!, client_secret: env.GOOGLE_CLIENT_SECRET!, code, code_verifier, redirect_uri, grant_type: "authorization_code" }),
+      );
+      const j = (await r.json().catch(() => null)) as { id_token?: string } | null;
+      // The ID token comes straight from Google's token endpoint over TLS, so its claims can be read
+      // without checking the signature (OpenID Connect Core 3.1.3.7); we still check who it is for.
+      const c = j?.id_token ? jwtClaims(j.id_token) : null;
+      if (!c || c.aud !== env.GOOGLE_CLIENT_ID || !["https://accounts.google.com", "accounts.google.com"].includes(String(c.iss))) return null;
+      if (typeof c.exp !== "number" || c.exp * 1000 < Date.now() || c.email_verified !== true) return null;
+      if (typeof c.sub !== "string" || typeof c.email !== "string") return null;
+      return googleVerified({ sub: c.sub, email: c.email, name: typeof c.name === "string" ? c.name : "" });
+    },
+  },
+  orcid: {
+    ready: (env) => !!(env.ORCID_CLIENT_ID && env.ORCID_CLIENT_SECRET),
+    authorize: (env, redirect_uri) => ({
+      url: `${orcidBase(env)}/oauth/authorize`,
+      params: { client_id: env.ORCID_CLIENT_ID!, response_type: "code", scope: "/authenticate", redirect_uri },
+      pkce: false, // ORCID's public API doesn't document PKCE; state + the client secret protect the code
+    }),
+    async exchange(env, code, _verifier, redirect_uri) {
+      const r = await fetch(
+        `${orcidBase(env)}/oauth/token`,
+        form({ client_id: env.ORCID_CLIENT_ID!, client_secret: env.ORCID_CLIENT_SECRET!, grant_type: "authorization_code", code, redirect_uri }),
+      );
+      // The token response itself carries the iD and the name.
+      const j = (await r.json().catch(() => null)) as { orcid?: string; name?: string } | null;
+      return j?.orcid && ORCID_RE.test(j.orcid) ? orcidVerified(j.orcid, j.name ?? "") : null;
+    },
+  },
+};
+
+const githubVerified = (gh: { id: number; login: string }): Verified => ({
+  provider: "github",
+  providerUserId: String(gh.id),
+  handle: gh.login,
+  url: `https://github.com/${gh.login}`,
+  name: gh.login,
+});
+
+export const ORCID_RE = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
+const orcidBase = (env: Env) => (env.ORCID_BASE || "https://orcid.org").replace(/\/$/, "");
+const orcidVerified = (orcid: string, name: string): Verified => ({
+  provider: "orcid",
+  providerUserId: orcid,
+  handle: orcid,
+  url: `https://orcid.org/${orcid}`,
+  name,
+});
+
+/** Google: keyed on "sub". We keep the email's domain (shown as "verified @mit.edu" for
+ *  institutions). */
+const googleVerified = (g: { sub: string; email: string; name: string }): Verified => ({
+  provider: "google",
+  providerUserId: g.sub,
+  handle: g.email.slice(g.email.lastIndexOf("@") + 1).toLowerCase(),
+  url: "",
+  name: g.name,
+});
+
+/** Consumer mail domains: a Google sign-in from these says nothing about an institution. */
+export const PERSONAL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
+
+function jwtClaims(jwt: string): Record<string, unknown> | null {
+  const part = jwt.split(".")[1];
+  if (!part) return null;
+  try {
+    const bin = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// removing a sign-in, deleting an account (on /account)
+
+/** Remove one of a user's sign-ins. The last one can't go: it is the only way back in (delete the
+ *  account instead). Other browsers are signed out, since one of them may have come in through the
+ *  sign-in being removed. */
+export async function removeIdentity(env: Env, user: User, provider: string, providerUserId: string, keepSessionId = ""): Promise<string | null> {
+  const mine = user.identities.find((i) => i.provider === provider && i.providerUserId === providerUserId);
+  if (!mine) return "No such sign-in on your account.";
+  if (user.identities.length < 2) return "This is your only sign-in. Add another first, or delete the account.";
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM identities WHERE provider = ?1 AND provider_user_id = ?2 AND user_id = ?3").bind(provider, providerUserId, user.id),
+    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id != ?2").bind(user.id, keepSessionId),
+  ]);
+  return null;
+}
+
+/** Delete an account, keeping a tombstone so what it posted stays attributed to "deleted user":
+ *  sign-ins and sessions go; the users row stays with deleted_at set and the name freed. */
+export async function deleteAccount(env: Env, userId: string): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
+    env.DB.prepare("DELETE FROM identities WHERE user_id = ?1").bind(userId),
+    env.DB.prepare("UPDATE users SET display_name = ?2, name_key = NULL, deleted_at = ?3 WHERE id = ?1 AND deleted_at IS NULL").bind(userId, DELETED_NAME, nowIso()),
+  ]);
+}

@@ -33,6 +33,23 @@ export interface Env {
   INDEXNOW_KEY?: string;
   /** Local dev only: "1" skips the Access check on /review. */
   REVIEW_DEV_BYPASS?: string;
+  /** Accounts (auth.ts, docs/ACCOUNTS.md). GitHub OAuth app: client id (var) and secret (Worker secret). */
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  /** Origin OAuth providers redirect back to; unset = the request's origin. Local: http://localhost:8788. */
+  AUTH_ORIGIN?: string;
+  /** Comma-separated GitHub numeric user ids: accounts signed in with one of them are maintainers. */
+  MAINTAINER_GITHUB_IDS?: string;
+  /** Local dev only: "1" (with a localhost AUTH_ORIGIN) enables the /auth/dev-* made-up accounts. */
+  AUTH_DEV_LOGIN?: string;
+  /** Google sign-in (OpenID Connect; scopes openid email profile): id (var) and secret (Worker secret). */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  /** ORCID public API client (https://orcid.org/developer-tools): id (var) and secret (Worker secret). */
+  ORCID_CLIENT_ID?: string;
+  ORCID_CLIENT_SECRET?: string;
+  /** https://sandbox.orcid.org for testing; unset = https://orcid.org. */
+  ORCID_BASE?: string;
 }
 
 export interface Paper {

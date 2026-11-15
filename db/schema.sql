@@ -107,3 +107,43 @@ CREATE INDEX IF NOT EXISTS versions_paper ON versions(paper_id, captured_at);
 -- a later change (pdf_latest_at < updated) is not used.
 ALTER TABLE papers ADD COLUMN pdf_latest_size INTEGER;
 ALTER TABLE papers ADD COLUMN pdf_latest_at TEXT;
+
+-- ---------------------------------------------------------------------------------------------
+-- accounts (2026-11): sign-in with GitHub, Google or ORCID (worker/src/auth.ts, docs/ACCOUNTS.md).
+-- Only CREATE ... IF NOT EXISTS, so this section can be run on its own on an existing database:
+--   sed -n '/^-- accounts/,$p' db/schema.sql > /tmp/accounts.sql   (then wrangler d1 execute)
+-- Owned by auth.ts; other features reference users.id only.
+
+-- A person. Content points at users.id; a deleted account stays as a tombstone.
+-- The maintainer role isn't stored: it follows MAINTAINER_GITHUB_IDS and the GitHub sign-in.
+CREATE TABLE IF NOT EXISTS users (
+  id            TEXT PRIMARY KEY,            -- random, lowercase base32
+  display_name  TEXT NOT NULL,               -- chosen name; 'deleted user' for tombstones
+  name_key      TEXT,                        -- normalized display_name for uniqueness; NULL = not reserved
+  created_at    TEXT NOT NULL,
+  deleted_at    TEXT                         -- set = tombstone
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_name_key ON users(name_key) WHERE name_key IS NOT NULL;
+
+-- A verified sign-in (GitHub account, Google account, ORCID iD) belonging to one user.
+-- A user can have several; the last one can't be removed. Never moved between users.
+CREATE TABLE IF NOT EXISTS identities (
+  provider            TEXT NOT NULL,         -- 'github' | 'google' | 'orcid' (no CHECK, so more can be added)
+  provider_user_id    TEXT NOT NULL,         -- GitHub numeric id / Google sub / ORCID iD (stable; never a login or email)
+  user_id             TEXT NOT NULL,
+  handle              TEXT NOT NULL,         -- GitHub login / Google email domain / ORCID iD; refreshed at each sign-in
+  url                 TEXT NOT NULL,         -- https://github.com/<login> | https://orcid.org/<iD> | '' for Google
+  created_at          TEXT NOT NULL,
+  PRIMARY KEY (provider, provider_user_id)
+);
+CREATE INDEX IF NOT EXISTS identities_user ON identities(user_id);
+
+-- Browser sessions. The cookie holds a random token; only its SHA-256 is stored.
+CREATE TABLE IF NOT EXISTS sessions (
+  id          TEXT PRIMARY KEY,              -- hex SHA-256 of the cookie token
+  user_id     TEXT NOT NULL,
+  created_at  TEXT NOT NULL,                 -- sessions end 180 days after this at the latest
+  expires_at  TEXT NOT NULL,                 -- sliding: pushed out when last_seen is refreshed
+  last_seen   TEXT NOT NULL                  -- written at most once an hour
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
