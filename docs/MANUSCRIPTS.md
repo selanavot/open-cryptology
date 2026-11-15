@@ -1,4 +1,7 @@
-# Manuscripts
+# Original manuscripts
+
+**Naming:** "original manuscripts" wherever there's room (headings, buttons, page titles; the
+navbar can say "Manuscripts"), and "ePrint papers" for the mirrored papers.
 
 A place on Open Cryptology to share ideas and results faster and less polished than a paper,
 including work the uploader doesn't claim as their own (for example AI-generated results).
@@ -35,13 +38,18 @@ They are meant to be citable. Status: planned, not built.
   come later if people ask.
 - **Uploader** is shown as photo and name only, linking to their profile page, which lists their
   log-in methods (GitHub, ORCID, institutional Google domain) and their manuscripts.
-- **Title, Authors, Abstract.** Authors is free text with no constraint ("Jane Doe",
-  "Jane Doe (AI-assisted)", "Claude Fable 5.2"). The abstract is short; TeX works.
+- **Title, Authors, Abstract.** Authors are entered one per line, as they should be cited, with
+  no other constraint ("Jane Doe", "Jane Doe (AI-assisted)", "Claude Fable 5.2"). The abstract is
+  short; TeX works.
 - **Uploaded by:** the logged-in account, always shown separately from the authors, even when
   they aren't an author (a common case: the only author is a model, e.g. "Claude Fable 5.2"). How
   it was uploaded (form or API) is not shown.
-- **Content:** Markdown (rendered, with math; no raw HTML) or a PDF. The submit form asks for
-  methodology in the content: which models and frameworks were used, what a person checked.
+- **Content:** a Markdown (rendered, with math; no raw HTML) or PDF file. The Markdown guide asks
+  for methodology in the content: which models and frameworks were used, what a person checked.
+- **Submit form:** one column, no filler. Upload a `.md` or `.pdf` file (drop or choose); for
+  Markdown, the title and abstract are read from the file and can be edited. Then title, authors
+  (one per line), abstract, and one tickbox: "I agree to the terms and license this manuscript
+  under CC BY 4.0." A new version uses the same form, prefilled.
 - **License:** CC BY 4.0 only, accepted with a tickbox at submission. One license keeps it
   simple; more can be added later.
 - **Versions:** an update by the uploader adds v2, v3, ...; every version stays readable at its
@@ -50,17 +58,35 @@ They are meant to be citable. Status: planned, not built.
   earlier versions stay readable.
 - **Removal (maintainers):** maintainers can remove or delete any manuscript; the terms say so.
 - **BibTeX** on every page, e.g.
-  `@misc{oc-2026-11-15-3, author = {{Claude Fable 5.2}}, title = {...}, year = {2026},
-  howpublished = {Open Cryptology 2026-11-15/3}, url = {https://opencryptology.org/2026-11-15/3},
-  note = {Version 2}}` (double braces keep free-text authors intact).
+  `@misc{oc-2026-11-15-3, author = {{Claude Fable 5.2} and {Ada Lovelace}}, title = {...},
+  year = {2026}, howpublished = {Open Cryptology 2026-11-15/3},
+  url = {https://opencryptology.org/2026-11-15/3}, note = {Version 2}}` (one braced entry per
+  author line, so names are never reparsed).
 - **Search engines:** indexed from day one, with Google Scholar meta tags like the paper pages.
 
 ## Guard rails (no review before publishing)
 
 Logged-in uploaders only; a daily limit per account; size caps (PDF about 30 MB, Markdown about
 200 KB); the existing PDF scan for active content; Markdown rendered without raw HTML. Maintainers
-can remove after the fact. A short terms page covers the license, uploader responsibility and
-removal.
+can remove after the fact.
+
+## Terms of use
+
+A short plain-language page (`/terms`), written to keep our options open later:
+- uploaders keep copyright and license every version to everyone under CC BY 4.0, which also covers
+  us hosting, converting, indexing and sharing it in any format and through any service, now and
+  later;
+- uploaders confirm they may post it (including AI-produced work, under those tools' terms), that
+  it breaks no law or rights, and that it has no malware or others' private information;
+- the authors line is the uploader's to write and isn't checked; no naming real people without
+  consent;
+- posts are public at once; versions stay readable after withdrawal;
+- maintainers may hide or delete any manuscript, version or account, at any time, for any reason;
+- account holders answer for what their agents post with their tokens;
+- we may change features or these terms, or stop the site; changes apply from when posted, and
+  licenses already granted are unaffected;
+- no warranty; liability limited as far as the law allows.
+A draft is in the mockups; it should be reviewed before launch.
 
 ## Agents
 
@@ -77,9 +103,9 @@ approved once by the person in their browser. A thin CLI (`npx open-cryptology u
   manuscript, once comments are live). Beside it: a "Submit a manuscript" button (with "Agents can
   post directly: API in llms.txt") and the latest manuscripts. On phones the button comes first,
   then the letter, then the list. No search box on the homepage.
-- **Navbar:** Manuscripts, ePrint mirror, and a Submit button, plus the log-in photo and the
+- **Navbar:** Manuscripts, ePrint papers, and a Submit button, plus the log-in photo and the
   search icon.
-- **ePrint mirror page** (from the navbar, and linked from "mirror" in the letter): one paragraph
+- **ePrint papers page** (from the navbar, and linked from "mirror" in the letter): one paragraph
   on what the mirror is, the newest ePrint papers, and the papers-by-year grid. Paper pages keep
   their URLs (`/2024/123`).
 - **Lists** (homepage, Manuscripts, profiles): title, authors, and the uploader's photo and name.
