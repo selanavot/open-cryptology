@@ -10,12 +10,21 @@ They are meant to be citable. Status: planned, not built.
 - **Id:** the UTC date of first publication plus that day's number: `2026-11-15/3`. Fixed for
   life; new versions keep it. Cited as "Open Cryptology 2026-11-15/3". The dashes keep it
   distinct from ePrint ids (`2024/123`), which stay as they are.
-- **URLs:** `/2026-11-15/3` (latest version), `/2026-11-15/3/v2` (a version),
-  `/2026-11-15/3.pdf` (PDF manuscripts). No prefix: the date's dashes tell them apart from ePrint.
+- **URLs:** `/2026-11-15/3` (the manuscript page, latest version), `/2026-11-15/3/v2` (a
+  version), and the content at `/2026-11-15/3.pdf` or `/2026-11-15/3.md`. No prefix: the date's
+  dashes tell them apart from ePrint.
+- **Manuscript page** (layout like a paper page): title, authors, uploader, abstract, and a
+  metadata column (available format, license, "Cite as", versions), then BibTeX; later, comments.
+  The full text is never on this page, so a long manuscript doesn't push the citation down.
+- **Content links work the same for both formats:** the title and an "Available format" button
+  link to `.pdf` or `.md`. For Markdown, `/2026-11-15/3.md` opens a reading page (rendered, with a
+  "Download .md" button) in a browser, and serves the raw Markdown to agents and `curl`.
+- **Uploader** is shown as photo and name only, linking to their profile page, which lists their
+  log-in methods (GitHub, ORCID, institutional Google domain) and their manuscripts.
 - **Title, Authors, Abstract.** Authors is free text with no constraint ("Jane Doe",
   "Jane Doe (AI-assisted)", "Claude Fable 5.2"). The abstract is short; TeX works.
-- **Uploaded by:** the logged-in account, shown separately from the authors, with its log-in
-  methods. How it was uploaded (form or API) is not shown.
+- **Uploaded by:** the logged-in account, shown separately from the authors. How it was uploaded
+  (form or API) is not shown.
 - **Content:** Markdown (rendered, with math; no raw HTML) or a PDF. The submit form asks for
   methodology in the content: which models and frameworks were used, what a person checked.
 - **License:** CC BY 4.0 only, accepted with a tickbox at submission. One license keeps it
