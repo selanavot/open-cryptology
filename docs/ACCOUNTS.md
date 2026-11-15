@@ -10,7 +10,8 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
   verified sign-in (GitHub, Google or ORCID) that belongs to one user, keyed on the provider's stable
   id (GitHub's numeric id, Google's `sub`, the ORCID iD; never a login or email). People start with
   any of the three and add the others with the "Add" buttons on `/account`; each then reaches the
-  same account. The last identity can't be removed.
+  same account. Identities are only ever added (or moved over by a merge), never removed one by
+  one: the name is the only thing a person edits. `users.id` is internal and never shown on a page.
 - **Merging.** Adding a sign-in that already belongs to another account doesn't take it over: it
   leads to `/account/merge`, which shows both accounts and asks to merge the other one into the
   signed-in one. Having just signed in with that sign-in, the person can reach the other account
@@ -24,17 +25,19 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
   For Google we keep the email's domain, shown as "verified @mit.edu" for institutions and as just
   "Google account" for gmail.com. Sessions are stored as SHA-256 hashes only.
 - **Sessions.** The `__Host-oc_session` cookie (HttpOnly, Secure, SameSite=Lax) holds 32 random
-  bytes. Expiry is enforced in D1: 30 days from the last use, 180 days at most. Removing a sign-in,
-  or "Sign out other browsers", ends every other session of the account.
+  bytes. Expiry is enforced in D1: 30 days from the last use, 180 days at most. "Log them out" on
+  `/account` ends every other session of the account.
 - **Cached pages.** Paper pages are publicly cached, so they never contain signed-in state. The
-  display-only `oc_login` cookie (the URI-encoded display name) lets `app.js` show who is signed in;
-  the server never trusts it. The session is looked up only on POSTs, `/api/me` and `/account`.
+  display-only `oc_login` cookie (URI-encoded JSON `{n: name, a: photo URL}`) lets `app.js` swap
+  the navbar's "Log in" for the person's photo or initials; the server never trusts it. The session is looked up only on POSTs, `/api/me` and `/account`.
 - **CSRF.** Cookie-authenticated POSTs must carry our Origin (or `Sec-Fetch-Site: same-origin`).
   Redirect targets (`next=`) must be same-origin paths.
 - **Maintainers.** An account is a maintainer exactly while one of its sign-ins is a GitHub id in
   `MAINTAINER_GITHUB_IDS`; nothing is stored, so removing either takes the role away.
-- **Display names** are unique (case-insensitive, after NFKC). A new account takes the provider's
-  name (GitHub login, Google or ORCID name) when it is free, else `user-<id>`.
+- **Names and photos.** The name shown is the person's own (`custom_name`, set with the edit
+  button on `/account`), else the name from their ORCID, Google or GitHub account, in that order
+  (refreshed at each log-in). Names needn't be unique. The photo comes from Google, else GitHub,
+  hotlinked (the CSP allows those two hosts); people without one get their initials.
 - **Deletion** keeps a "deleted user" tombstone so content keeps an author; sign-ins and sessions go.
 - **Providers.** GitHub OAuth (no scopes, PKCE); Google OpenID Connect (`openid email profile`,
   PKCE); ORCID public API (`/authenticate`). All three share one code path (`PROVIDERS` in auth.ts).
@@ -46,8 +49,8 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 ```ts
 const a = await requireUser(env, req); // or { role: "maintainer" }
 if (isAuthFailure(a)) return authJson(a); // API; an HTML form redirects back to its page instead
-// a.user.id, a.user.displayName, a.user.identities
-const people = await publicUsers(env, userIds); // names and sign-ins for bylines
+// a.user.id (internal), a.user.displayName, a.user.avatar, a.user.identities
+const people = await publicUsers(env, userIds); // names, photos and log-ins for bylines
 ```
 
 ## Configuration

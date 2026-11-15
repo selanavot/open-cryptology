@@ -114,26 +114,28 @@ ALTER TABLE papers ADD COLUMN pdf_latest_at TEXT;
 --   sed -n '/^-- accounts/,$p' db/schema.sql > /tmp/accounts.sql   (then wrangler d1 execute)
 -- Owned by auth.ts; other features reference users.id only.
 
--- A person. Content points at users.id; a deleted account stays as a tombstone.
--- The maintainer role isn't stored: it follows MAINTAINER_GITHUB_IDS and the GitHub sign-in.
+-- A person. Content points at users.id (internal; never shown on a page). A deleted account stays
+-- as a tombstone. The name shown is custom_name, else the name from the person's ORCID, Google or
+-- GitHub account (identities.name); names needn't be unique. The maintainer role isn't stored: it
+-- follows MAINTAINER_GITHUB_IDS and the GitHub log-in.
 CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,            -- random, lowercase base32
-  display_name  TEXT NOT NULL,               -- chosen name; 'deleted user' for tombstones
-  name_key      TEXT,                        -- normalized display_name for uniqueness; NULL = not reserved
+  custom_name   TEXT,                        -- the person's own name for themselves, or NULL
   created_at    TEXT NOT NULL,
   deleted_at    TEXT,                        -- set = tombstone
   merged_into   TEXT                         -- tombstone of a merge: its content is credited to this user
 );
-CREATE UNIQUE INDEX IF NOT EXISTS users_name_key ON users(name_key) WHERE name_key IS NOT NULL;
 
--- A verified sign-in (GitHub account, Google account, ORCID iD) belonging to one user.
--- A user can have several; the last one can't be removed. Never moved between users.
+-- A verified log-in method (GitHub account, Google account, ORCID iD) belonging to one user.
+-- A user can have several. Only ever added, or moved over when two accounts are merged.
 CREATE TABLE IF NOT EXISTS identities (
   provider            TEXT NOT NULL,         -- 'github' | 'google' | 'orcid' (no CHECK, so more can be added)
   provider_user_id    TEXT NOT NULL,         -- GitHub numeric id / Google sub / ORCID iD (stable; never a login or email)
   user_id             TEXT NOT NULL,
   handle              TEXT NOT NULL,         -- GitHub login / Google email domain / ORCID iD; refreshed at each sign-in
   url                 TEXT NOT NULL,         -- https://github.com/<login> | https://orcid.org/<iD> | '' for Google
+  name                TEXT,                  -- the person's name there; refreshed at each log-in
+  avatar              TEXT,                  -- profile photo URL (GitHub, Google), or ''
   created_at          TEXT NOT NULL,
   PRIMARY KEY (provider, provider_user_id)
 );

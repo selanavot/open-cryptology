@@ -49,6 +49,10 @@ class Client {
   }
 }
 
+const loginInfo = (c) => {
+  try { return JSON.parse(decodeURIComponent(c.jar.get("oc_login") ?? "")); } catch { return null; }
+};
+
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
@@ -68,7 +72,7 @@ test("dev login creates a user and a session", async () => {
   check("303 to next", r.status === 303 && r.headers.get("location") === "/2024/1", `${r.status} ${r.headers.get("location")}`);
   const sc = r.headers.getSetCookie().join("\n");
   check("session cookie is HttpOnly, Secure, SameSite=Lax", /__Host-oc_session=[^;]+;[^\n]*HttpOnly[^\n]*Secure[^\n]*SameSite=Lax/.test(sc), sc);
-  check("oc_login cookie carries the display name", c.jar.get("oc_login") === encodeURIComponent(login));
+  check("oc_login cookie carries the name (JSON)", loginInfo(c)?.n === login, c.jar.get("oc_login"));
   const me = await c.json("/api/me");
   check("/api/me 200", me.status === 200, me.status);
   check("display name = login", me.body?.user?.displayName === login);
@@ -133,10 +137,10 @@ test("callback without our state cookie is refused", async () => {
 // ------------------------------------------------------------------------------------------- step 2
 const form = (c, fields) => c.req("/account", { method: "POST", form: fields });
 
-test("/account: sign-in page when signed out, settings when signed in", async () => {
+test("/account: log-in page when logged out, settings when logged in", async () => {
   const out = await new Client().req("/account?next=/2024/1");
   const t = await out.text();
-  check("signed-out page says Sign in", out.status === 200 && /Sign in/.test(t));
+  check("logged-out page says Log in", out.status === 200 && /Log in to/.test(t));
   check("no-store", out.headers.get("cache-control") === "no-store");
   const c = new Client();
   await c.login(`dora${RUN}`, 940000 + (RUN % 1e5));
@@ -144,27 +148,29 @@ test("/account: sign-in page when signed out, settings when signed in", async ()
   const body = await r.text();
   check("settings page shows the name", r.status === 200 && body.includes(`dora${RUN}`));
   check("settings page no-store", r.headers.get("cache-control") === "no-store");
+  check("no internal id on the page", !body.includes((await c.json("/api/me")).body?.user?.id));
 });
 
-test("display name rules", async () => {
+test("names: from the log-in methods, editable, not unique", async () => {
   const a = new Client();
   await a.login(`erin${RUN}`, 950000 + (RUN % 1e5));
   const b = new Client();
   await b.login(`frank${RUN}`, 960000 + (RUN % 1e5));
-  let r = await form(a, { action: "name", name: `  Erin   Example ${RUN} ` });
-  check("valid name saved (303)", r.status === 303, r.status);
-  check("oc_login updated", decodeURIComponent(a.jar.get("oc_login") ?? "") === `Erin Example ${RUN}`);
+  let r = await form(a, { action: "name", name: `  Wei   Zhang ` });
+  check("custom name saved (303)", r.status === 303, r.status);
+  check("oc_login updated", loginInfo(a)?.n === "Wei Zhang", a.jar.get("oc_login"));
   const me = (await a.json("/api/me")).body?.user;
-  check("whitespace normalized", me?.displayName === `Erin Example ${RUN}`, me?.displayName);
-  r = await form(b, { action: "name", name: `ERIN EXAMPLE ${RUN}` });
-  check("name taken (case-insensitive) -> 400", r.status === 400 && /already uses/.test(await r.text()), r.status);
-  r = await form(b, { action: "name", name: `erin${RUN}` });
-  for (const bad of ["deleted user", "user-abcdefghijkl", "<script>", "x".repeat(41), ""]) {
+  check("whitespace normalized", me?.displayName === "Wei Zhang" && me?.customName === "Wei Zhang", me?.displayName);
+  r = await form(b, { action: "name", name: "wei zhang" });
+  check("two people can share a name", r.status === 303, r.status);
+  for (const bad of ["", "   ", "x".repeat(61)]) {
     r = await form(b, { action: "name", name: bad });
     check(`rejected: ${JSON.stringify(bad.slice(0, 20))}`, r.status === 400, r.status);
   }
-  r = await form(b, { action: "name", name: `Frank Ünïcødé ${RUN}` });
-  check("unicode letters ok", r.status === 303, r.status);
+  r = await form(b, { action: "name", name: "张伟 (Zhang Wei)" });
+  check("any script ok", r.status === 303, r.status);
+  r = await form(a, { action: "name-reset" });
+  check("reset to the log-in name", r.status === 303 && (await a.json("/api/me")).body?.user?.displayName === `erin${RUN}`, r.status);
   r = await c_cross(b);
   check("cross-site name change refused", r.status === 403, r.status);
 });
@@ -177,25 +183,25 @@ test("a stale oc_login cookie is cleared by /account", async () => {
   check("cleared", !c.jar.has("oc_login"));
 });
 
-test("navbar renders the static Sign in link (app.js swaps in the name)", async () => {
+test("navbar renders the static Log in link (app.js swaps in the photo)", async () => {
   const t = await (await new Client().req("/")).text();
-  check("nav-account link", /class="nav-account">Sign in</.test(t));
+  check("nav-account link", /class="nav-account">Log in</.test(t));
 });
 
-test("deleting an account frees the name; the same GitHub signs up fresh", async () => {
+test("deleting an account; the same GitHub signs up fresh", async () => {
   const c = new Client();
   const login = `mo${RUN}`;
   const ghid = 1050000 + (RUN % 1e5);
   await c.login(login, ghid);
   const id = (await c.json("/api/me")).body?.user?.id;
   let r = await form(c, { action: "delete" });
-  check("needs the confirmation box", r.status === 400, r.status);
+  check("needs the confirmation box", r.status === 422, r.status);
   r = await form(c, { action: "delete", confirm: "yes" });
   check("deleted, signed out", r.status === 303 && !c.jar.has("__Host-oc_session"), r.status);
   const again = new Client();
   await again.login(login, ghid);
   const me2 = (await again.json("/api/me")).body?.user;
-  check("a fresh account, with its name back", me2?.id !== id && me2?.displayName === login, `${me2?.id} ${me2?.displayName}`);
+  check("a fresh account", me2?.id !== id && me2?.displayName === login, `${me2?.id} ${me2?.displayName}`);
 });
 
 // Needs MAINTAINER_GITHUB_IDS=4242 in worker/.dev.vars.
@@ -205,7 +211,7 @@ test("maintainer role from MAINTAINER_GITHUB_IDS", async () => {
   await m.login(`maint${RUN}`, MAINT_GHID);
   const me = (await m.json("/api/me")).body?.user;
   check("maintainer", me?.role === "maintainer", me?.role);
-  check("badge on /account", /acct-badge">maintainer/.test(await (await m.req("/account")).text()));
+  check("badge on /account", /settings-badge">maintainer/.test(await (await m.req("/account")).text()));
 });
 
 // ------------------------------------------------------------------------------------------- step 5
@@ -220,7 +226,6 @@ const orcidOf = (n) => {
 };
 const devOrcid = (c, orcid, name = "", next = "/account") =>
   c.req(`/auth/dev-orcid?link=1&orcid=${orcid}&name=${encodeURIComponent(name)}&next=${encodeURIComponent(next)}`);
-const identityForm = (c, provider, pid, change) => form(c, { action: "identity", provider, pid, change });
 
 test("ORCID: link to a GitHub account, then sign in with either", async () => {
   const c = new Client();
@@ -252,13 +257,12 @@ test("ORCID-only accounts", async () => {
   check("only identity is ORCID", me?.identities?.length === 1 && me.identities[0].provider === "orcid");
   const d = new Client();
   await devOrcid(d, orcidOf(3), `Wang Fang ${RUN}`);
-  check("a taken ORCID name falls back to user-<id>", /^user-[a-z2-7]{12}$/.test((await d.json("/api/me")).body?.user?.displayName ?? ""));
+  check("a second person with the same ORCID name keeps it", (await d.json("/api/me")).body?.user?.displayName === `Wang Fang ${RUN}`);
 });
 
 // ------------------------------------------------------------------------------------------- step 6
 const devGoogle = (c, sub, email, name = "", next = "/account") =>
   c.req(`/auth/dev-google?link=1&sub=${sub}&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&next=${encodeURIComponent(next)}`);
-const removeForm = (c, provider, pid) => form(c, { action: "identity", provider, pid, change: "remove" });
 
 test("Google: sign in first, keeps only the email domain", async () => {
   const c = new Client();
@@ -275,7 +279,7 @@ test("Google: sign in first, keeps only the email domain", async () => {
   const g = new Client();
   await devGoogle(g, String(2100000000 + RUN), `someone${RUN}@gmail.com`);
   const gp = await (await g.req("/account")).text();
-  check("gmail: shown as just a Google account", /Google<\/span> account/.test(gp) && !gp.includes("@gmail.com"));
+  check("gmail: shown as just a Google account", gp.includes(">Google account<") && !gp.includes("@gmail.com"));
 });
 
 test("any first sign-in, then add the others; each one signs in to the same account", async () => {
@@ -305,19 +309,11 @@ test("any first sign-in, then add the others; each one signs in to the same acco
   r = await devGoogle(other, sub, `ray${RUN}@uni.example`);
   check("someone else's Google account: merge offered, not added", r.status === 303 && r.headers.get("location") === "/account/merge", `${r.status} ${r.headers.get("location")}`);
   await form(other, { action: "merge-cancel" });
-  r = await removeForm(c, "google", sub);
-  check("Google removed", r.status === 303, r.status);
-  r = await removeForm(c, "orcid", orcid);
-  check("ORCID removed", r.status === 303, r.status);
-  r = await removeForm(c, "github", String(ghid));
-  check("the last sign-in can't be removed", r.status === 400, r.status);
-  r = await removeForm(other, "github", String(ghid));
-  check("someone else's sign-in: refused", r.status === 400, r.status);
 });
 
 test("sign-in page offers all three providers", async () => {
   const t = await (await new Client().req("/account")).text();
-  check("GitHub, Google, ORCID buttons", /Sign in with GitHub/.test(t) && /Sign in with Google/.test(t) && /Sign in with ORCID/.test(t));
+  check("GitHub, Google, ORCID buttons", /Continue with GitHub/.test(t) && /Continue with Google/.test(t) && /Continue with ORCID/.test(t));
   const r = await new Client().req("/auth/google?next=/");
   const loc = r.headers.get("location") ?? "";
   check("Google: 503 page or PKCE redirect", r.status === 503 || (loc.startsWith("https://accounts.google.com/") && /code_challenge_method=S256/.test(loc)), `${r.status} ${loc}`);
@@ -335,20 +331,19 @@ test("merging: adding another account's sign-in merges that account in, after co
   let r = await devOrcid(a, orcid);
   check("redirects to the merge screen", r.status === 303 && r.headers.get("location") === "/account/merge", `${r.status} ${r.headers.get("location")}`);
   const page = await (await a.req("/account/merge")).text();
-  check("the screen names both accounts", page.includes(`Keep: xena${RUN}`) && page.includes(`Merge in: Yuki ${RUN}`));
+  check("the screen names both accounts, no ids", page.includes(`xena${RUN}`) && page.includes(`Yuki ${RUN}`) && !page.includes(aId) && !page.includes(bId));
   r = await a.req("/account", { method: "POST", form: { action: "merge" }, origin: "https://evil.example" });
   check("cross-site confirm refused", r.status === 403, r.status);
   check("a different signed-in user can't use the offer", (await form(b, { action: "merge" })).status === 410);
   r = await form(a, { action: "merge" });
   check("merged (303 saved=merged)", r.status === 303 && r.headers.get("location") === "/account?saved=merged", `${r.status} ${r.headers.get("location")}`);
   const me = (await a.json("/api/me")).body?.user;
-  check("kept account has both sign-ins and its own name", me?.id === aId && me?.displayName === `xena${RUN}` && me?.identities?.map((i) => i.provider).sort().join(",") === "github,orcid", JSON.stringify(me));
+  check("kept account has both log-ins; its name now comes from ORCID", me?.id === aId && me?.displayName === `Yuki ${RUN}` && me?.identities?.map((i) => i.provider).sort().join(",") === "github,orcid", JSON.stringify(me));
   check("the merged account's sessions ended", (await b.json("/api/me")).status === 401);
   const viaOrcid = new Client();
   await devOrcid(viaOrcid, orcid);
   check("the ORCID iD now reaches the kept account", (await viaOrcid.json("/api/me")).body?.user?.id === aId, bId);
   check("the offer is used up", (await form(a, { action: "merge" })).status === 410);
-  check("its name is free again", (await form(a, { action: "name", name: `Yuki ${RUN}` })).status === 303);
 });
 
 // ------------------------------------------------------------------------------- security review fixes
@@ -364,39 +359,26 @@ test("adding a sign-in needs link=1 from our own page", async () => {
   check("still one sign-in", ids === 1, ids);
 });
 
-test("removing a sign-in signs out other browsers; so does the button", async () => {
+test("log out other browsers", async () => {
   const a = new Client();
   const ghid = 1130000 + (RUN % 1e5);
   await a.login(`uma${RUN}`, ghid);
-  const orcid = orcidOf(7);
-  await devOrcid(a, orcid);
-  const b = new Client();
-  await devOrcid(b, orcid);
-  check("browser B is in", (await b.json("/api/me")).status === 200);
-  let r = await removeForm(a, "orcid", orcid);
-  check("ORCID removed", r.status === 303, r.status);
-  check("browser B is signed out", (await b.json("/api/me")).status === 401);
-  check("browser A stays in", (await a.json("/api/me")).status === 200);
   const c2 = new Client();
   await c2.login(`uma${RUN}`, ghid);
-  r = await form(a, { action: "sessions" });
-  check("sign out other browsers (303)", r.status === 303, r.status);
+  const r = await form(a, { action: "sessions" });
+  check("logged them out (303)", r.status === 303, r.status);
   check("the other browser is out", (await c2.json("/api/me")).status === 401);
   check("this one is still in", (await a.json("/api/me")).status === 200);
 });
 
-// Last: it takes the maintainer's GitHub sign-in off their account.
-test("the maintainer role follows the GitHub sign-in", async () => {
-  const m = new Client();
-  await m.login(`maint${RUN}`, MAINT_GHID);
-  const sub = String(2300000000 + RUN);
-  await devGoogle(m, sub, `maint${RUN}@uni.example`);
-  const r = await removeForm(m, "github", String(MAINT_GHID));
-  check("GitHub removed", r.status === 303, r.status);
-  const me = (await m.json("/api/me")).body?.user;
-  check("no longer a maintainer", me?.role === "member", me?.role);
+test("no way to remove a single log-in method", async () => {
+  const a = new Client();
+  await a.login(`vera${RUN}`, 1140000 + (RUN % 1e5));
+  await devOrcid(a, orcidOf(7));
+  const r = await form(a, { action: "identity", provider: "orcid", pid: orcidOf(7), change: "remove" });
+  check("refused (400)", r.status === 400, r.status);
+  check("still two", (await a.json("/api/me")).body?.user?.identities?.length === 2);
 });
-
 
 // ------------------------------------------------------------------------------------------------
 for (const [name, fn] of tests) {

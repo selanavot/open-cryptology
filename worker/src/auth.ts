@@ -18,10 +18,14 @@ export interface Identity {
   providerUserId: string; // GitHub numeric id / Google sub / ORCID iD
   handle: string; // GitHub login / Google email domain / ORCID iD
   url: string; // https://github.com/<login> | https://orcid.org/<iD> | "" (Google)
+  name: string; // the person's name as the provider has it ("" when it has none)
+  avatar: string; // profile photo URL (GitHub, Google), or ""
 }
 export interface User {
-  id: string;
-  displayName: string;
+  id: string; // internal: never shown on a page
+  displayName: string; // customName, else the name from ORCID, Google or GitHub (in that order)
+  customName: string | null;
+  avatar: string; // photo from Google or GitHub, or "" (pages show initials)
   role: Role;
   identities: Identity[];
 }
@@ -36,7 +40,7 @@ export interface AuthFailure {
 }
 
 export const SESSION_COOKIE = "__Host-oc_session";
-export const LOGIN_COOKIE = "oc_login"; // display only: URI-encoded display name, never trusted
+export const LOGIN_COOKIE = "oc_login"; // display only: URI-encoded JSON {n: name, a: photo URL}, never trusted
 const OAUTH_COOKIE = "__Host-oc_oauth";
 const SESSION_DAYS = 30; // sliding expiry, enforced in D1
 const SESSION_MAX_DAYS = 180; // absolute limit: sign in again after this, however active
@@ -116,32 +120,49 @@ function json(data: unknown, status = 200): Response {
 }
 
 // ---------------------------------------------------------------------------------------------
-// display names
+// names and photos
 
 export const DELETED_NAME = "deleted user";
-/** Uniqueness key: NFKC, case-folded, whitespace collapsed. */
-export const nameKey = (s: string): string => s.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
-export const NAME_MAX = 40;
-const cleanName = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim();
+export const NAME_MAX = 60;
+const cleanName = (s: string) => s.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
 
-/** Why a display name can't be used, or null if it can: its shape, the reserved names, and other
- *  users' display names (case-insensitively, after NFKC). */
-export async function nameProblem(env: Env, userId: string, name: string): Promise<string | null> {
+/** The name a person goes by here comes from their sign-ins, in this order, unless they set their
+ *  own. Names needn't be unique: many researchers share one. */
+const NAME_ORDER: Provider[] = ["orcid", "google", "github"];
+const PHOTO_ORDER: Provider[] = ["google", "github"];
+
+function nameFrom(ids: Identity[]): string {
+  for (const p of NAME_ORDER) {
+    const i = ids.find((x) => x.provider === p && x.name);
+    if (i) return i.name;
+  }
+  const gh = ids.find((x) => x.provider === "github");
+  if (gh) return gh.handle;
+  return ids.some((x) => x.provider === "orcid") ? "ORCID user" : "Google user";
+}
+const photoFrom = (ids: Identity[]): string => {
+  for (const p of PHOTO_ORDER) {
+    const i = ids.find((x) => x.provider === p && x.avatar);
+    if (i) return i.avatar;
+  }
+  return "";
+};
+
+/** Where the derived name comes from (for "from your ORCID record" on /account). */
+export const nameSource = (u: User): Provider | null =>
+  u.customName ? null : (NAME_ORDER.find((p) => u.identities.some((i) => i.provider === p && i.name)) ?? null);
+
+/** Why a custom name can't be used, or null if it can. */
+export function nameProblem(name: string): string | null {
   const n = cleanName(name);
   if (!n) return "Enter a name.";
   if ([...n].length > NAME_MAX) return `Names can be at most ${NAME_MAX} characters.`;
-  if (!/^[\p{L}\p{M}\p{N} .'’\-_()]+$/u.test(n)) return "Use letters, digits, spaces and . ' - _ ( ) only.";
-  const key = nameKey(n);
-  if (key === DELETED_NAME || /^user-[a-z2-7]+$/.test(key)) return "That name is reserved.";
-  const taken = await env.DB.prepare("SELECT 1 FROM users WHERE name_key = ?1 AND id != ?2").bind(key, userId).first();
-  return taken ? "Someone else already uses that name." : null;
+  return null;
 }
 
-/** Set a display name (call nameProblem first). Returns the stored, normalized name. */
-export async function setDisplayName(env: Env, userId: string, name: string): Promise<string> {
-  const n = cleanName(name);
-  await env.DB.prepare("UPDATE users SET display_name = ?2, name_key = ?3 WHERE id = ?1").bind(userId, n, nameKey(n)).run();
-  return n;
+/** Set a custom name, or (null) go back to the name from the sign-ins. */
+export async function setCustomName(env: Env, userId: string, name: string | null): Promise<void> {
+  await env.DB.prepare("UPDATE users SET custom_name = ?2 WHERE id = ?1").bind(userId, name === null ? null : cleanName(name)).run();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -153,8 +174,17 @@ interface IdentityRow {
   user_id: string;
   handle: string;
   url: string;
+  name: string | null;
+  avatar: string | null;
 }
-const toIdentity = (r: IdentityRow): Identity => ({ provider: r.provider, providerUserId: r.provider_user_id, handle: r.handle, url: r.url });
+const toIdentity = (r: IdentityRow): Identity => ({
+  provider: r.provider,
+  providerUserId: r.provider_user_id,
+  handle: r.handle,
+  url: r.url,
+  name: r.name ?? "",
+  avatar: r.avatar ?? "",
+});
 
 const maintainerIds = (env: Env): string[] =>
   (env.MAINTAINER_GITHUB_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -166,21 +196,24 @@ const roleOf = (env: Env, ids: Identity[]): Role => {
   return ids.some((i) => i.provider === "github" && m.includes(i.providerUserId)) ? "maintainer" : "member";
 };
 
+function toUser(env: Env, id: string, customName: string | null, identities: Identity[]): User {
+  return { id, displayName: customName || nameFrom(identities), customName, avatar: photoFrom(identities), role: roleOf(env, identities), identities };
+}
+
 /** A live (not deleted) user with all identities, or null. */
 export async function loadUser(env: Env, id: string): Promise<User | null> {
   const [u, ids] = await env.DB.batch([
-    env.DB.prepare("SELECT id, display_name FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id),
-    env.DB.prepare("SELECT * FROM identities WHERE user_id = ?1 ORDER BY provider, created_at").bind(id),
+    env.DB.prepare("SELECT id, custom_name FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id),
+    env.DB.prepare("SELECT * FROM identities WHERE user_id = ?1 ORDER BY created_at").bind(id),
   ]);
-  const row = (u.results as { id: string; display_name: string }[])[0];
+  const row = (u.results as { id: string; custom_name: string | null }[])[0];
   if (!row) return null;
-  const identities = (ids.results as unknown as IdentityRow[]).map(toIdentity);
-  return { id: row.id, displayName: row.display_name, role: roleOf(env, identities), identities };
+  return toUser(env, row.id, row.custom_name, (ids.results as unknown as IdentityRow[]).map(toIdentity));
 }
 
-/** Names and sign-ins for many users at once (e.g. bylines), keyed by the ids asked for. An
- *  account merged into another comes back as that account; deleted users come back as
- *  "deleted user" with no sign-ins; unknown ids are left out. Safe for cached pages. */
+/** Names, photos and sign-ins for many users at once (e.g. bylines), keyed by the ids asked for.
+ *  An account merged into another comes back as that account; deleted users come back as
+ *  "deleted user"; unknown ids are left out. Safe for cached pages. */
 export async function publicUsers(env: Env, userIds: string[]): Promise<Map<string, User & { deleted: boolean }>> {
   const out = new Map<string, User & { deleted: boolean }>();
   const ids = [...new Set(userIds)];
@@ -188,28 +221,27 @@ export async function publicUsers(env: Env, userIds: string[]): Promise<Map<stri
   const list = JSON.stringify(ids);
   const [us, is] = await env.DB.batch([
     env.DB.prepare(
-      `SELECT u.id AS asked, e.id, e.display_name, e.deleted_at FROM users u JOIN users e ON e.id = COALESCE(u.merged_into, u.id)
+      `SELECT u.id AS asked, e.id, e.custom_name, e.deleted_at FROM users u JOIN users e ON e.id = COALESCE(u.merged_into, u.id)
        WHERE u.id IN (SELECT value FROM json_each(?1))`,
     ).bind(list),
     env.DB.prepare(
       `SELECT * FROM identities WHERE user_id IN
-         (SELECT COALESCE(merged_into, id) FROM users WHERE id IN (SELECT value FROM json_each(?1))) ORDER BY provider, created_at`,
+         (SELECT COALESCE(merged_into, id) FROM users WHERE id IN (SELECT value FROM json_each(?1))) ORDER BY created_at`,
     ).bind(list),
   ]);
+  const idsBy = new Map<string, Identity[]>();
+  for (const r of is.results as unknown as IdentityRow[]) idsBy.set(r.user_id, [...(idsBy.get(r.user_id) ?? []), toIdentity(r)]);
   const byId = new Map<string, User & { deleted: boolean }>();
-  for (const r of us.results as { asked: string; id: string; display_name: string; deleted_at: string | null }[]) {
+  for (const r of us.results as { asked: string; id: string; custom_name: string | null; deleted_at: string | null }[]) {
     let p = byId.get(r.id);
     if (!p) {
-      p = { id: r.id, displayName: r.deleted_at ? DELETED_NAME : r.display_name, role: "member", identities: [], deleted: !!r.deleted_at };
+      p = r.deleted_at
+        ? { id: r.id, displayName: DELETED_NAME, customName: null, avatar: "", role: "member", identities: [], deleted: true }
+        : { ...toUser(env, r.id, r.custom_name, idsBy.get(r.id) ?? []), deleted: false };
       byId.set(r.id, p);
     }
     out.set(r.asked, p);
   }
-  for (const r of is.results as unknown as IdentityRow[]) {
-    const p = byId.get(r.user_id);
-    if (p && !p.deleted) p.identities.push(toIdentity(r));
-  }
-  for (const p of byId.values()) p.role = roleOf(env, p.identities);
   return out;
 }
 
@@ -267,20 +299,21 @@ export async function signOutOthers(env: Env, userId: string, keepSessionId = ""
 
 const cookieAttrs = (maxAge: number) => `Path=/; Max-Age=${maxAge}; Secure; SameSite=Lax`;
 
-export const loginCookie = (displayName: string): string =>
-  `${LOGIN_COOKIE}=${encodeURIComponent(displayName)}; ${cookieAttrs(COOKIE_MAX_AGE)}`;
+/** The navbar's display-only cookie: name and photo, read by app.js on cached pages. */
+export const loginCookie = (u: User): string =>
+  `${LOGIN_COOKIE}=${encodeURIComponent(JSON.stringify({ n: u.displayName, a: u.avatar }))}; ${cookieAttrs(COOKIE_MAX_AGE)}`;
 
 export function clearCookies(): string[] {
   return [`${SESSION_COOKIE}=; HttpOnly; ${cookieAttrs(0)}`, `${LOGIN_COOKIE}=; ${cookieAttrs(0)}`];
 }
 
-async function startSession(env: Env, user: { id: string; display_name: string }): Promise<string[]> {
+async function startSession(env: Env, user: User): Promise<string[]> {
   const tok = randomToken();
   const t = nowIso();
   await env.DB.prepare("INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen) VALUES (?1, ?2, ?3, ?4, ?3)")
     .bind(await sha256hex(tok), user.id, t, later(SESSION_DAYS * DAY_MS))
     .run();
-  return [`${SESSION_COOKIE}=${tok}; HttpOnly; ${cookieAttrs(COOKIE_MAX_AGE)}`, loginCookie(user.display_name)];
+  return [`${SESSION_COOKIE}=${tok}; HttpOnly; ${cookieAttrs(COOKIE_MAX_AGE)}`, loginCookie(user)];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -295,7 +328,8 @@ export interface Verified {
   providerUserId: string; // stable id: GitHub numeric id, Google "sub", ORCID iD
   handle: string; // GitHub login, Google email domain, ORCID iD
   url: string; // public link, or "" (Google has none)
-  name: string; // suggested display name for a new account
+  name: string; // the person's name there, or ""
+  avatar: string; // profile photo URL, or ""
 }
 
 async function identityOwner(env: Env, v: Verified): Promise<string | null> {
@@ -308,33 +342,24 @@ async function identityOwner(env: Env, v: Verified): Promise<string | null> {
 }
 
 const insertIdentity = (env: Env, v: Verified, userId: string, t: string) =>
-  env.DB.prepare("INSERT INTO identities (provider, provider_user_id, user_id, handle, url, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(
-    v.provider,
-    v.providerUserId,
-    userId,
-    v.handle,
-    v.url,
-    t,
-  );
+  env.DB.prepare(
+    "INSERT INTO identities (provider, provider_user_id, user_id, handle, url, name, avatar, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+  ).bind(v.provider, v.providerUserId, userId, v.handle, v.url, cleanName(v.name).slice(0, 200), v.avatar.slice(0, 500), t);
 
-/** Find or create the user for a verified identity, refreshing what the provider told us. A new
- *  account takes the suggested name if it is free, else "user-<id>" (changeable on /account). */
-export async function signInWith(env: Env, v: Verified): Promise<{ id: string; display_name: string }> {
+/** Find or create the user for a verified identity, refreshing what the provider told us (handle,
+ *  name, photo). Returns the user's id. */
+export async function signInWith(env: Env, v: Verified): Promise<string> {
   const owner = await identityOwner(env, v);
   if (owner) {
-    await env.DB.prepare("UPDATE identities SET handle = ?3, url = ?4 WHERE provider = ?1 AND provider_user_id = ?2")
-      .bind(v.provider, v.providerUserId, v.handle, v.url)
+    await env.DB.prepare("UPDATE identities SET handle = ?3, url = ?4, name = ?5, avatar = ?6 WHERE provider = ?1 AND provider_user_id = ?2")
+      .bind(v.provider, v.providerUserId, v.handle, v.url, cleanName(v.name).slice(0, 200), v.avatar.slice(0, 500))
       .run();
-    return (await env.DB.prepare("SELECT id, display_name FROM users WHERE id = ?1").bind(owner).first<{ id: string; display_name: string }>())!;
+    return owner;
   }
   const id = randomId();
   const t = nowIso();
-  const name = v.name && !(await nameProblem(env, "", v.name)) ? cleanName(v.name) : `user-${id}`;
-  await env.DB.batch([
-    env.DB.prepare("INSERT INTO users (id, display_name, name_key, created_at) VALUES (?1, ?2, ?3, ?4)").bind(id, name, nameKey(name), t),
-    insertIdentity(env, v, id, t),
-  ]);
-  return { id, display_name: name };
+  await env.DB.batch([env.DB.prepare("INSERT INTO users (id, created_at) VALUES (?1, ?2)").bind(id, t), insertIdentity(env, v, id, t)]);
+  return id;
 }
 
 /** The end of every provider's callback: link to the signed-in account, or sign in. Adding a
@@ -343,13 +368,15 @@ export async function signInWith(env: Env, v: Verified): Promise<{ id: string; d
 async function identityDone(env: Env, req: Request, v: Verified, mode: "login" | "link", next: string, extraCookies: string[] = []): Promise<Response> {
   if (mode === "link") {
     const me = await currentUser(env, req);
-    if (!me) return authMessage(env, 401, "Signed out", "Sign in again, then add the account.", "/account", extraCookies);
+    if (!me) return authMessage(env, 401, "Logged out", "Log in again, then add the account.", "/account", extraCookies);
     const owner = await identityOwner(env, v);
     if (owner && owner !== me.user.id) return redirect303("/account/merge", [...extraCookies, await offerMerge(env, me.user.id, owner, v)]);
     if (!owner) await insertIdentity(env, v, me.user.id, nowIso()).run();
-    return redirect303("/account?saved=linked", extraCookies);
+    const u = await loadUser(env, me.user.id);
+    return redirect303("/account?saved=linked", [...extraCookies, ...(u ? [loginCookie(u)] : [])]);
   }
-  const user = await signInWith(env, v);
+  const user = await loadUser(env, await signInWith(env, v));
+  if (!user) return authMessage(env, 500, "Log-in failed", "Please try again.", "/account", extraCookies);
   // Drop the session this browser held before, if any, rather than leaving it valid.
   const old = cookies(req).get(SESSION_COOKIE);
   if (old) await env.DB.prepare("DELETE FROM sessions WHERE id = ?1").bind(await sha256hex(old)).run();
@@ -445,7 +472,7 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     const a = await currentUser(env, req);
     if (!a) return authJson({ code: "signin", status: 401 });
     const u = a.user;
-    return json({ user: { id: u.id, displayName: u.displayName, role: u.role, identities: u.identities } });
+    return json({ user: { id: u.id, displayName: u.displayName, customName: u.customName, avatar: u.avatar, role: u.role, identities: u.identities } });
   }
 
   if (path === "/auth/logout") {
@@ -494,14 +521,14 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     if (path === "/auth/dev-login") {
       const login = q.get("login") ?? "";
       const ghid = Number(q.get("ghid"));
-      if (/^[A-Za-z0-9-]{1,39}$/.test(login) && Number.isInteger(ghid) && ghid > 0) v = githubVerified({ id: ghid, login });
+      if (/^[A-Za-z0-9-]{1,39}$/.test(login) && Number.isInteger(ghid) && ghid > 0) v = githubVerified({ id: ghid, login, name: q.get("name") ?? "", avatar: "" });
     } else if (path === "/auth/dev-orcid") {
       const orcid = q.get("orcid") ?? "";
       if (ORCID_RE.test(orcid)) v = orcidVerified(orcid, q.get("name") ?? "");
     } else if (path === "/auth/dev-google") {
       const sub = q.get("sub") ?? "";
       const email = q.get("email") ?? "";
-      if (/^\d{1,30}$/.test(sub) && /@[a-z0-9.-]+$/i.test(email)) v = googleVerified({ sub, email, name: q.get("name") ?? "" });
+      if (/^\d{1,30}$/.test(sub) && /@[a-z0-9.-]+$/i.test(email)) v = googleVerified({ sub, email, name: q.get("name") ?? "", avatar: "" });
     }
     if (!v) return authMessage(env, 400, "Bad dev sign-in", "See docs/ACCOUNTS.md for the dev sign-in routes.");
     const mode = await startMode(env, req, url);
@@ -547,8 +574,9 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
         headers: { authorization: `Bearer ${tok.access_token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": UA },
       });
       if (!ur.ok) return null;
-      const u = (await ur.json()) as { id?: unknown; login?: unknown };
-      return typeof u.id === "number" && typeof u.login === "string" ? githubVerified({ id: u.id, login: u.login }) : null;
+      const u = (await ur.json()) as { id?: unknown; login?: unknown; name?: unknown; avatar_url?: unknown };
+      if (typeof u.id !== "number" || typeof u.login !== "string") return null;
+      return githubVerified({ id: u.id, login: u.login, name: typeof u.name === "string" ? u.name : "", avatar: typeof u.avatar_url === "string" ? u.avatar_url : "" });
     },
   },
   google: {
@@ -570,7 +598,12 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
       if (!c || c.aud !== env.GOOGLE_CLIENT_ID || !["https://accounts.google.com", "accounts.google.com"].includes(String(c.iss))) return null;
       if (typeof c.exp !== "number" || c.exp * 1000 < Date.now() || c.email_verified !== true) return null;
       if (typeof c.sub !== "string" || typeof c.email !== "string") return null;
-      return googleVerified({ sub: c.sub, email: c.email, name: typeof c.name === "string" ? c.name : "" });
+      return googleVerified({
+        sub: c.sub,
+        email: c.email,
+        name: typeof c.name === "string" ? c.name : "",
+        avatar: typeof c.picture === "string" ? c.picture : "",
+      });
     },
   },
   orcid: {
@@ -592,12 +625,17 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
   },
 };
 
-const githubVerified = (gh: { id: number; login: string }): Verified => ({
+/** Photos are shown only from these hosts (they are also in the CSP's img-src). */
+const PHOTO_RE = /^https:\/\/(avatars\.githubusercontent\.com|[a-z0-9-]+\.googleusercontent\.com)\//;
+const photo = (u: string) => (PHOTO_RE.test(u) ? u : "");
+
+const githubVerified = (gh: { id: number; login: string; name: string; avatar: string }): Verified => ({
   provider: "github",
   providerUserId: String(gh.id),
   handle: gh.login,
   url: `https://github.com/${gh.login}`,
-  name: gh.login,
+  name: gh.name,
+  avatar: photo(gh.avatar),
 });
 
 export const ORCID_RE = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
@@ -608,16 +646,18 @@ const orcidVerified = (orcid: string, name: string): Verified => ({
   handle: orcid,
   url: `https://orcid.org/${orcid}`,
   name,
+  avatar: "",
 });
 
 /** Google: keyed on "sub". We keep the email's domain (shown as "verified @mit.edu" for
  *  institutions). */
-const googleVerified = (g: { sub: string; email: string; name: string }): Verified => ({
+const googleVerified = (g: { sub: string; email: string; name: string; avatar: string }): Verified => ({
   provider: "google",
   providerUserId: g.sub,
   handle: g.email.slice(g.email.lastIndexOf("@") + 1).toLowerCase(),
   url: "",
   name: g.name,
+  avatar: photo(g.avatar),
 });
 
 /** Consumer mail domains: a Google sign-in from these says nothing about an institution. */
@@ -634,22 +674,8 @@ function jwtClaims(jwt: string): Record<string, unknown> | null {
   }
 }
 
-// ---------------------------------------------------------------------------------------------
-// removing a sign-in, deleting an account (on /account)
-
-/** Remove one of a user's sign-ins. The last one can't go: it is the only way back in (delete the
- *  account instead). Other browsers are signed out, since one of them may have come in through the
- *  sign-in being removed. */
-export async function removeIdentity(env: Env, user: User, provider: string, providerUserId: string, keepSessionId = ""): Promise<string | null> {
-  const mine = user.identities.find((i) => i.provider === provider && i.providerUserId === providerUserId);
-  if (!mine) return "No such sign-in on your account.";
-  if (user.identities.length < 2) return "This is your only sign-in. Add another first, or delete the account.";
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM identities WHERE provider = ?1 AND provider_user_id = ?2 AND user_id = ?3").bind(provider, providerUserId, user.id),
-    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id != ?2").bind(user.id, keepSessionId),
-  ]);
-  return null;
-}
+// Sign-ins are only ever added (or merged in from another account), never removed one by one:
+// the display name is the only thing a person edits. Deleting the account removes them all.
 
 // ---------------------------------------------------------------------------------------------
 // merging two accounts (/account/merge)
@@ -700,12 +726,7 @@ export async function mergeAccounts(env: Env, keepId: string, goneId: string, of
     env.DB.prepare("UPDATE identities SET user_id = ?1 WHERE user_id = ?2").bind(keepId, goneId),
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(goneId),
     env.DB.prepare("UPDATE users SET merged_into = ?1 WHERE merged_into = ?2").bind(keepId, goneId),
-    env.DB.prepare("UPDATE users SET display_name = ?3, name_key = NULL, deleted_at = ?4, merged_into = ?1 WHERE id = ?2 AND deleted_at IS NULL").bind(
-      keepId,
-      goneId,
-      DELETED_NAME,
-      nowIso(),
-    ),
+    env.DB.prepare("UPDATE users SET custom_name = NULL, deleted_at = ?3, merged_into = ?1 WHERE id = ?2 AND deleted_at IS NULL").bind(keepId, goneId, nowIso()),
     env.DB.prepare("DELETE FROM pending_merges WHERE id = ?1 OR other_user_id = ?2 OR user_id = ?2").bind(offerId, goneId),
   ]);
 }
@@ -720,6 +741,6 @@ export async function deleteAccount(env: Env, userId: string): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
     env.DB.prepare("DELETE FROM identities WHERE user_id = ?1").bind(userId),
-    env.DB.prepare("UPDATE users SET display_name = ?2, name_key = NULL, deleted_at = ?3 WHERE id = ?1 AND deleted_at IS NULL").bind(userId, DELETED_NAME, nowIso()),
+    env.DB.prepare("UPDATE users SET custom_name = NULL, deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL").bind(userId, nowIso()),
   ]);
 }

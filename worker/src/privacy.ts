@@ -23,14 +23,15 @@ export function privacyPage(env: Env): Response {
   <p>You sign in with GitHub, Google or ORCID. We never see your password, and we don't keep the
   access the sign-in grants: it is used once to read who you are. For each sign-in we keep:</p>
   <ul>
-    <li><strong>GitHub:</strong> your account's id and username.</li>
-    <li><strong>Google:</strong> your account's id and the domain of your email address (for example
-    mit.edu).</li>
-    <li><strong>ORCID:</strong> your ORCID iD.</li>
+    <li><strong>GitHub:</strong> your account's id, username, name and profile photo link.</li>
+    <li><strong>Google:</strong> your account's id, name, profile photo link and the domain of your
+    email address (for example mit.edu).</li>
+    <li><strong>ORCID:</strong> your ORCID iD and name.</li>
   </ul>
-  <p>We also keep your display name (taken from your first sign-in; you can change it) and when you
-  joined. Your display name and sign-ins are shown next to what you post (your Google domain only
-  if it isn't a personal one like gmail.com).</p>
+  <p>Your name here comes from those accounts unless you set your own, and we keep when you joined.
+  Your name and log-in methods are shown next to what you post (your Google domain only if it isn't
+  a personal one like gmail.com). Profile photos are loaded from GitHub or Google when shown; we
+  don't keep copies.</p>
 
   <h4>Cookies</h4>
   <p>Only when you sign in: a session cookie that keeps you signed in, a cookie with your display name
