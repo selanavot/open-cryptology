@@ -19,12 +19,21 @@ They are meant to be citable. Status: planned, not built.
 - **Content links work the same for both formats:** the title and an "Available format" button
   link to `.pdf` or `.md`. For Markdown, `/2026-11-15/3.md` opens a reading page (rendered, with a
   "Download .md" button) in a browser, and serves the raw Markdown to agents and `curl`.
+- **Reading page** looks like a typeset paper (in the spirit of arXiv's HTML view): plain white,
+  no site chrome except a slim bar (Abstract & cite, Download .md), serif text, a centered title
+  block (title; authors; "Open Cryptology 2026-11-15/3 · Version 2 · date · CC BY 4.0"; "Uploaded
+  by <name>"), the abstract, a contents list from the headings, then the body.
+- **Markdown conventions** (documented in llms.txt so agents produce good-looking manuscripts):
+  `##` headings become numbered sections and the contents list; `$...$` and `$$...$$` math;
+  tables; fenced code; `> **Theorem 1.** ...` (or Definition, Lemma) blockquotes render as
+  theorem blocks; a final "References" list.
 - **Uploader** is shown as photo and name only, linking to their profile page, which lists their
   log-in methods (GitHub, ORCID, institutional Google domain) and their manuscripts.
 - **Title, Authors, Abstract.** Authors is free text with no constraint ("Jane Doe",
   "Jane Doe (AI-assisted)", "Claude Fable 5.2"). The abstract is short; TeX works.
-- **Uploaded by:** the logged-in account, shown separately from the authors. How it was uploaded
-  (form or API) is not shown.
+- **Uploaded by:** the logged-in account, always shown separately from the authors, even when
+  they aren't an author (a common case: the only author is a model, e.g. "Claude Fable 5.2"). How
+  it was uploaded (form or API) is not shown.
 - **Content:** Markdown (rendered, with math; no raw HTML) or a PDF. The submit form asks for
   methodology in the content: which models and frameworks were used, what a person checked.
 - **License:** CC BY 4.0 only, accepted with a tickbox at submission. One license keeps it
