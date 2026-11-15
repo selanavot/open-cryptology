@@ -378,6 +378,30 @@ test("adding a sign-in needs link=1 from our own page", async () => {
   check("still one sign-in", ids === 1, ids);
 });
 
+test("merging keeps a typed-in name, from either account", async () => {
+  // The merged-in account has the typed name; the kept one doesn't.
+  const a = new Client();
+  await a.login(`zed${RUN}`, 1180000 + (RUN % 1e5));
+  const b = new Client();
+  const orcid = orcidOf(10);
+  await devOrcid(b, orcid, `Orcid Name ${RUN}`);
+  await form(b, { action: "name", name: `Typed Name ${RUN}` });
+  await devOrcid(a, orcid);
+  await form(a, { action: "merge" });
+  check("the merged account's typed name wins over ORCID's", (await a.json("/api/me")).body?.user?.displayName === `Typed Name ${RUN}`);
+  // Both have one: the kept account's stays.
+  const c = new Client();
+  await c.login(`yan${RUN}`, 1190000 + (RUN % 1e5));
+  await form(c, { action: "name", name: `Kept Name ${RUN}` });
+  const d = new Client();
+  const orcid2 = orcidOf(11);
+  await devOrcid(d, orcid2, `Other ${RUN}`);
+  await form(d, { action: "name", name: `Other Typed ${RUN}` });
+  await devOrcid(c, orcid2);
+  await form(c, { action: "merge" });
+  check("the kept account's typed name wins when both have one", (await c.json("/api/me")).body?.user?.displayName === `Kept Name ${RUN}`);
+});
+
 test("no way to remove a single log-in method", async () => {
   const a = new Client();
   await a.login(`vera${RUN}`, 1140000 + (RUN % 1e5));

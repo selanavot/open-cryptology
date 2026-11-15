@@ -714,9 +714,12 @@ export async function pendingMerge(env: Env, req: Request, userId: string): Prom
 
 /** Merge `goneId` into `keepId`: its sign-ins move over, its sessions end, and it becomes a
  *  tombstone pointing at `keepId` (merged_into), so what it posted is credited to the kept account
- *  without touching other tables. The kept account keeps its name. */
+ *  without touching other tables. A custom name survives: the kept account's, else the merged one's. */
 export async function mergeAccounts(env: Env, keepId: string, goneId: string, offerId: string): Promise<void> {
   await env.DB.batch([
+    // A name someone typed beats any name from a log-in method: keep the kept account's own name,
+    // else take the merged account's.
+    env.DB.prepare("UPDATE users SET custom_name = COALESCE(custom_name, (SELECT custom_name FROM users WHERE id = ?2)) WHERE id = ?1").bind(keepId, goneId),
     env.DB.prepare("UPDATE identities SET user_id = ?1 WHERE user_id = ?2").bind(keepId, goneId),
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(goneId),
     env.DB.prepare("UPDATE users SET merged_into = ?1 WHERE merged_into = ?2").bind(keepId, goneId),
