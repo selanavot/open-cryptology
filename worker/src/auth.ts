@@ -1,45 +1,35 @@
-// Accounts: sign-in with GitHub, browser sessions, and the helpers other features use to find out
-// who is making a request (design: docs/ACCOUNTS.md; tables: the "accounts" section of
-// db/schema.sql). We store no passwords, no provider access tokens (they are dropped as soon as
-// the profile is read) and no email addresses.
+// Accounts: sign-in with GitHub, Google or ORCID, linking them into one account, and browser
+// sessions; plus the helpers other features use to find out who is asking (design:
+// docs/ACCOUNTS.md; tables: the "accounts" section of db/schema.sql). No passwords, and the
+// providers' access tokens are dropped as soon as the profile is read.
 //
 // Sessions: the __Host-oc_session cookie holds 32 random bytes; D1 keeps only their SHA-256.
 // Pages are publicly cached, so nothing signed-in is rendered into them: app.js reads the
 // display-only oc_login cookie, and the session itself is looked up only on POSTs, /api/me and
-// the no-store account pages (currentUser / requireUser).
+// the no-store account page (currentUser / requireUser).
 import type { Env } from "./db";
 import { html } from "./html";
 import { messagePage } from "./layout";
 
-export type Role = "member" | "trusted" | "maintainer";
-export type Kind = "human" | "bot";
-const ROLE_RANK: Record<Role, number> = { member: 0, trusted: 1, maintainer: 2 };
+export type Role = "member" | "maintainer";
 
 export interface Identity {
   provider: Provider;
-  providerUserId: string; // GitHub numeric id / ORCID iD
-  handle: string; // GitHub login / ORCID iD
-  url: string; // https://github.com/<login> | https://orcid.org/<iD>
-  providerCreatedAt?: string; // no longer written (was the GitHub account's creation time)
-  public: boolean;
+  providerUserId: string; // GitHub numeric id / Google sub / ORCID iD
+  handle: string; // GitHub login / Google email domain / ORCID iD
+  url: string; // https://github.com/<login> | https://orcid.org/<iD> | "" (Google)
 }
 export interface User {
   id: string;
   displayName: string;
   role: Role;
-  kind: Kind;
-  owner?: { id: string; displayName: string }; // bots only
-  banned: boolean;
-  identities: Identity[]; // all of them, hidden ones included (this is the signed-in user's view)
+  identities: Identity[];
 }
 export interface Actor {
   user: User;
-  via: "session" | "token"; // "token" (or a bot account) => label the content agent-made
-  tokenId?: string;
-  scopes?: string[];
-  sessionId?: string; // hash of the session cookie (via "session")
+  sessionId: string; // hash of the session cookie
 }
-export type FailureCode = "signin" | "banned" | "role" | "scope" | "origin";
+export type FailureCode = "signin" | "role" | "origin";
 export interface AuthFailure {
   code: FailureCode;
   status: 401 | 403;
@@ -51,7 +41,7 @@ const OAUTH_COOKIE = "__Host-oc_oauth";
 const SESSION_DAYS = 30; // sliding expiry, enforced in D1
 const SESSION_MAX_DAYS = 180; // absolute limit: sign in again after this, however active
 const COOKIE_MAX_AGE = 400 * 86400; // browsers cap cookies at 400 days; D1 decides validity
-const TOUCH_MS = 3600_000; // refresh last_seen / last_used at most once an hour
+const TOUCH_MS = 3600_000; // refresh last_seen at most once an hour
 const DAY_MS = 86400_000;
 
 // ---------------------------------------------------------------------------------------------
@@ -88,7 +78,7 @@ export function cookies(req: Request): Map<string, string> {
 }
 
 /** The origin OAuth providers redirect back to. wrangler dev rewrites request URLs to the
- *  production host, so local runs set AUTH_ORIGIN=http://localhost:8787 in .dev.vars. */
+ *  production host, so local runs set AUTH_ORIGIN=http://localhost:8788 in .dev.vars. */
 export function authOrigin(env: Env, url: URL): string {
   return (env.AUTH_ORIGIN || url.origin).replace(/\/$/, "");
 }
@@ -131,92 +121,90 @@ function json(data: unknown, status = 200): Response {
 export const DELETED_NAME = "deleted user";
 /** Uniqueness key: NFKC, case-folded, whitespace collapsed. */
 export const nameKey = (s: string): string => s.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+export const NAME_MAX = 40;
+const cleanName = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim();
+
+/** Why a display name can't be used, or null if it can: its shape, the reserved names, and other
+ *  users' display names (case-insensitively, after NFKC). */
+export async function nameProblem(env: Env, userId: string, name: string): Promise<string | null> {
+  const n = cleanName(name);
+  if (!n) return "Enter a name.";
+  if ([...n].length > NAME_MAX) return `Names can be at most ${NAME_MAX} characters.`;
+  if (!/^[\p{L}\p{M}\p{N} .'’\-_()]+$/u.test(n)) return "Use letters, digits, spaces and . ' - _ ( ) only.";
+  const key = nameKey(n);
+  if (key === DELETED_NAME || /^user-[a-z2-7]+$/.test(key)) return "That name is reserved.";
+  const taken = await env.DB.prepare("SELECT 1 FROM users WHERE name_key = ?1 AND id != ?2").bind(key, userId).first();
+  return taken ? "Someone else already uses that name." : null;
+}
+
+/** Set a display name (call nameProblem first). Returns the stored, normalized name. */
+export async function setDisplayName(env: Env, userId: string, name: string): Promise<string> {
+  const n = cleanName(name);
+  await env.DB.prepare("UPDATE users SET display_name = ?2, name_key = ?3 WHERE id = ?1").bind(userId, n, nameKey(n)).run();
+  return n;
+}
 
 // ---------------------------------------------------------------------------------------------
 // loading users
 
-interface UserRow {
-  id: string;
-  display_name: string;
-  role: Role;
-  kind: Kind;
-  owner_user_id: string | null;
-  owner_name: string | null;
-  banned: number;
-  deleted_at: string | null;
-}
 interface IdentityRow {
   provider: Provider;
   provider_user_id: string;
   user_id: string;
   handle: string;
   url: string;
-  provider_created_at: string | null;
-  public: number;
 }
-
-const USER_SELECT = `SELECT u.id, u.display_name, u.role, u.kind, u.owner_user_id, o.display_name AS owner_name,
-  u.banned, u.deleted_at FROM users u LEFT JOIN users o ON o.id = u.owner_user_id`;
-
-export const toIdentity = (r: IdentityRow): Identity => ({
-  provider: r.provider,
-  providerUserId: r.provider_user_id,
-  handle: r.handle,
-  url: r.url,
-  ...(r.provider_created_at ? { providerCreatedAt: r.provider_created_at } : {}),
-  public: !!r.public,
-});
-
-function toUser(r: UserRow, ids: IdentityRow[]): User {
-  return {
-    id: r.id,
-    displayName: r.display_name,
-    role: r.role,
-    kind: r.kind,
-    ...(r.owner_user_id ? { owner: { id: r.owner_user_id, displayName: r.owner_name ?? DELETED_NAME } } : {}),
-    banned: !!r.banned,
-    identities: ids.map(toIdentity),
-  };
-}
-
-/** A live (not deleted) user with all identities, or null. The maintainer role always follows
- *  MAINTAINER_GITHUB_IDS and the user's current GitHub sign-in, whatever the stored role says. */
-export async function loadUser(env: Env, id: string): Promise<User | null> {
-  const [u, ids] = await env.DB.batch([
-    env.DB.prepare(`${USER_SELECT} WHERE u.id = ?1 AND u.deleted_at IS NULL`).bind(id),
-    env.DB.prepare("SELECT * FROM identities WHERE user_id = ?1 ORDER BY provider, created_at").bind(id),
-  ]);
-  const row = (u.results as unknown as UserRow[])[0];
-  if (!row) return null;
-  const user = toUser(row, ids.results as unknown as IdentityRow[]);
-  const m = maintainerIds(env);
-  if (user.identities.some((i) => i.provider === "github" && m.includes(i.providerUserId))) user.role = "maintainer";
-  else if (user.role === "maintainer") user.role = "member";
-  return user;
-}
+const toIdentity = (r: IdentityRow): Identity => ({ provider: r.provider, providerUserId: r.provider_user_id, handle: r.handle, url: r.url });
 
 const maintainerIds = (env: Env): string[] =>
   (env.MAINTAINER_GITHUB_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
-/** Bring the stored role (shown on profiles) in line with the user's sign-ins: maintainer exactly
- *  when one of them is a GitHub id in MAINTAINER_GITHUB_IDS. */
-const syncRole = (env: Env, userId: string) =>
-  env.DB.prepare(
-    `UPDATE users SET role = CASE
-       WHEN EXISTS (SELECT 1 FROM identities WHERE user_id = ?1 AND provider = 'github'
-                    AND provider_user_id IN (SELECT value FROM json_each(?2))) THEN 'maintainer'
-       WHEN role = 'maintainer' THEN 'member' ELSE role END
-     WHERE id = ?1`,
-  ).bind(userId, JSON.stringify(maintainerIds(env)));
+/** Maintainer exactly while one of the sign-ins is a GitHub id in MAINTAINER_GITHUB_IDS, so
+ *  removing either takes the role away. */
+const roleOf = (env: Env, ids: Identity[]): Role => {
+  const m = maintainerIds(env);
+  return ids.some((i) => i.provider === "github" && m.includes(i.providerUserId)) ? "maintainer" : "member";
+};
+
+/** A live (not deleted) user with all identities, or null. */
+export async function loadUser(env: Env, id: string): Promise<User | null> {
+  const [u, ids] = await env.DB.batch([
+    env.DB.prepare("SELECT id, display_name FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id),
+    env.DB.prepare("SELECT * FROM identities WHERE user_id = ?1 ORDER BY provider, created_at").bind(id),
+  ]);
+  const row = (u.results as { id: string; display_name: string }[])[0];
+  if (!row) return null;
+  const identities = (ids.results as unknown as IdentityRow[]).map(toIdentity);
+  return { id: row.id, displayName: row.display_name, role: roleOf(env, identities), identities };
+}
+
+/** Names and sign-ins for many users at once (e.g. comment bylines). Unknown ids are left out;
+ *  deleted users come back as "deleted user" with no sign-ins. Safe for cached pages. */
+export async function publicUsers(env: Env, userIds: string[]): Promise<Map<string, User & { deleted: boolean }>> {
+  const out = new Map<string, User & { deleted: boolean }>();
+  const ids = [...new Set(userIds)];
+  if (!ids.length) return out;
+  const list = JSON.stringify(ids);
+  const [us, is] = await env.DB.batch([
+    env.DB.prepare("SELECT id, display_name, deleted_at FROM users WHERE id IN (SELECT value FROM json_each(?1))").bind(list),
+    env.DB.prepare("SELECT * FROM identities WHERE user_id IN (SELECT value FROM json_each(?1)) ORDER BY provider, created_at").bind(list),
+  ]);
+  for (const r of us.results as { id: string; display_name: string; deleted_at: string | null }[])
+    out.set(r.id, { id: r.id, displayName: r.deleted_at ? DELETED_NAME : r.display_name, role: "member", identities: [], deleted: !!r.deleted_at });
+  for (const r of is.results as unknown as IdentityRow[]) {
+    const p = out.get(r.user_id);
+    if (p && !p.deleted) p.identities.push(toIdentity(r));
+  }
+  for (const p of out.values()) p.role = roleOf(env, p.identities);
+  return out;
+}
 
 // ---------------------------------------------------------------------------------------------
 // who is asking
 
-/** The signed-in user (cookie session) or token holder, or null. Reads D1: call it only on
- *  POSTs, /api/me and no-store pages, never on publicly cached page views. */
+/** The signed-in user, or null. Reads D1: call it only on POSTs, /api/me and no-store pages,
+ *  never on publicly cached page views. */
 export async function currentUser(env: Env, req: Request): Promise<Actor | null> {
-  const authz = req.headers.get("authorization");
-  if (authz) return tokenActor(env, authz);
   const tok = cookies(req).get(SESSION_COOKIE);
   if (!tok) return null;
   const id = await sha256hex(tok);
@@ -225,115 +213,29 @@ export async function currentUser(env: Env, req: Request): Promise<Actor | null>
     .first<{ user_id: string; last_seen: string }>();
   if (!s) return null;
   const user = await loadUser(env, s.user_id);
-  if (!user || user.kind !== "human") return null;
+  if (!user) return null;
   if (Date.now() - Date.parse(s.last_seen) > TOUCH_MS) {
     await env.DB.prepare("UPDATE sessions SET last_seen = ?2, expires_at = ?3 WHERE id = ?1")
       .bind(id, nowIso(), later(SESSION_DAYS * DAY_MS))
       .run();
   }
-  return { user, via: "session", sessionId: id };
+  return { user, sessionId: id };
 }
 
-/** End all of a user's browser sessions except one (the browser asking). */
-export async function signOutOthers(env: Env, userId: string, keepSessionId = ""): Promise<void> {
-  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id != ?2").bind(userId, keepSessionId).run();
-}
-
-// ---------------------------------------------------------------------------------------------
-// API tokens (agents and bots): "Authorization: Bearer oct_..."
-
-export const SCOPES = ["comment", "upload"] as const;
-export type Scope = (typeof SCOPES)[number];
-export const TOKEN_PREFIX = "oct_";
-export const MAX_TOKENS = 20; // active tokens per account
-
-/** The token's account, or null for a missing, malformed, unknown or revoked token. */
-async function tokenActor(env: Env, authz: string): Promise<Actor | null> {
-  const m = /^Bearer\s+(oct_[A-Za-z0-9_-]{43})\s*$/.exec(authz);
-  if (!m) return null;
-  const t = await env.DB.prepare("SELECT id, user_id, scopes, last_used FROM api_tokens WHERE hash = ?1 AND revoked_at IS NULL")
-    .bind(await sha256hex(m[1]))
-    .first<{ id: string; user_id: string; scopes: string; last_used: string | null }>();
-  if (!t) return null;
-  const user = await loadUser(env, t.user_id);
-  if (!user) return null;
-  if (!t.last_used || Date.now() - Date.parse(t.last_used) > TOUCH_MS)
-    await env.DB.prepare("UPDATE api_tokens SET last_used = ?2 WHERE id = ?1").bind(t.id, nowIso()).run();
-  return { user, via: "token", tokenId: t.id, scopes: t.scopes.split(" ").filter(Boolean) };
-}
-
-/** Content from this actor is labelled agent-made: it came through a token, or from a bot. */
-export const isAgent = (a: Actor): boolean => a.via === "token" || a.user.kind === "bot";
-
-export interface TokenInfo {
-  id: string;
-  user_id: string;
-  name: string;
-  scopes: string;
-  created_at: string;
-  last_used: string | null;
-}
-
-/** Active tokens acting as any of these accounts (a user and the bots they run). */
-export async function listTokens(env: Env, userIds: string[]): Promise<TokenInfo[]> {
-  const r = await env.DB.prepare(
-    `SELECT id, user_id, name, scopes, created_at, last_used FROM api_tokens
-     WHERE revoked_at IS NULL AND user_id IN (SELECT value FROM json_each(?1)) ORDER BY created_at`,
-  )
-    .bind(JSON.stringify(userIds))
-    .all<TokenInfo>();
-  return r.results;
-}
-
-/** Create a token for an account; returns the secret (shown once) or a problem. */
-export async function createToken(env: Env, userId: string, name: string, scopes: string[]): Promise<{ token: string } | { problem: string }> {
-  const n = cleanName(name).slice(0, 60);
-  if (!n) return { problem: "Give the token a name, e.g. “my Claude agent”." };
-  const sc = SCOPES.filter((s) => scopes.includes(s));
-  if (!sc.length) return { problem: "Pick at least one thing the token may do." };
-  const count = await env.DB.prepare("SELECT count(*) AS n FROM api_tokens WHERE user_id = ?1 AND revoked_at IS NULL").bind(userId).first<{ n: number }>();
-  if ((count?.n ?? 0) >= MAX_TOKENS) return { problem: `An account can have at most ${MAX_TOKENS} tokens; revoke one first.` };
-  const token = TOKEN_PREFIX + randomToken(32);
-  await env.DB.prepare("INSERT INTO api_tokens (id, hash, user_id, name, scopes, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-    .bind(randomId(), await sha256hex(token), userId, n, sc.join(" "), nowIso())
-    .run();
-  return { token };
-}
-
-/** Revoke a token acting as one of these accounts. Returns whether one was revoked. */
-export async function revokeToken(env: Env, tokenId: string, userIds: string[]): Promise<boolean> {
-  const r = await env.DB.prepare(
-    "UPDATE api_tokens SET revoked_at = ?3 WHERE id = ?1 AND revoked_at IS NULL AND user_id IN (SELECT value FROM json_each(?2))",
-  )
-    .bind(tokenId, JSON.stringify(userIds), nowIso())
-    .run();
-  return (r.meta.changes ?? 0) > 0;
-}
-
-export const atLeast = (user: User, role: Role): boolean => ROLE_RANK[user.role] >= ROLE_RANK[role];
 export const isAuthFailure = (x: Actor | AuthFailure): x is AuthFailure => "code" in x && !("user" in x);
 
-/** The actor, or why not. Cookie-authenticated non-GET requests must come from our own pages. */
-export async function requireUser(
-  env: Env,
-  req: Request,
-  opts: { role?: Role; scope?: string } = {},
-): Promise<Actor | AuthFailure> {
-  const viaCookie = !req.headers.get("authorization");
-  if (viaCookie && req.method !== "GET" && req.method !== "HEAD" && !sameOrigin(req, env)) return { code: "origin", status: 403 };
+/** The signed-in user, or why not. Non-GET requests must come from our own pages. */
+export async function requireUser(env: Env, req: Request, opts: { role?: Role } = {}): Promise<Actor | AuthFailure> {
+  if (req.method !== "GET" && req.method !== "HEAD" && !sameOrigin(req, env)) return { code: "origin", status: 403 };
   const a = await currentUser(env, req);
   if (!a) return { code: "signin", status: 401 };
-  if (a.user.banned) return { code: "banned", status: 403 };
-  if (opts.role && !atLeast(a.user, opts.role)) return { code: "role", status: 403 };
-  if (opts.scope && a.scopes && !a.scopes.includes(opts.scope)) return { code: "scope", status: 403 };
+  if (opts.role === "maintainer" && a.user.role !== "maintainer") return { code: "role", status: 403 };
   return a;
 }
 
 const FAILURE_MESSAGES: Record<FailureCode, string> = {
-  signin: "Sign in first (a browser session, or Authorization: Bearer <token>).",
-  banned: "This account is banned.",
+  signin: "Sign in first.",
   role: "Your account isn't allowed to do this.",
-  scope: "This token doesn't have the scope this needs.",
   origin: "Cross-site requests aren't accepted.",
 };
 /** JSON error for API callers. HTML forms redirect back to their page instead. */
@@ -341,18 +243,9 @@ export function authJson(f: AuthFailure): Response {
   return json({ error: f.code, message: FAILURE_MESSAGES[f.code] }, f.status);
 }
 
-/** Public JSON shape of the signed-in user (GET /api/me). */
-export function userJson(u: User) {
-  return {
-    id: u.id,
-    displayName: u.displayName,
-    role: u.role,
-    kind: u.kind,
-    ...(u.owner ? { owner: u.owner } : {}),
-    banned: u.banned,
-    profile: `/u/${u.id}`,
-    identities: u.identities,
-  };
+/** End all of a user's browser sessions except one (the browser asking). */
+export async function signOutOthers(env: Env, userId: string, keepSessionId = ""): Promise<void> {
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id != ?2").bind(userId, keepSessionId).run();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -388,59 +281,44 @@ export interface Verified {
   providerUserId: string; // stable id: GitHub numeric id, Google "sub", ORCID iD
   handle: string; // GitHub login, Google email domain, ORCID iD
   url: string; // public link, or "" (Google has none)
-  providerCreatedAt?: string | null;
   name: string; // suggested display name for a new account
 }
 
-/** Who holds this identity. "gone" means a suspended account that was then deleted: its sign-ins
- *  are kept (see deleteAccounts) so that it can't simply sign up again. */
-async function identityOwner(env: Env, v: Verified): Promise<{ userId: string; gone: boolean } | null> {
+async function identityOwner(env: Env, v: Verified): Promise<string | null> {
   const r = await env.DB.prepare(
-    "SELECT i.user_id, u.deleted_at FROM identities i JOIN users u ON u.id = i.user_id WHERE i.provider = ?1 AND i.provider_user_id = ?2",
+    "SELECT i.user_id FROM identities i JOIN users u ON u.id = i.user_id WHERE i.provider = ?1 AND i.provider_user_id = ?2 AND u.deleted_at IS NULL",
   )
     .bind(v.provider, v.providerUserId)
-    .first<{ user_id: string; deleted_at: string | null }>();
-  return r ? { userId: r.user_id, gone: !!r.deleted_at } : null;
+    .first<{ user_id: string }>();
+  return r?.user_id ?? null;
 }
 
-const SUSPENDED = "This sign-in belongs to a suspended account, so it can't be used here.";
-
 const insertIdentity = (env: Env, v: Verified, userId: string, t: string) =>
-  env.DB.prepare(
-    `INSERT INTO identities (provider, provider_user_id, user_id, handle, url, provider_created_at, public, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)`,
-  ).bind(v.provider, v.providerUserId, userId, v.handle, v.url, v.providerCreatedAt ?? null, t);
+  env.DB.prepare("INSERT INTO identities (provider, provider_user_id, user_id, handle, url, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(
+    v.provider,
+    v.providerUserId,
+    userId,
+    v.handle,
+    v.url,
+    t,
+  );
 
 /** Find or create the user for a verified identity, refreshing what the provider told us. A new
  *  account takes the suggested name if it is free, else "user-<id>" (changeable on /account). */
-export async function signInWith(env: Env, v: Verified): Promise<{ id: string; display_name: string } | { problem: string }> {
+export async function signInWith(env: Env, v: Verified): Promise<{ id: string; display_name: string }> {
   const owner = await identityOwner(env, v);
-  if (owner?.gone) return { problem: SUSPENDED };
   if (owner) {
-    await env.DB.batch([
-      env.DB.prepare("UPDATE identities SET handle = ?3, url = ?4 WHERE provider = ?1 AND provider_user_id = ?2").bind(
-        v.provider,
-        v.providerUserId,
-        v.handle,
-        v.url,
-      ),
-      syncRole(env, owner.userId),
-    ]);
-    const u = await env.DB.prepare("SELECT id, display_name FROM users WHERE id = ?1").bind(owner.userId).first<{ id: string; display_name: string }>();
-    return u!;
+    await env.DB.prepare("UPDATE identities SET handle = ?3, url = ?4 WHERE provider = ?1 AND provider_user_id = ?2")
+      .bind(v.provider, v.providerUserId, v.handle, v.url)
+      .run();
+    return (await env.DB.prepare("SELECT id, display_name FROM users WHERE id = ?1").bind(owner).first<{ id: string; display_name: string }>())!;
   }
   const id = randomId();
   const t = nowIso();
   const name = v.name && !(await nameProblem(env, "", v.name)) ? cleanName(v.name) : `user-${id}`;
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO users (id, display_name, name_key, role, kind, created_at) VALUES (?1, ?2, ?3, 'member', 'human', ?4)").bind(
-      id,
-      name,
-      nameKey(name),
-      t,
-    ),
+    env.DB.prepare("INSERT INTO users (id, display_name, name_key, created_at) VALUES (?1, ?2, ?3, ?4)").bind(id, name, nameKey(name), t),
     insertIdentity(env, v, id, t),
-    syncRole(env, id),
   ]);
   return { id, display_name: name };
 }
@@ -449,10 +327,8 @@ export async function signInWith(env: Env, v: Verified): Promise<{ id: string; d
  *  identities are never moved or merged. Returns a problem, or null. */
 export async function linkIdentity(env: Env, userId: string, v: Verified): Promise<string | null> {
   const owner = await identityOwner(env, v);
-  if (owner?.gone) return SUSPENDED;
-  if (owner && owner.userId !== userId) return `This ${PROVIDER_LABEL[v.provider]} account already belongs to another account here. Sign in with it to use that account.`;
-  if (owner) return null;
-  await env.DB.batch([insertIdentity(env, v, userId, nowIso()), syncRole(env, userId)]);
+  if (owner && owner !== userId) return `This ${PROVIDER_LABEL[v.provider]} account already belongs to another account here. Sign in with it to use that account.`;
+  if (!owner) await insertIdentity(env, v, userId, nowIso()).run();
   return null;
 }
 
@@ -460,14 +336,12 @@ export async function linkIdentity(env: Env, userId: string, v: Verified): Promi
 async function identityDone(env: Env, req: Request, v: Verified, mode: "login" | "link", next: string, extraCookies: string[] = []): Promise<Response> {
   if (mode === "link") {
     const me = await currentUser(env, req);
-    if (!me || me.via !== "session") return authMessage(env, 401, "Signed out", "Sign in again, then add the account.", "/account", extraCookies);
-    if (me.user.banned) return authMessage(env, 403, "Account suspended", "A suspended account can't add sign-ins.", "/account", extraCookies);
+    if (!me) return authMessage(env, 401, "Signed out", "Sign in again, then add the account.", "/account", extraCookies);
     const problem = await linkIdentity(env, me.user.id, v);
     if (problem) return authMessage(env, 409, "Already in use", problem, "/account", extraCookies);
     return redirect303("/account?saved=linked", extraCookies);
   }
   const user = await signInWith(env, v);
-  if ("problem" in user) return authMessage(env, 403, "Can't sign in", user.problem, "/", extraCookies);
   // Drop the session this browser held before, if any, rather than leaving it valid.
   const old = cookies(req).get(SESSION_COOKIE);
   if (old) await env.DB.prepare("DELETE FROM sessions WHERE id = ?1").bind(await sha256hex(old)).run();
@@ -479,26 +353,12 @@ async function identityDone(env: Env, req: Request, v: Verified, mode: "login" |
  *  /auth/<provider> and, where the provider skips its consent screen, attach the person's
  *  account without them noticing. Signed in without that: "signed-in" (we just go to /account). */
 async function startMode(env: Env, req: Request, url: URL): Promise<"login" | "link" | "signed-in"> {
-  const me = await currentUser(env, req);
-  if (!me || me.via !== "session") return "login";
+  if (!(await currentUser(env, req))) return "login";
   return url.searchParams.get("link") === "1" && req.headers.get("sec-fetch-site") === "same-origin" ? "link" : "signed-in";
 }
 
-// GitHub
-
-interface GithubProfile {
-  id: number;
-  login: string;
-  name?: string | null;
-  created_at?: string;
-}
-const githubVerified = (gh: GithubProfile): Verified => ({
-  provider: "github",
-  providerUserId: String(gh.id),
-  handle: gh.login,
-  url: `https://github.com/${gh.login}`,
-  name: gh.login,
-});
+// ---------------------------------------------------------------------------------------------
+// OAuth plumbing
 
 interface OAuthState {
   s: string; // state
@@ -525,12 +385,7 @@ function readOAuthCookie(req: Request): OAuthState | null {
 
 /** Start an OAuth round trip: remember state + PKCE verifier in a short-lived cookie (the
  *  __Host- prefix means only we can set it), then send the browser to the provider. */
-export async function oauthRedirect(
-  authorizeUrl: string,
-  params: Record<string, string>,
-  st: Omit<OAuthState, "s" | "v">,
-  pkce = true,
-): Promise<Response> {
+async function oauthRedirect(authorizeUrl: string, params: Record<string, string>, st: Omit<OAuthState, "s" | "v">, pkce = true): Promise<Response> {
   const s = randomToken(16);
   const v = randomToken(32);
   const u = new URL(authorizeUrl);
@@ -545,11 +400,11 @@ export async function oauthRedirect(
 }
 
 /** Check the provider's callback against our cookie. Returns the saved state, or null. */
-export function oauthCallbackState(req: Request, url: URL): OAuthState | null {
+function oauthCallbackState(req: Request, url: URL): OAuthState | null {
   const st = readOAuthCookie(req);
   return st && url.searchParams.get("state") === st.s && url.searchParams.get("code") ? st : null;
 }
-export const clearOAuthCookie = `${OAUTH_COOKIE}=; HttpOnly; ${cookieAttrs(0)}`;
+const clearOAuthCookie = `${OAUTH_COOKIE}=; HttpOnly; ${cookieAttrs(0)}`;
 
 const UA = "open-cryptology (+https://github.com/selanavot/open-cryptology)";
 
@@ -581,9 +436,9 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     if (!isGet) return json({ error: "method_not_allowed" }, 405);
     const a = await currentUser(env, req);
     if (!a) return authJson({ code: "signin", status: 401 });
-    return json({ user: userJson(a.user), via: a.via, ...(a.scopes ? { scopes: a.scopes } : {}) });
+    const u = a.user;
+    return json({ user: { id: u.id, displayName: u.displayName, role: u.role, identities: u.identities } });
   }
-
 
   if (path === "/auth/logout") {
     if (req.method !== "POST") return authMessage(env, 405, "Use the sign-out button", "Signing out needs the button on the account page.");
@@ -594,8 +449,8 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     return redirect303(safeNext(form?.get("next")?.toString()), clearCookies());
   }
 
-  // /auth/<provider> starts a sign-in (or, when signed in, adds the account); the provider sends
-  // the browser back to /auth/<provider>/callback.
+  // /auth/<provider> starts a sign-in (or, with link=1 from /account, adds the account); the
+  // provider sends the browser back to /auth/<provider>/callback.
   const pm = /^\/auth\/(github|google|orcid)(\/callback)?$/.exec(path);
   if (pm && isGet) {
     const p = PROVIDERS[pm[1] as Provider];
@@ -684,8 +539,8 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
         headers: { authorization: `Bearer ${tok.access_token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": UA },
       });
       if (!ur.ok) return null;
-      const u = (await ur.json()) as GithubProfile;
-      return typeof u.id === "number" && typeof u.login === "string" ? githubVerified(u) : null;
+      const u = (await ur.json()) as { id?: unknown; login?: unknown };
+      return typeof u.id === "number" && typeof u.login === "string" ? githubVerified({ id: u.id, login: u.login }) : null;
     },
   },
   google: {
@@ -729,6 +584,14 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
   },
 };
 
+const githubVerified = (gh: { id: number; login: string }): Verified => ({
+  provider: "github",
+  providerUserId: String(gh.id),
+  handle: gh.login,
+  url: `https://github.com/${gh.login}`,
+  name: gh.login,
+});
+
 export const ORCID_RE = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
 const orcidBase = (env: Env) => (env.ORCID_BASE || "https://orcid.org").replace(/\/$/, "");
 const orcidVerified = (orcid: string, name: string): Verified => ({
@@ -739,8 +602,8 @@ const orcidVerified = (orcid: string, name: string): Verified => ({
   name,
 });
 
-/** Google: keyed on "sub". We keep only the email's domain (shown as "verified @mit.edu" for
- *  institutions), never the address itself. */
+/** Google: keyed on "sub". We keep the email's domain (shown as "verified @mit.edu" for
+ *  institutions). */
 const googleVerified = (g: { sub: string; email: string; name: string }): Verified => ({
   provider: "google",
   providerUserId: g.sub,
@@ -764,7 +627,7 @@ function jwtClaims(jwt: string): Record<string, unknown> | null {
 }
 
 // ---------------------------------------------------------------------------------------------
-// removing a sign-in (on /account)
+// removing a sign-in, deleting an account (on /account)
 
 /** Remove one of a user's sign-ins. The last one can't go: it is the only way back in (delete the
  *  account instead). Other browsers are signed out, since one of them may have come in through the
@@ -776,220 +639,16 @@ export async function removeIdentity(env: Env, user: User, provider: string, pro
   await env.DB.batch([
     env.DB.prepare("DELETE FROM identities WHERE provider = ?1 AND provider_user_id = ?2 AND user_id = ?3").bind(provider, providerUserId, user.id),
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id != ?2").bind(user.id, keepSessionId),
-    syncRole(env, user.id),
   ]);
   return null;
 }
 
-// ---------------------------------------------------------------------------------------------
-// display names and links (edited on /account)
-
-export const NAME_MAX = 40;
-const cleanName = (s: string) => s.normalize("NFKC").replace(/\s+/g, " ").trim();
-
-/** Why a display name can't be used, or null if it can: its shape, the reserved names, and other
- *  users' display names (case-insensitively, after NFKC). */
-export async function nameProblem(env: Env, userId: string, name: string): Promise<string | null> {
-  const n = cleanName(name);
-  if (!n) return "Enter a name.";
-  if ([...n].length > NAME_MAX) return `Names can be at most ${NAME_MAX} characters.`;
-  if (!/^[\p{L}\p{M}\p{N} .'’\-_()]+$/u.test(n)) return "Use letters, digits, spaces and . ' - _ ( ) only.";
-  const key = nameKey(n);
-  if (key === DELETED_NAME || /^user-[a-z2-7]+$/.test(key)) return "That name is reserved.";
-  const taken = await env.DB.prepare("SELECT 1 FROM users WHERE name_key = ?1 AND id != ?2").bind(key, userId).first();
-  return taken ? "Someone else already uses that name." : null;
-}
-
-/** Set a display name (call nameProblem first). Returns the stored, normalized name. */
-export async function setDisplayName(env: Env, userId: string, name: string): Promise<string> {
-  const n = cleanName(name);
-  await env.DB.prepare("UPDATE users SET display_name = ?2, name_key = ?3 WHERE id = ?1").bind(userId, n, nameKey(n)).run();
-  return n;
-}
-
-export interface UserLink {
-  label: string;
-  url: string;
-}
-export const MAX_LINKS = 5;
-
-export async function userLinks(env: Env, userId: string): Promise<UserLink[]> {
-  const r = await env.DB.prepare("SELECT label, url FROM user_links WHERE user_id = ?1 ORDER BY position").bind(userId).all<UserLink>();
-  return r.results;
-}
-
-/** Replace a user's self-reported links. Each must be http(s); a missing label becomes the host. */
-export async function setUserLinks(env: Env, userId: string, links: UserLink[]): Promise<string | null> {
-  const clean: UserLink[] = [];
-  for (const l of links) {
-    const raw = l.url.trim();
-    if (!raw) continue;
-    let u: URL;
-    try {
-      u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`);
-    } catch {
-      return `“${raw.slice(0, 60)}” isn’t a valid link.`;
-    }
-    if ((u.protocol !== "https:" && u.protocol !== "http:") || raw.length > 300) return `“${raw.slice(0, 60)}” isn’t a web link.`;
-    const label = (cleanName(l.label) || u.hostname.replace(/^www\./, "")).slice(0, 40);
-    clean.push({ label, url: u.toString() });
-  }
-  if (clean.length > MAX_LINKS) return `At most ${MAX_LINKS} links.`;
+/** Delete an account, keeping a tombstone so what it posted stays attributed to "deleted user":
+ *  sign-ins and sessions go; the users row stays with deleted_at set and the name freed. */
+export async function deleteAccount(env: Env, userId: string): Promise<void> {
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM user_links WHERE user_id = ?1").bind(userId),
-    ...clean.map((l, i) =>
-      env.DB.prepare("INSERT INTO user_links (user_id, position, label, url) VALUES (?1, ?2, ?3, ?4)").bind(userId, i, l.label, l.url),
-    ),
+    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
+    env.DB.prepare("DELETE FROM identities WHERE user_id = ?1").bind(userId),
+    env.DB.prepare("UPDATE users SET display_name = ?2, name_key = NULL, deleted_at = ?3 WHERE id = ?1 AND deleted_at IS NULL").bind(userId, DELETED_NAME, nowIso()),
   ]);
-  return null;
-}
-
-// ---------------------------------------------------------------------------------------------
-// public profiles (safe to render into publicly cached pages)
-
-export interface PublicProfile {
-  id: string;
-  displayName: string;
-  role: Role;
-  kind: Kind;
-  owner?: { id: string; displayName: string };
-  banned: boolean;
-  deleted: boolean;
-  createdAt: string;
-  identities: Identity[]; // public ones only
-  links: UserLink[]; // self-reported, unverified
-}
-
-/** Public profiles for many users at once (comment threads, upload credits). Unknown ids are
- *  left out; deleted users come back as tombstones ("deleted user", no identities or links). */
-export async function publicProfiles(env: Env, userIds: string[]): Promise<Map<string, PublicProfile>> {
-  const out = new Map<string, PublicProfile>();
-  const ids = [...new Set(userIds)];
-  if (!ids.length) return out;
-  const list = JSON.stringify(ids);
-  const [us, is, ls] = await env.DB.batch([
-    env.DB.prepare(
-      `SELECT u.id, u.display_name, u.role, u.kind, u.owner_user_id, o.display_name AS owner_name, u.banned, u.deleted_at,
-         u.created_at FROM users u LEFT JOIN users o ON o.id = u.owner_user_id WHERE u.id IN (SELECT value FROM json_each(?1))`,
-    ).bind(list),
-    env.DB.prepare(
-      "SELECT * FROM identities WHERE public = 1 AND user_id IN (SELECT value FROM json_each(?1)) ORDER BY provider, created_at",
-    ).bind(list),
-    env.DB.prepare("SELECT user_id, label, url FROM user_links WHERE user_id IN (SELECT value FROM json_each(?1)) ORDER BY position").bind(list),
-  ]);
-  for (const r of us.results as unknown as (UserRow & { created_at: string })[]) {
-    const deleted = !!r.deleted_at;
-    out.set(r.id, {
-      id: r.id,
-      displayName: deleted ? DELETED_NAME : r.display_name,
-      role: r.role,
-      kind: r.kind,
-      ...(r.owner_user_id && !deleted ? { owner: { id: r.owner_user_id, displayName: r.owner_name ?? DELETED_NAME } } : {}),
-      banned: !!r.banned,
-      deleted,
-      createdAt: r.created_at,
-      identities: [],
-      links: [],
-    });
-  }
-  for (const r of is.results as unknown as IdentityRow[]) {
-    const p = out.get(r.user_id);
-    if (p && !p.deleted) p.identities.push(toIdentity(r));
-  }
-  for (const r of ls.results as unknown as (UserLink & { user_id: string })[]) {
-    const p = out.get(r.user_id);
-    if (p && !p.deleted) p.links.push({ label: r.label, url: r.url });
-  }
-  return out;
-}
-
-/** Is this GitHub numeric id a public identity of a live, unbanned user? (For /avatar.) */
-export async function publicGithubId(env: Env, githubId: string): Promise<boolean> {
-  if (!/^\d{1,12}$/.test(githubId)) return false;
-  const r = await env.DB.prepare(
-    `SELECT 1 FROM identities i JOIN users u ON u.id = i.user_id
-     WHERE i.provider = 'github' AND i.provider_user_id = ?1 AND i.public = 1 AND u.banned = 0 AND u.deleted_at IS NULL`,
-  )
-    .bind(githubId)
-    .first();
-  return !!r;
-}
-
-// ---------------------------------------------------------------------------------------------
-// bots, bans and deletion
-
-/** Live bots run by this user. */
-export async function listBots(env: Env, ownerId: string): Promise<{ id: string; display_name: string }[]> {
-  const r = await env.DB.prepare("SELECT id, display_name FROM users WHERE owner_user_id = ?1 AND kind = 'bot' AND deleted_at IS NULL ORDER BY created_at")
-    .bind(ownerId)
-    .all<{ id: string; display_name: string }>();
-  return r.results;
-}
-
-/** A bot account run by a human (maintainers only, enforced by the caller). Bots have no
- *  identities and can't sign in; they act only through tokens their owner creates. */
-export async function createBot(env: Env, ownerId: string, name: string): Promise<{ id: string } | { problem: string }> {
-  const problem = await nameProblem(env, "", name);
-  if (problem) return { problem };
-  const n = cleanName(name);
-  const id = randomId();
-  await env.DB.prepare(
-    "INSERT INTO users (id, display_name, name_key, role, kind, owner_user_id, created_at) VALUES (?1, ?2, ?3, 'member', 'bot', ?4, ?5)",
-  )
-    .bind(id, n, nameKey(n), ownerId, nowIso())
-    .run();
-  return { id };
-}
-
-/** Delete accounts, keeping tombstones so their content stays attributed to "deleted user":
- *  sessions, links and tokens go; the users row stays with deleted_at set. A person's bots go with
- *  them. Sign-ins go too, except a suspended account's: those stay on the tombstone, so deleting
- *  the account and signing up again doesn't lift the suspension. */
-export async function deleteAccounts(env: Env, userIds: string[]): Promise<void> {
-  if (!userIds.length) return;
-  const bots = (await Promise.all(userIds.map((id) => listBots(env, id)))).flat().map((b) => b.id);
-  const ids = JSON.stringify([...userIds, ...bots]);
-  const inIds = "IN (SELECT value FROM json_each(?1))";
-  const t = nowIso();
-  await env.DB.batch([
-    env.DB.prepare(`UPDATE api_tokens SET revoked_at = ?2 WHERE revoked_at IS NULL AND user_id ${inIds}`).bind(ids, t),
-    env.DB.prepare(`DELETE FROM sessions WHERE user_id ${inIds}`).bind(ids),
-    env.DB.prepare(`DELETE FROM identities WHERE user_id ${inIds} AND user_id NOT IN (SELECT id FROM users WHERE banned = 1)`).bind(ids),
-    env.DB.prepare(`DELETE FROM user_links WHERE user_id ${inIds}`).bind(ids),
-    env.DB.prepare(`UPDATE users SET display_name = ?3, name_key = NULL, deleted_at = ?2 WHERE deleted_at IS NULL AND id ${inIds}`).bind(ids, t, DELETED_NAME),
-  ]);
-}
-
-/** Find a user from what a maintainer pastes: a profile URL, an id, or a GitHub login. A login is
- *  only refreshed at sign-in, so a renamed account can leave two matches: then "ambiguous". */
-export async function resolveUser(env: Env, ref: string): Promise<{ id: string; display_name: string; role: Role } | "ambiguous" | null> {
-  const s = ref.trim();
-  const id = /(?:^|\/u\/)([a-z2-7]{12})\/?$/.exec(s)?.[1];
-  const sql = id
-    ? env.DB.prepare("SELECT id, display_name, role FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id)
-    : env.DB.prepare(
-        `SELECT u.id, u.display_name, u.role FROM identities i JOIN users u ON u.id = i.user_id
-         WHERE i.provider = 'github' AND lower(i.handle) = lower(?1) AND u.deleted_at IS NULL LIMIT 2`,
-      ).bind(s.replace(/^@/, "").replace(/^https:\/\/github\.com\//, "").replace(/\/$/, ""));
-  const r = (await sql.all<{ id: string; display_name: string; role: Role }>()).results;
-  return r.length > 1 ? "ambiguous" : (r[0] ?? null);
-}
-
-/** Suspend or lift a suspension. Lifting it from a deleted account also frees the sign-ins kept
- *  on its tombstone, so the person can sign up again. */
-export async function setBanned(env: Env, userId: string, banned: boolean): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare("UPDATE users SET banned = ?2 WHERE id = ?1").bind(userId, banned ? 1 : 0),
-    ...(banned
-      ? []
-      : [env.DB.prepare("DELETE FROM identities WHERE user_id = ?1 AND user_id IN (SELECT id FROM users WHERE deleted_at IS NOT NULL)").bind(userId)]),
-  ]);
-}
-
-/** Suspended accounts, including deleted ones (whose sign-ins stay blocked until lifted). */
-export async function bannedUsers(env: Env): Promise<{ id: string; display_name: string; deleted: boolean }[]> {
-  const r = await env.DB.prepare(
-    "SELECT id, display_name, deleted_at IS NOT NULL AS deleted FROM users WHERE banned = 1 ORDER BY deleted_at IS NOT NULL, display_name LIMIT 200",
-  ).all<{ id: string; display_name: string; deleted: number }>();
-  return r.results.map((u) => ({ ...u, deleted: !!u.deleted }));
 }

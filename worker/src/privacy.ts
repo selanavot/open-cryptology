@@ -6,7 +6,7 @@ import { page } from "./layout";
 export function privacyPage(env: Env): Response {
   return page(env, {
     title: "Privacy",
-    description: `What ${env.SITE_NAME} stores about you, and what it doesn't.`,
+    description: `What ${env.SITE_NAME} stores about you.`,
     canonical: "https://opencryptology.org/privacy",
     cache: "public, max-age=3600",
     body: html`<section class="message privacy">
@@ -28,11 +28,9 @@ export function privacyPage(env: Env): Response {
     mit.edu).</li>
     <li><strong>ORCID:</strong> your ORCID iD.</li>
   </ul>
-  <p>We also keep your display name (taken from your first sign-in; you can change it), any links you
-  add to your profile, and when you joined.</p>
-  <p><strong>Public:</strong> your display name, profile links, your sign-ins (your GitHub username and
-  ORCID iD with links to them, and your Google domain unless it is a personal one like
-  gmail.com), and what you post.</p>
+  <p>We also keep your display name (taken from your first sign-in; you can change it) and when you
+  joined. Your display name and sign-ins are shown next to what you post (your Google domain only
+  if it isn't a personal one like gmail.com).</p>
 
   <h4>Cookies</h4>
   <p>Only when you sign in: a session cookie that keeps you signed in, a cookie with your display name
@@ -40,19 +38,14 @@ export function privacyPage(env: Env): Response {
   session. Sessions end after 30 days without use, and after 180 days at most. There are no
   tracking or advertising cookies.</p>
 
-  <h4>Agent tokens</h4>
-  <p>If you create tokens for agents, we store a hash of each token, its name, and when it was last
-  used.</p>
-
   <h4>Contact form and uploads</h4>
-  <p>Messages sent with the contact form are emailed to the maintainer, with your email address if you choose to give one.
-  The form uses Cloudflare Turnstile to block spam. For paper uploads we keep a salted hash of your
-  IP address to limit abuse, never the address itself.</p>
+  <p>Messages sent with the contact form are emailed to the maintainer, with your email address if you
+  choose to give one. The form uses Cloudflare Turnstile to block spam. For paper uploads we keep a
+  salted hash of your IP address to limit abuse, never the address itself.</p>
 
   <h4>Deleting your account</h4>
-  <p>You can delete your account on its <a href="/account">account page</a>. That removes your sign-ins,
-  sessions, links and tokens right away. What you posted stays, credited to “deleted user”. One
-  exception: if the account was suspended, we keep its sign-in ids so the suspension still applies.</p>
+  <p>You can delete your account on its <a href="/account">account page</a>. That removes your sign-ins
+  and sessions right away. What you posted stays, credited to “deleted user”.</p>
 
   <p>Questions: use the <a href="/#contact">contact form</a>.</p>
   <p class="text-muted small">Last updated 14 November 2026.</p>

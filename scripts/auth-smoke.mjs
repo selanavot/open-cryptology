@@ -72,9 +72,8 @@ test("dev login creates a user and a session", async () => {
   const me = await c.json("/api/me");
   check("/api/me 200", me.status === 200, me.status);
   check("display name = login", me.body?.user?.displayName === login);
-  check("via session", me.body?.via === "session");
   const gh = me.body?.user?.identities?.[0];
-  check("github identity with url, no account age", gh?.provider === "github" && gh.url === `https://github.com/${login}` && !gh.providerCreatedAt, JSON.stringify(gh));
+  check("github identity with url", gh?.provider === "github" && gh.url === `https://github.com/${login}`, JSON.stringify(gh));
   check("role member", me.body?.user?.role === "member");
 });
 
@@ -171,26 +170,6 @@ test("display name rules", async () => {
 });
 const c_cross = (c) => c.req("/account", { method: "POST", form: { action: "name", name: "Mallory" }, origin: "https://evil.example" });
 
-test("links: saved, validated, shown as unverified on the cached profile", async () => {
-  const c = new Client();
-  await c.login(`gail${RUN}`, 990000 + (RUN % 1e5));
-  let r = await form(c, { action: "links", label0: "Homepage", url0: "example.org/~gail", label1: "", url1: "https://dblp.org/pid/1" });
-  check("saved", r.status === 303, r.status);
-  r = await form(c, { action: "links", label0: "x", url0: "javascript:alert(1)" });
-  check("javascript: refused", r.status === 400, r.status);
-  const id = (await c.json("/api/me")).body?.user?.id;
-  const p = await new Client().req(`/u/${id}`);
-  const t = await p.text();
-  check("profile 200, publicly cached", p.status === 200 && p.headers.get("cache-control") === "public, max-age=600", `${p.status} ${p.headers.get("cache-control")}`);
-  check("profile is noindex", /<meta name="robots" content="noindex">/.test(t));
-  check("https added, label kept", t.includes('href="https://example.org/~gail"') && t.includes(">Homepage<"));
-  check("blank label -> host", t.includes(">dblp.org<"));
-  check("links are nofollow ugc", /rel="nofollow ugc noopener"/.test(t));
-  check("marked unverified", /unverified/.test(t));
-  check("verified GitHub link shown", t.includes(`https://github.com/gail${RUN}`));
-  check("unknown profile 404", (await new Client().req("/u/aaaaaaaaaaaa")).status === 404);
-});
-
 test("a stale oc_login cookie is cleared by /account", async () => {
   const c = new Client();
   c.jar.set("oc_login", "Ghost");
@@ -203,118 +182,30 @@ test("navbar renders the static Sign in link (app.js swaps in the name)", async 
   check("nav-account link", /class="nav-account">Sign in</.test(t));
 });
 
-// ------------------------------------------------------------------------------------------- step 3
-async function newToken(c, name = "agent", scopes = ["comment", "upload"], forId) {
-  const f = new URLSearchParams({ action: "token-create", name });
-  for (const s of scopes) f.append("scope", s);
-  if (forId) f.set("for", forId);
-  const r = await c.req("/account", { method: "POST", raw: f.toString(), headers: { "content-type": "application/x-www-form-urlencoded" } });
-  const t = await r.text();
-  return { status: r.status, token: /id="new-token"[^>]*>(oct_[A-Za-z0-9_-]+)</.exec(t)?.[1], html: t };
-}
-const bearer = (tok) => ({ headers: { authorization: `Bearer ${tok}` } });
-
-test("tokens: create, use, scopes, revoke", async () => {
-  const c = new Client();
-  await c.login(`hank${RUN}`, 1000000 + (RUN % 1e5));
-  const { status, token } = await newToken(c, "my agent", ["comment"]);
-  check("created, shown once", status === 200 && /^oct_[A-Za-z0-9_-]{43}$/.test(token ?? ""), status);
-  const page = await (await c.req("/account")).text();
-  check("secret not shown again", !page.includes(token) && page.includes("my agent"));
-  const agent = new Client();
-  const me = await agent.json("/api/me", bearer(token));
-  check("bearer works", me.status === 200 && me.body?.via === "token", me.status);
-  check("scopes reported", JSON.stringify(me.body?.scopes) === '["comment"]', JSON.stringify(me.body?.scopes));
-  check("same user", me.body?.user?.displayName === `hank${RUN}`);
-  const viaToken = await agent.req("/account", { method: "POST", form: { action: "name", name: "Agent Smith" }, origin: null, ...bearer(token) });
-  check("tokens can't change account settings", viaToken.status === 403, viaToken.status);
-  check("garbage bearer -> 401", (await agent.json("/api/me", bearer("oct_nope"))).status === 401);
-  const id = /name="id" value="([a-z2-7]{12})"/.exec(page)?.[1];
-  const other = new Client();
-  await other.login(`ivy${RUN}`, 1010000 + (RUN % 1e5));
-  const steal = await other.req("/account", { method: "POST", form: { action: "token-revoke", id } });
-  check("someone else can't revoke it", steal.status === 404, steal.status);
-  const rv = await c.req("/account", { method: "POST", form: { action: "token-revoke", id } });
-  check("revoked (303)", rv.status === 303, rv.status);
-  check("revoked token -> 401", (await agent.json("/api/me", bearer(token))).status === 401);
-});
-
-test("tokens: need a name and a scope", async () => {
-  const c = new Client();
-  await c.login(`jo${RUN}`, 1020000 + (RUN % 1e5));
-  check("no scope -> 400", (await newToken(c, "x", [])).status === 400);
-  check("no name -> 400", (await newToken(c, "   ")).status === 400);
-});
-
-// ------------------------------------------------------------------------------------------- step 4
-// Needs MAINTAINER_GITHUB_IDS=4242 in worker/.dev.vars.
-const MAINT_GHID = 4242;
-
-test("bots: maintainers create them, give them tokens, delete them", async () => {
-  const m = new Client();
-  await m.login(`maint${RUN}`, MAINT_GHID);
-  const me = (await m.json("/api/me")).body?.user;
-  check("maintainer role from MAINTAINER_GITHUB_IDS", me?.role === "maintainer", me?.role);
-  let r = await form(m, { action: "bot-create", name: `Reviewer ${RUN}` });
-  check("bot created", r.status === 303, r.status);
-  const page = await (await m.req("/account")).text();
-  const botId = /action" value="bot-delete"><input type="hidden" name="id" value="([a-z2-7]{12})"/.exec(page)?.[1];
-  check("bot listed", !!botId);
-  const { token } = await newToken(m, "reviewer key", ["comment"], botId);
-  const bot = await new Client().json("/api/me", bearer(token));
-  check("token acts as the bot", bot.body?.user?.kind === "bot" && bot.body?.user?.displayName === `Reviewer ${RUN}`, JSON.stringify(bot.body?.user));
-  check("bot shows its owner", bot.body?.user?.owner?.id === me?.id);
-  const prof = await (await new Client().req(`/u/${botId}`)).text();
-  check("bot profile: operated by", /operated by/.test(prof) && prof.includes(`/u/${me?.id}`));
-  const member = new Client();
-  await member.login(`kim${RUN}`, 1030000 + (RUN % 1e5));
-  r = await form(member, { action: "bot-create", name: `Kimbot ${RUN}` });
-  check("members can't create bots", r.status === 403, r.status);
-  const { status } = await newToken(member, "x", ["comment"], botId);
-  check("members can't create tokens for someone's bot", status === 403, status);
-  r = await form(m, { action: "bot-delete", id: botId });
-  check("bot deleted", r.status === 303, r.status);
-  check("its token stops working", (await new Client().json("/api/me", bearer(token))).status === 401);
-  check("bot profile is a tombstone (410)", (await new Client().req(`/u/${botId}`)).status === 410);
-});
-
-test("bans: a suspended account is refused, and can be lifted", async () => {
-  const m = new Client();
-  await m.login(`maint${RUN}`, MAINT_GHID);
-  const u = new Client();
-  await u.login(`lou${RUN}`, 1040000 + (RUN % 1e5));
-  const { token } = await newToken(u, "agent");
-  let r = await form(m, { action: "ban", user: `@lou${RUN}` });
-  check("banned by GitHub login", r.status === 303, r.status);
-  const me = (await u.json("/api/me")).body?.user;
-  check("/api/me says banned", me?.banned === true);
-  r = await form(u, { action: "name", name: `Lou ${RUN}` });
-  check("banned user can't rename", r.status === 403, r.status);
-  check("profile says suspended", /suspended/.test(await (await new Client().req(`/u/${me?.id}`)).text()));
-  r = await form(m, { action: "ban", user: `maint${RUN}` });
-  check("can't ban a maintainer", r.status === 400, r.status);
-  r = await form(m, { action: "unban", id: me?.id });
-  check("unbanned", r.status === 303 && (await u.json("/api/me")).body?.user?.banned === false);
-  check("token still fine after unban", (await new Client().json("/api/me", bearer(token))).status === 200);
-});
-
-test("deleting an account leaves a tombstone and frees the name", async () => {
+test("deleting an account frees the name; the same GitHub signs up fresh", async () => {
   const c = new Client();
   const login = `mo${RUN}`;
-  await c.login(login, 1050000 + (RUN % 1e5));
-  await form(c, { links: 1, action: "links", label0: "Home", url0: "https://example.org" });
+  const ghid = 1050000 + (RUN % 1e5);
+  await c.login(login, ghid);
   const id = (await c.json("/api/me")).body?.user?.id;
-  const { token } = await newToken(c, "agent");
   let r = await form(c, { action: "delete" });
   check("needs the confirmation box", r.status === 400, r.status);
   r = await form(c, { action: "delete", confirm: "yes" });
   check("deleted, signed out", r.status === 303 && !c.jar.has("__Host-oc_session"), r.status);
-  check("token revoked", (await new Client().json("/api/me", bearer(token))).status === 401);
-  check("profile 410", (await new Client().req(`/u/${id}`)).status === 410);
   const again = new Client();
-  await again.login(login, 1050000 + (RUN % 1e5));
+  await again.login(login, ghid);
   const me2 = (await again.json("/api/me")).body?.user;
-  check("same GitHub account signs up fresh, with its name back", me2?.id !== id && me2?.displayName === login, `${me2?.id} ${me2?.displayName}`);
+  check("a fresh account, with its name back", me2?.id !== id && me2?.displayName === login, `${me2?.id} ${me2?.displayName}`);
+});
+
+// Needs MAINTAINER_GITHUB_IDS=4242 in worker/.dev.vars.
+const MAINT_GHID = 4242;
+test("maintainer role from MAINTAINER_GITHUB_IDS", async () => {
+  const m = new Client();
+  await m.login(`maint${RUN}`, MAINT_GHID);
+  const me = (await m.json("/api/me")).body?.user;
+  check("maintainer", me?.role === "maintainer", me?.role);
+  check("badge on /account", /acct-badge">maintainer/.test(await (await m.req("/account")).text()));
 });
 
 // ------------------------------------------------------------------------------------------- step 5
@@ -377,12 +268,12 @@ test("Google: sign in first, keeps only the email domain", async () => {
   check("named from Google", me.body?.user?.displayName === `Qi ${RUN}`, me.body?.user?.displayName);
   check("google identity: domain only, no link", gi?.provider === "google" && gi.handle === "example.edu" && gi.url === "", JSON.stringify(gi));
   check("no email address anywhere in /api/me", !JSON.stringify(me.body).includes("@"));
-  const prof = await (await new Client().req(`/u/${me.body?.user?.id}`)).text();
-  check("profile: verified @example.edu", prof.includes("verified @example.edu"));
+  const page = await (await c.req("/account")).text();
+  check("shown as verified @example.edu", page.includes("verified @example.edu"));
   const g = new Client();
   await devGoogle(g, String(2100000000 + RUN), `someone${RUN}@gmail.com`);
-  const gp = await (await new Client().req(`/u/${(await g.json("/api/me")).body?.user?.id}`)).text();
-  check("gmail: no domain shown", /Google<\/span> account/.test(gp) && !gp.includes("gmail.com"));
+  const gp = await (await g.req("/account")).text();
+  check("gmail: shown as just a Google account", /Google<\/span> account/.test(gp) && !gp.includes("@gmail.com"));
 });
 
 test("any first sign-in, then add the others; each one signs in to the same account", async () => {
@@ -463,38 +354,6 @@ test("removing a sign-in signs out other browsers; so does the button", async ()
   check("this one is still in", (await a.json("/api/me")).status === 200);
 });
 
-test("tokens get the sign-in page at /account, not the settings", async () => {
-  const c = new Client();
-  await c.login(`vic${RUN}`, 1140000 + (RUN % 1e5));
-  const { token } = await newToken(c, "agent");
-  const t = await (await new Client().req("/account", bearer(token))).text();
-  check("no settings for a token", /Sign in with/.test(t) && !/Agent tokens/.test(t));
-});
-
-test("a suspension survives deleting the account", async () => {
-  const m = new Client();
-  await m.login(`maint${RUN}`, MAINT_GHID);
-  const u = new Client();
-  const ghid = 1150000 + (RUN % 1e5);
-  await u.login(`wes${RUN}`, ghid);
-  const id = (await u.json("/api/me")).body?.user?.id;
-  await form(m, { action: "ban", user: `/u/${id}` });
-  let r = await devOrcid(u, orcidOf(8));
-  check("a suspended account can't add sign-ins", r.status === 403, r.status);
-  r = await form(u, { action: "delete", confirm: "yes" });
-  check("it can still delete itself", r.status === 303, r.status);
-  const again = new Client();
-  r = await again.login(`wes${RUN}`, ghid);
-  check("signing up again with the same GitHub: refused", r.status === 403 && (await again.json("/api/me")).status === 401, r.status);
-  const page = await (await m.req("/account")).text();
-  check("maintainers see it as a deleted, suspended account", page.includes(`<code>${id}</code>`));
-  r = await form(m, { action: "unban", id });
-  const fresh = new Client();
-  await fresh.login(`wes${RUN}`, ghid);
-  const me = (await fresh.json("/api/me")).body?.user;
-  check("after lifting it, a fresh account", !!me && me.id !== id && !me.banned, JSON.stringify(me));
-});
-
 // Last: it takes the maintainer's GitHub sign-in off their account.
 test("the maintainer role follows the GitHub sign-in", async () => {
   const m = new Client();
@@ -505,8 +364,6 @@ test("the maintainer role follows the GitHub sign-in", async () => {
   check("GitHub removed", r.status === 303, r.status);
   const me = (await m.json("/api/me")).body?.user;
   check("no longer a maintainer", me?.role === "member", me?.role);
-  const prof = await (await new Client().req(`/u/${me?.id}`)).text();
-  check("profile shows no maintainer badge", !/maintainer/i.test(prof));
 });
 
 
