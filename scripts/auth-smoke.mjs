@@ -72,7 +72,7 @@ test("dev login creates a user and a session", async () => {
   check("display name = login", me.body?.user?.displayName === login);
   check("via session", me.body?.via === "session");
   const gh = me.body?.user?.identities?.[0];
-  check("github identity with url and created_at", gh?.provider === "github" && gh.url === `https://github.com/${login}` && !!gh.providerCreatedAt, JSON.stringify(gh));
+  check("github identity with url, no account age", gh?.provider === "github" && gh.url === `https://github.com/${login}` && !gh.providerCreatedAt, JSON.stringify(gh));
   check("role member", me.body?.user?.role === "member");
 });
 

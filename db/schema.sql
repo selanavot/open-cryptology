@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS identities (
   user_id             TEXT NOT NULL,
   handle              TEXT NOT NULL,         -- GitHub login / Google email domain (never the address) / ORCID iD; refreshed at each sign-in
   url                 TEXT NOT NULL,         -- https://github.com/<login> | https://orcid.org/<iD> | '' for Google
-  provider_created_at TEXT,                  -- GitHub account creation time (ISO); stored but not used
+  provider_created_at TEXT,                  -- unused, always NULL (was the GitHub account's creation time)
   public              INTEGER NOT NULL DEFAULT 1, -- always 1 for now (no per-sign-in visibility setting)
   created_at          TEXT NOT NULL,
   PRIMARY KEY (provider, provider_user_id)

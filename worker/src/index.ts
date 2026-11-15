@@ -12,6 +12,7 @@ import { gridFragment, yearPage } from "./years";
 import { apiMissing, missingPage } from "./missing";
 import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
 import { supportPage } from "./support";
+import { privacyPage } from "./privacy";
 import { llmsTxt, robotsTxt } from "./text";
 import { indexNowKeyFile, pingIndexNow } from "./indexnow";
 import { siteOrigin, sitemap } from "./seo";
@@ -131,6 +132,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return redirect(url, "/", 302);
     case "/support":
       return supportPage(env);
+    case "/privacy":
+      return privacyPage(env);
     case "/llms.txt":
       return llmsTxt(env, url.origin);
     case "/robots.txt":
