@@ -44,7 +44,7 @@ The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
   the agent API `POST /api/upload/YYYY/NNNN`). A file whose first two pages show the title and an
   author's name (`worker/src/match.ts`, measured with `pipeline/verify_bench.mjs`) goes live at
   once; any other well-formed PDF lands in `quarantine/` until the maintainer approves it at
-  `/review` (behind Cloudflare Access; at most one summary email per 15 minutes).
+  `/review` (maintainers only, see docs/ACCOUNTS.md; at most one summary email per 15 minutes).
 - **Staleness:** `pdf_maybe_stale = 1` when the stored copy may predate ePrint's current PDF.
   The harvest sets it whenever a record's datestamp moves past our copy's capture date. The OAI
   datestamp also moves on metadata-only edits (publication info, typically on acceptance), and OAI

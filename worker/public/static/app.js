@@ -137,7 +137,47 @@
     });
   }
 
+  // Navbar account link. Pages are publicly cached, so the server always renders "Log in"; the
+  // display-only oc_login cookie ({n: name, a: photo URL}, set at log-in, never trusted by the
+  // server) swaps in the person's photo, or their initials.
+  function initialsOf(name) {
+    var w = name.trim().split(/\s+/);
+    var first = Array.from(w[0] || "?")[0] || "?";
+    var last = w.length > 1 ? Array.from(w[w.length - 1])[0] : "";
+    return (first + last).toUpperCase();
+  }
+  function avatarEl(name, photo) {
+    var span = document.createElement("span");
+    span.className = "avatar";
+    span.textContent = initialsOf(name);
+    if (!/^https:\/\//.test(photo || "")) return span;
+    var img = document.createElement("img");
+    img.className = "avatar";
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    img.onerror = function () { img.replaceWith(span); };
+    img.src = photo;
+    return img;
+  }
+  function setupAccountLink() {
+    var a = document.querySelector(".nav-account");
+    if (!a) return;
+    var m = document.cookie.match(/(?:^|;\s*)oc_login=([^;]+)/);
+    var info = null;
+    try { info = m && JSON.parse(decodeURIComponent(m[1])); } catch (e) { /* ignore a malformed cookie */ }
+    if (info && typeof info.n === "string" && info.n) {
+      a.textContent = "";
+      a.classList.add("has-avatar");
+      a.title = info.n;
+      a.setAttribute("aria-label", "Your account (" + info.n + ")");
+      a.appendChild(avatarEl(info.n, info.a));
+    } else if (location.pathname !== "/account") {
+      a.href = "/account?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+    }
+  }
+
   renderTex();
+  setupAccountLink();
   scrollToUpload();
   setupGridNav();
   setupCopy();

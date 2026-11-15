@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "23";
+const ASSET_VER = "29";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -18,7 +18,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
     // KaTeX writes inline style attributes.
     "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
     "font-src https://cdnjs.cloudflare.com",
-    "img-src 'self' data:",
+    // Profile photos of signed-in people come straight from GitHub and Google.
+    "img-src 'self' data: https://avatars.githubusercontent.com https://*.googleusercontent.com",
     "connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com",
     "form-action 'self'",
     "base-uri 'none'",
@@ -104,6 +105,7 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
         <li><a href="/search">Papers</a></li>
         <li><a href="${env.REPO_URL}">GitHub</a></li>
       </ul>
+      ${(env.GITHUB_CLIENT_ID || env.GOOGLE_CLIENT_ID || env.ORCID_CLIENT_ID || env.AUTH_DEV_LOGIN === "1") && html`<a href="/account" class="nav-account">Log in</a>`}
       <details class="nav-search">
         <summary title="Search" aria-label="Search">${searchIcon()}</summary>
         <form class="nav-search-dd" action="/search" method="get" role="search">
@@ -140,6 +142,7 @@ function footer(env: Env): Html {
     <a href="/#contact">Contact</a> ·
     <a href="${env.REPO_URL}">Source on GitHub</a> ·
     <a href="/support">Support me</a> ·
+    <a href="/privacy">Privacy</a> ·
     <a href="${env.ISSUES_URL}">Report an issue</a>
   </nav>
   <p>${env.SITE_NAME} is an unofficial, non-commercial mirror of the

@@ -107,3 +107,57 @@ CREATE INDEX IF NOT EXISTS versions_paper ON versions(paper_id, captured_at);
 -- a later change (pdf_latest_at < updated) is not used.
 ALTER TABLE papers ADD COLUMN pdf_latest_size INTEGER;
 ALTER TABLE papers ADD COLUMN pdf_latest_at TEXT;
+
+-- ---------------------------------------------------------------------------------------------
+-- accounts (2026-11): sign-in with GitHub, Google or ORCID (worker/src/auth.ts, docs/ACCOUNTS.md).
+-- Only CREATE ... IF NOT EXISTS, so this section can be run on its own on an existing database:
+--   sed -n '/^-- accounts/,$p' db/schema.sql > /tmp/accounts.sql   (then wrangler d1 execute)
+-- Owned by auth.ts; other features reference users.id only.
+
+-- A person. Content points at users.id (internal; never shown on a page). A deleted account stays
+-- as a tombstone. The name shown is custom_name, else the name from the person's ORCID, Google or
+-- GitHub account (identities.name); names needn't be unique. The maintainer role isn't stored: it
+-- follows MAINTAINER_GITHUB_IDS and the GitHub log-in.
+CREATE TABLE IF NOT EXISTS users (
+  id            TEXT PRIMARY KEY,            -- random, lowercase base32
+  custom_name   TEXT,                        -- the person's own name for themselves, or NULL
+  created_at    TEXT NOT NULL,
+  deleted_at    TEXT,                        -- set = tombstone
+  merged_into   TEXT                         -- tombstone of a merge: its content is credited to this user
+);
+
+-- A verified log-in method (GitHub account, Google account, ORCID iD) belonging to one user.
+-- A user can have several. Only ever added, or moved over when two accounts are merged.
+CREATE TABLE IF NOT EXISTS identities (
+  provider            TEXT NOT NULL,         -- 'github' | 'google' | 'orcid' (no CHECK, so more can be added)
+  provider_user_id    TEXT NOT NULL,         -- GitHub numeric id / Google sub / ORCID iD (stable; never a login or email)
+  user_id             TEXT NOT NULL,
+  handle              TEXT NOT NULL,         -- GitHub login / Google email domain / ORCID iD; refreshed at each sign-in
+  url                 TEXT NOT NULL,         -- https://github.com/<login> | https://orcid.org/<iD> | '' for Google
+  name                TEXT,                  -- the person's name there; refreshed at each log-in
+  avatar              TEXT,                  -- profile photo URL (GitHub, Google), or ''
+  created_at          TEXT NOT NULL,
+  PRIMARY KEY (provider, provider_user_id)
+);
+CREATE INDEX IF NOT EXISTS identities_user ON identities(user_id);
+
+-- Browser sessions. The cookie holds a random token; only its SHA-256 is stored.
+CREATE TABLE IF NOT EXISTS sessions (
+  id          TEXT PRIMARY KEY,              -- hex SHA-256 of the cookie token
+  user_id     TEXT NOT NULL,
+  created_at  TEXT NOT NULL,                 -- sessions end 180 days after this at the latest
+  expires_at  TEXT NOT NULL,                 -- sliding: pushed out when last_seen is refreshed
+  last_seen   TEXT NOT NULL                  -- written at most once an hour
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+
+-- A merge offered on /account/merge: the signed-in user added a sign-in that belongs to another
+-- account. Valid for 10 minutes; the browser holds the token in a cookie, D1 only its SHA-256.
+CREATE TABLE IF NOT EXISTS pending_merges (
+  id                TEXT PRIMARY KEY,        -- hex SHA-256 of the cookie token
+  user_id           TEXT NOT NULL,           -- the signed-in account (kept)
+  other_user_id     TEXT NOT NULL,           -- the account to merge in
+  provider          TEXT NOT NULL,           -- the sign-in that was just used
+  provider_user_id  TEXT NOT NULL,
+  expires_at        TEXT NOT NULL
+);
