@@ -86,7 +86,7 @@ ${buttons.length
 ${devLogin(env) && html`<p class="text-muted">Local test server: buttons without a configured app sign in as made-up accounts.</p>`}`
   : html`<p class="text-muted">Sign-in isn’t switched on yet.</p>`}
 <p class="form-hint text-muted">We keep the account’s id and public name (GitHub username, ORCID iD, or your Google
-address’s domain), and nothing else: no email address, no password, no access to your repositories or records.
+address’s domain). We never see your password or get access to your repositories or records.
 <a href="/privacy">Privacy</a></p>`,
       "account",
     ),

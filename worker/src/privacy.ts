@@ -25,11 +25,11 @@ export function privacyPage(env: Env): Response {
   <ul>
     <li><strong>GitHub:</strong> your account's id and username.</li>
     <li><strong>Google:</strong> your account's id and the domain of your email address (for example
-    mit.edu). Not the address itself.</li>
+    mit.edu).</li>
     <li><strong>ORCID:</strong> your ORCID iD.</li>
   </ul>
   <p>We also keep your display name (taken from your first sign-in; you can change it), any links you
-  add to your profile, and when you joined. We don't store email addresses or profile pictures.</p>
+  add to your profile, and when you joined.</p>
   <p><strong>Public:</strong> your display name, profile links, your sign-ins (your GitHub username and
   ORCID iD with links to them, and your Google domain unless it is a personal one like
   gmail.com), and what you post.</p>
