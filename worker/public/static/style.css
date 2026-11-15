@@ -433,6 +433,7 @@ ul.versions small { display: block; }
 .settings-head { display: flex; gap: 1.1rem; align-items: flex-start; padding: .5rem .25rem 1.25rem; }
 .avatar-lg { width: 4.5rem; height: 4.5rem; font-size: 1.5rem; box-shadow: none; border: 1px solid #e6e4df; }
 .settings-who { min-width: 0; flex: 1; }
+.settings-logout { margin: .35rem 0 0; flex: none; }
 .settings-name-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .settings-name { font-size: 1.6rem; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
 .settings-badge { font-size: .75rem; padding: .1rem .5rem; border-radius: 1rem; background: #fff4cc; border: 1px solid #f0d27a; }

@@ -25,8 +25,8 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
   For Google we keep the email's domain, shown as "verified @mit.edu" for institutions and as just
   "Google account" for gmail.com. Sessions are stored as SHA-256 hashes only.
 - **Sessions.** The `__Host-oc_session` cookie (HttpOnly, Secure, SameSite=Lax) holds 32 random
-  bytes. Expiry is enforced in D1: 30 days from the last use, 180 days at most. "Log them out" on
-  `/account` ends every other session of the account.
+  bytes. Expiry is enforced in D1: 30 days from the last use, 180 days at most. "Log out" ends
+  this browser's session.
 - **Cached pages.** Paper pages are publicly cached, so they never contain signed-in state. The
   display-only `oc_login` cookie (URI-encoded JSON `{n: name, a: photo URL}`) lets `app.js` swap
   the navbar's "Log in" for the person's photo or initials; the server never trusts it. The session is looked up only on POSTs, `/api/me` and `/account`.

@@ -22,6 +22,7 @@ import {
   mergeAccounts,
   NAME_MAX,
   nameProblem,
+  nameFromIds,
   nameSource,
   pendingMerge,
   PERSONAL_DOMAINS,
@@ -30,7 +31,6 @@ import {
   safeNext,
   sameOrigin,
   setCustomName,
-  signOutOthers,
 } from "./auth";
 
 export const isAccountPath = (path: string): boolean => path === "/account" || path === "/account/merge";
@@ -103,13 +103,11 @@ function logInPage(env: Env, url: URL): Response {
     "Log in",
     html`<section class="settings-card settings-login">
   <h1 class="settings-title">Log in to ${env.SITE_NAME}</h1>
-  <p class="settings-hint">Use any of these. You can connect the others afterwards and log in with any of them.</p>
   ${buttons.length
     ? html`<div class="login-buttons">${buttons.map(([p, h]) => html`<a class="btn btn-outline-dark" href="${h}">${PROVIDER_ICON[p]}<span>Continue with ${PROVIDER_LABEL[p]}</span></a>`)}</div>
-  ${devLogin(env) && html`<p class="settings-hint">Local test server: providers without a configured app log in as made-up accounts.</p>`}`
+  ${devLogin(env) && html`<p class="settings-hint">Local test server: unconfigured providers use made-up accounts.</p>`}`
     : html`<p class="settings-hint">Logging in isn’t switched on yet.</p>`}
-  <p class="settings-fine">We never see your password or get access to your repositories or records.
-  <a href="/privacy">Privacy</a></p>
+  <p class="settings-fine"><a href="/privacy">Privacy</a></p>
 </section>`,
   );
 }
@@ -118,12 +116,11 @@ function logInPage(env: Env, url: URL): Response {
 // account settings
 
 const SAVED: Record<string, string> = {
-  merged: "The accounts were merged. All their log-in methods now reach this one.",
+  merged: "Accounts merged.",
   "merge-cancelled": "Nothing was merged.",
-  name: "Your name was saved.",
-  "name-reset": "Your name now comes from your log-in methods again.",
-  linked: "Connected. You can log in with it too.",
-  sessions: "Your other browsers and devices were logged out.",
+  name: "Name saved.",
+  "name-reset": "Name reset.",
+  linked: "Connected.",
 };
 
 interface Notice {
@@ -159,16 +156,17 @@ ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert"
       ${u.customName &&
       html`<form method="post" action="/account" class="name-reset">
         <input type="hidden" name="action" value="name-reset">
-        <button class="settings-link" type="submit">Use the name from my log-in methods instead</button>
+        <button class="settings-link" type="submit">Reset to ${nameFromIds(u)}</button>
       </form>`}
     </details>
-    <p class="settings-sub">${src ? html`Name from your ${PROVIDER_LABEL[src]} account` : "Your own name"} · shown next to what you post</p>
+    ${src && html`<p class="settings-sub">From ${PROVIDER_LABEL[src]}</p>`}
   </div>
+  <form method="post" action="/auth/logout" class="settings-logout"><input type="hidden" name="next" value="/">
+    <button class="btn btn-sm btn-outline-dark" type="submit">Log out</button></form>
 </header>
 
 <section class="settings-card">
   <h2 class="settings-h">Log-in methods</h2>
-  <p class="settings-hint">Log in with any of these. They’re shown next to your name.</p>
   <ul class="settings-rows">
     ${[...u.identities].sort((x, y) => order(x) - order(y)).map(
       (i) => html`<li class="settings-row">
@@ -188,29 +186,12 @@ ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert"
   </ul>
 </section>
 
-<section class="settings-card">
-  <h2 class="settings-h">Sessions</h2>
-  <ul class="settings-rows">
-    <li class="settings-row">
-      <span class="settings-row-value">This browser</span>
-      <form method="post" action="/auth/logout"><input type="hidden" name="next" value="/">
-        <button class="btn btn-sm btn-outline-dark" type="submit">Log out</button></form>
-    </li>
-    <li class="settings-row">
-      <span class="settings-row-value">Other browsers and devices</span>
-      <form method="post" action="/account"><input type="hidden" name="action" value="sessions">
-        <button class="btn btn-sm btn-outline-dark" type="submit">Log them out</button></form>
-    </li>
-  </ul>
-</section>
-
 <section class="settings-card settings-danger">
   <h2 class="settings-h">Danger zone</h2>
   <div class="settings-row settings-row-top">
     <div class="settings-row-value">
       <strong>Delete this account</strong>
-      <p class="settings-hint mb-0">Logs you out everywhere and removes your log-in methods. What you posted stays, credited to
-      “deleted user”. This can’t be undone.</p>
+      <p class="settings-hint mb-0">Your posts stay, credited to “deleted user”. Can’t be undone.</p>
     </div>
     <details class="danger-confirm">
       <summary class="btn btn-sm btn-danger-outline">Delete account…</summary>
@@ -228,10 +209,9 @@ ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert"
 
 /** /account/merge: the log-in method just connected belongs to another account; merge it in? */
 function mergePage(env: Env, a: Actor, m: MergeOffer): Response {
-  const who = (u: User, label: string, note: string) => html`<div class="merge-side">
+  const who = (u: User, label: string) => html`<div class="merge-side">
     <p class="settings-kicker">${label}</p>
     <div class="merge-who">${avatar(u)}<strong>${u.displayName}</strong></div>
-    <p class="settings-hint">${note}</p>
     <ul class="settings-rows">${u.identities.map(
       (i) => html`<li class="settings-row"><span class="settings-row-label">${providerTag(i.provider)}</span><span class="settings-row-value">${identityDetail(i)}</span></li>`,
     )}</ul>
@@ -242,14 +222,12 @@ function mergePage(env: Env, a: Actor, m: MergeOffer): Response {
     "Merge accounts?",
     html`<section class="settings-card">
   <h1 class="settings-title">Merge accounts?</h1>
-  <p>The ${via} account you just connected already belongs to another account here. Since you can log in to it,
-  you can merge that account into this one.</p>
+  <p>This ${via} account already belongs to another account here.</p>
   <div class="merge-grid">
-    ${who(a.user, "Keep", "The account you’re logged in to.")}
-    ${who(m.other, "Merge in", `The account your ${via} log-in belongs to.`)}
+    ${who(a.user, "This account")}
+    ${who(m.other, "Other account")}
   </div>
-  <p class="settings-hint">After merging, all of these log-in methods reach one account, and everything posted from
-  either account is credited to it. This can’t be undone.</p>
+  <p class="settings-hint">Merging combines them into one account. Can’t be undone.</p>
   <div class="settings-actions">
     <form method="post" action="/account"><input type="hidden" name="action" value="merge">
       <button class="btn btn-sm btn-outline-dark" type="submit">Merge accounts</button></form>
@@ -288,10 +266,6 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
     await mergeAccounts(env, a.user.id, m.other.id, m.id);
     const u = await loadUser(env, a.user.id);
     return redirect303("/account?saved=merged", [clearMergeCookie, ...(u ? [loginCookie(u)] : [])]);
-  }
-  if (action === "sessions") {
-    await signOutOthers(env, a.user.id, a.sessionId);
-    return redirect303("/account?saved=sessions");
   }
   if (action === "name") {
     const name = form.get("name")?.toString() ?? "";

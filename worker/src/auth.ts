@@ -148,7 +148,10 @@ const photoFrom = (ids: Identity[]): string => {
   return "";
 };
 
-/** Where the derived name comes from (for "from your ORCID record" on /account). */
+/** The name the log-in methods give, ignoring a custom name (for "Reset to …" on /account). */
+export const nameFromIds = (u: User): string => nameFrom(u.identities);
+
+/** Where the derived name comes from (for "From ORCID" on /account). */
 export const nameSource = (u: User): Provider | null =>
   u.customName ? null : (NAME_ORDER.find((p) => u.identities.some((i) => i.provider === p && i.name)) ?? null);
 
@@ -287,11 +290,6 @@ const FAILURE_MESSAGES: Record<FailureCode, string> = {
 /** JSON error for API callers. HTML forms redirect back to their page instead. */
 export function authJson(f: AuthFailure): Response {
   return json({ error: f.code, message: FAILURE_MESSAGES[f.code] }, f.status);
-}
-
-/** End all of a user's browser sessions except one (the browser asking). */
-export async function signOutOthers(env: Env, userId: string, keepSessionId = ""): Promise<void> {
-  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1 AND id != ?2").bind(userId, keepSessionId).run();
 }
 
 // ---------------------------------------------------------------------------------------------

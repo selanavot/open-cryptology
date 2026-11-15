@@ -359,18 +359,6 @@ test("adding a sign-in needs link=1 from our own page", async () => {
   check("still one sign-in", ids === 1, ids);
 });
 
-test("log out other browsers", async () => {
-  const a = new Client();
-  const ghid = 1130000 + (RUN % 1e5);
-  await a.login(`uma${RUN}`, ghid);
-  const c2 = new Client();
-  await c2.login(`uma${RUN}`, ghid);
-  const r = await form(a, { action: "sessions" });
-  check("logged them out (303)", r.status === 303, r.status);
-  check("the other browser is out", (await c2.json("/api/me")).status === 401);
-  check("this one is still in", (await a.json("/api/me")).status === 200);
-});
-
 test("no way to remove a single log-in method", async () => {
   const a = new Client();
   await a.login(`vera${RUN}`, 1140000 + (RUN % 1e5));
