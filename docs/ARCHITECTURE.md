@@ -38,7 +38,7 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 - `/YYYY/NNNN/versions/<stamp>.pdf` — one stored version (see `docs/VERSIONS.md`)
 - `/YYYY/NNNN/upload` (POST) — upload (live if verified, else quarantine); `/api/upload/YYYY/NNNN`
   (POST) — the same for agents, JSON: 201 live, 202 queued for review
-- `/review`, `/review/<uploadId>` — maintainer review of quarantined uploads (Cloudflare Access)
+- `/review`, `/review/<uploadId>` — maintainer review of quarantined uploads (maintainer log-in, docs/ACCOUNTS.md)
 - `/api/papers/YYYY/NNNN` — JSON metadata; `/api/search?q=` — JSON search
 - `/missing`, `/api/missing` — papers that need a PDF (missing or outdated), as a page and as JSON
 - `/llms.txt` (guidance for agents), `/robots.txt`, `/support` (hosting costs), `/contact` (POST:

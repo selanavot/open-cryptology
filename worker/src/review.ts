@@ -2,53 +2,14 @@ import { getPaper, parseAuthors, STALE_AFTER_UPLOAD, type Env } from "./db";
 import { coverageChanged } from "./years";
 import { html } from "./html";
 import { messagePage } from "./layout";
+import { isAuthFailure, redirect303, requireUser } from "./auth";
 
 // Maintainer review of uploads that couldn't be verified automatically.
 // /review lists every pending upload (newest first); /review/<uploadId> shows one. Pending uploads
-// trigger a (throttled) summary email linking to /review (quarantine.ts). Review pages are behind
-// Cloudflare Access (the maintainer's Cloudflare login): an Access application must cover /review*
-// on every hostname, and the Worker additionally verifies the Access JWT (signature via the team's
-// JWKS, audience, expiry), so a forged header can't get in even if Access were misconfigured.
-// Approve / Reject are POSTs, so link scanners in email clients can't trigger them.
-
-interface Jwk { kid: string; kty: string; n: string; e: string; alg?: string }
-let jwksCache: { at: number; keys: Jwk[] } | null = null;
-
-function b64urlBytes(s: string): Uint8Array {
-  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4));
-  return Uint8Array.from(b, (c) => c.charCodeAt(0));
-}
-
-/** Returns the verified Access identity (email), or null. */
-export async function accessIdentity(req: Request, env: Env): Promise<string | null> {
-  if (env.REVIEW_DEV_BYPASS === "1") return "local-dev";
-  const token = req.headers.get("cf-access-jwt-assertion");
-  if (!token || !env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) return null;
-  const [h, pl, sig] = token.split(".");
-  if (!h || !pl || !sig) return null;
-  try {
-    const header = JSON.parse(new TextDecoder().decode(b64urlBytes(h))) as { kid?: string; alg?: string };
-    const payload = JSON.parse(new TextDecoder().decode(b64urlBytes(pl))) as { aud?: string | string[]; exp?: number; iss?: string; email?: string };
-    if (header.alg !== "RS256") return null;
-    if (!jwksCache || Date.now() - jwksCache.at > 3600_000) {
-      const r = await fetch(`https://${env.ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`);
-      jwksCache = { at: Date.now(), keys: ((await r.json()) as { keys: Jwk[] }).keys };
-    }
-    const jwk = jwksCache.keys.find((k) => k.kid === header.kid);
-    if (!jwk) return null;
-    const key = await crypto.subtle.importKey("jwk", { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: "RS256", ext: true }, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64urlBytes(sig), new TextEncoder().encode(`${h}.${pl}`));
-    if (!ok) return null;
-    const auds = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-    const allowed = env.ACCESS_AUD.split(",").map((a) => a.trim());
-    if (!auds.some((a) => a && allowed.includes(a))) return null;
-    if (!payload.exp || payload.exp * 1000 < Date.now()) return null;
-    if (payload.iss !== `https://${env.ACCESS_TEAM_DOMAIN}`) return null;
-    return payload.email ?? "access-user";
-  } catch {
-    return null;
-  }
-}
+// trigger a (throttled) summary email linking to /review (quarantine.ts). Only maintainers get in:
+// accounts logged in with a GitHub id listed in MAINTAINER_GITHUB_IDS (auth.ts). Logged-out
+// visitors are sent to log in first. Approve / Reject are same-origin POSTs, so link scanners in
+// email clients can't trigger them.
 
 interface UploadRow {
   id: string;
@@ -128,8 +89,10 @@ async function reviewIndex(env: Env, url: URL): Promise<Response> {
 
 export async function handleReview(req: Request, env: Env, url: URL): Promise<Response> {
   const isPost = req.method === "POST";
-  if (!(await accessIdentity(req, env))) {
-    return messagePage(env, 403, "Maintainers only", html`<p>Reviewing uploads requires the maintainer’s login.</p>`, { cache: "no-store", noindex: true });
+  const who = await requireUser(env, req, { role: "maintainer" });
+  if (isAuthFailure(who)) {
+    if (who.code === "signin" && !isPost) return redirect303(`/account?next=${encodeURIComponent(url.pathname)}`);
+    return messagePage(env, 403, "Maintainers only", html`<p>Reviewing uploads is for maintainers.</p>`, NO_STORE);
   }
   if (INDEX_RE.test(url.pathname)) {
     if (isPost) return messagePage(env, 405, "Method not allowed", html`<p>Use the buttons next to each upload.</p>`, NO_STORE);
@@ -137,9 +100,6 @@ export async function handleReview(req: Request, env: Env, url: URL): Promise<Re
   }
   const m = REVIEW_RE.exec(url.pathname)!;
   const uploadId = m[1];
-  if (isPost && req.headers.get("origin") && req.headers.get("origin") !== url.origin) {
-    return messagePage(env, 403, "Rejected", html`<p>Cross-site requests aren’t accepted.</p>`, { cache: "no-store", noindex: true });
-  }
   const form = isPost ? await req.formData() : null;
   /** Approve/reject from the list page: go back to it. */
   const backToList = (paperId: string, action: string) =>

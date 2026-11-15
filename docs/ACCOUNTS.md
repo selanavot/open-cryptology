@@ -33,7 +33,10 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **CSRF.** Cookie-authenticated POSTs must carry our Origin (or `Sec-Fetch-Site: same-origin`).
   Redirect targets (`next=`) must be same-origin paths.
 - **Maintainers.** An account is a maintainer exactly while one of its sign-ins is a GitHub id in
-  `MAINTAINER_GITHUB_IDS`; nothing is stored, so removing either takes the role away.
+  `MAINTAINER_GITHUB_IDS`; nothing is stored, so removing either takes the role away. It guards
+  the upload review queue (`/review`, review.ts), which used to sit behind Cloudflare Access; the
+  account page links to it for maintainers. Keep 2FA on the listed GitHub accounts: they are now
+  the key to it.
 - **Names and photos.** The name shown is the person's own (`custom_name`, set with the edit
   button on `/account`), else the name from their ORCID, Google or GitHub account, in that order
   (refreshed at each log-in). Names needn't be unique. The photo comes from Google, else GitHub,

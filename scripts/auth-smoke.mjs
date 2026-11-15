@@ -214,6 +214,25 @@ test("maintainer role from MAINTAINER_GITHUB_IDS", async () => {
   check("badge on /account", /settings-badge">maintainer/.test(await (await m.req("/account")).text()));
 });
 
+test("upload review queue: maintainers only", async () => {
+  let r = await new Client().req("/review");
+  check("logged out: sent to log in", r.status === 303 && r.headers.get("location") === "/account?next=%2Freview", `${r.status} ${r.headers.get("location")}`);
+  const member = new Client();
+  await member.login(`nell${RUN}`, 1170000 + (RUN % 1e5));
+  r = await member.req("/review");
+  check("member: 403", r.status === 403, r.status);
+  r = await member.req("/review/00000000-0000-0000-0000-000000000000", { method: "POST", form: { action: "approve" } });
+  check("member can't approve", r.status === 403, r.status);
+  check("no queue link for members", !(await (await member.req("/account")).text()).includes('href="/review"'));
+  const m = new Client();
+  await m.login(`maint${RUN}`, MAINT_GHID);
+  r = await m.req("/review");
+  check("maintainer: 200", r.status === 200 && /Uploads waiting for review/.test(await r.text()), r.status);
+  r = await m.req("/review/00000000-0000-0000-0000-000000000000", { method: "POST", form: { action: "approve" }, origin: "https://evil.example" });
+  check("cross-site approve refused", r.status === 403, r.status);
+  check("queue link on the maintainer's account page", (await (await m.req("/account")).text()).includes('href="/review"'));
+});
+
 // ------------------------------------------------------------------------------------------- step 5
 const orcidOf = (n) => {
   // A made-up but well-formed iD (ISO 7064 check digit), unique per run.

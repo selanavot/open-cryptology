@@ -183,6 +183,15 @@ ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert"
   </ul>
 </section>
 
+${u.role === "maintainer" &&
+html`<section class="settings-card">
+  <h2 class="settings-h">Maintainer</h2>
+  <ul class="settings-rows"><li class="settings-row">
+    <span class="settings-row-value">Upload review queue</span>
+    <a class="btn btn-sm btn-outline-dark" href="/review">Open</a>
+  </li></ul>
+</section>`}
+
 <section class="settings-card settings-danger">
   <h2 class="settings-h">Danger zone</h2>
   <div class="settings-row settings-row-top">
