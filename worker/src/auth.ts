@@ -20,7 +20,7 @@ export interface Identity {
   providerUserId: string; // GitHub numeric id / ORCID iD
   handle: string; // GitHub login / ORCID iD
   url: string; // https://github.com/<login> | https://orcid.org/<iD>
-  providerCreatedAt?: string; // GitHub account creation time (ISO)
+  providerCreatedAt?: string; // GitHub account creation time (ISO); stored but not used
   public: boolean;
 }
 export interface User {

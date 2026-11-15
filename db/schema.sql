@@ -129,15 +129,16 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE UNIQUE INDEX IF NOT EXISTS users_name_key ON users(name_key) WHERE name_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS users_owner ON users(owner_user_id) WHERE owner_user_id IS NOT NULL;
 
--- A verified sign-in (GitHub account, ORCID iD) belonging to one user.
+-- A verified sign-in (GitHub account, Google account, ORCID iD) belonging to one user.
+-- A user can have several; the last one can't be removed. Never moved between users.
 CREATE TABLE IF NOT EXISTS identities (
-  provider            TEXT NOT NULL,         -- 'github' | 'orcid'
-  provider_user_id    TEXT NOT NULL,         -- GitHub numeric id / ORCID iD (stable; never the login)
+  provider            TEXT NOT NULL,         -- 'github' | 'google' | 'orcid' (no CHECK, so more can be added)
+  provider_user_id    TEXT NOT NULL,         -- GitHub numeric id / Google sub / ORCID iD (stable; never a login or email)
   user_id             TEXT NOT NULL,
-  handle              TEXT NOT NULL,         -- GitHub login / ORCID iD, refreshed at each sign-in
-  url                 TEXT NOT NULL,         -- https://github.com/<login> | https://orcid.org/<iD>
-  provider_created_at TEXT,                  -- GitHub account creation time (ISO), for new-account checks
-  public              INTEGER NOT NULL DEFAULT 1,
+  handle              TEXT NOT NULL,         -- GitHub login / Google email domain (never the address) / ORCID iD; refreshed at each sign-in
+  url                 TEXT NOT NULL,         -- https://github.com/<login> | https://orcid.org/<iD> | '' for Google
+  provider_created_at TEXT,                  -- GitHub account creation time (ISO); stored but not used
+  public              INTEGER NOT NULL DEFAULT 1, -- always 1 for now (no per-sign-in visibility setting)
   created_at          TEXT NOT NULL,
   PRIMARY KEY (provider, provider_user_id)
 );
