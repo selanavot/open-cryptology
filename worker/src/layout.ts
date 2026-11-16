@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "54";
+const ASSET_VER = "55";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -59,6 +59,7 @@ export interface PageOpts {
 
 export function page(env: Env, o: PageOpts): Response {
   const site = env.SITE_NAME;
+  const login = !!(env.GITHUB_CLIENT_ID || env.GOOGLE_CLIENT_ID || env.ORCID_CLIENT_ID || env.AUTH_DEV_LOGIN === "1");
   const doc = html`<!doctype html>
 <html lang="en">
 <head>
@@ -105,8 +106,9 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
         <li><a href="/manuscripts">Manuscripts</a></li>
         <li><a href="/eprint">ePrint papers</a></li>
         <li><a href="/submit">Submit</a></li>
+        ${login && html`<li class="nav-login"><a href="/account">Log in</a></li>`}
       </ul>
-      ${(env.GITHUB_CLIENT_ID || env.GOOGLE_CLIENT_ID || env.ORCID_CLIENT_ID || env.AUTH_DEV_LOGIN === "1") && html`<a href="/account" class="nav-account">Log in</a>`}
+      ${login && html`<a href="/account" class="nav-account">Log in</a>`}
       <details class="nav-search">
         <summary title="Search" aria-label="Search">${searchIcon()}</summary>
         <form class="nav-search-dd" action="/search" method="get" role="search">
