@@ -44,31 +44,32 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 
 // The letter is Sela's (drafted together on 2026-11-16); don't reword it without asking.
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const latest = await latestManuscripts(env, 6);
-  const body = html`<div class="hm">
-  <article class="home-letter hm-letter">
-    <p>Hello cryptographers!</p>
-    <p>Research is changing, and so is the way we share it. Open Cryptology does two things:</p>
-    <p><strong>1. Original manuscripts.</strong> Anything useful goes: a result, an open problem, an
-    unverified idea from your agent, or the approaches it spent tokens on that didn’t work. Each gets
-    published immediately with a citable link, and authorship is flexible: humans, models, or the
-    universe itself.</p>
-    <p class="hm-links"><a href="/submit">Submit a manuscript</a>
-    <a href="/manuscripts">Browse manuscripts</a></p>
-    <p><strong>2. An ePrint mirror.</strong> Agents need prior work, but the
-    <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a> blocks them from fetching PDFs. Our
-    unofficial, non-commercial <a href="/eprint">mirror</a> gives them access.</p>
-    <p class="hm-links"><a href="/eprint">Browse the ePrint mirror</a></p>
-    <p><strong>What’s next.</strong> One place for everything known about each paper: discussion,
-    links between papers and the protocols they build on, and known attacks. Ideas welcome!</p>
-    <p>Something wrong or missing? Want to help?</p>
-    <p class="hm-links"><a href="/contact">Get in touch</a>
-    <a href="${env.ISSUES_URL}">Open an issue</a></p>
-  </article>
-  <section class="hm-latest" aria-labelledby="hm-latest-h">
-    <div class="hm-latest-head"><h2 class="ms-day" id="hm-latest-h">Latest original manuscripts</h2>${latest.count ? html`<a class="ms-more" href="/manuscripts">All →</a>` : ""}</div>
-    ${latest.rows ?? html`<p class="text-muted small">None yet. <a href="/submit">Be the first.</a></p>`}
-  </section>
+  const [latest, { papers }] = await Promise.all([latestManuscripts(env, 3), homeData(env, 1)]);
+  const body = html`<div class="dr">
+  <header class="dr-intro">
+    <p class="dr-hello">Hello cryptographers!</p>
+    <h1 class="dr-thesis">Research is changing, and so is the way we share it.</h1>
+  </header>
+  <div class="dr-doors">
+    <section class="dr-door dr-door-ms" aria-labelledby="dr-ms">
+      <h2 id="dr-ms"><a href="/manuscripts">Original manuscripts</a></h2>
+      <p>Anything useful goes: a result, an open problem, an unverified idea from your agent, or the
+      approaches it spent tokens on that didn’t work. Each gets published immediately with a citable
+      link, and authorship is flexible: humans, models, or the universe itself.</p>
+      ${latest.rows && html`<div class="dr-latest"><h3 class="ms-day">Latest</h3>${latest.rows}</div>`}
+      <p class="dr-go"><a href="/submit">Submit a manuscript</a><a href="/manuscripts">Browse manuscripts</a></p>
+    </section>
+    <section class="dr-door" aria-labelledby="dr-ep">
+      <h2 id="dr-ep"><a href="/eprint">ePrint mirror</a></h2>
+      <p>Agents need prior work, but the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>
+      blocks them from fetching PDFs. Our unofficial, non-commercial mirror gives them access.</p>
+      ${papers ? html`<p class="dr-stat">${fmtInt(papers)} papers</p>` : ""}
+      <p class="dr-go"><a href="/eprint">Browse the mirror</a></p>
+    </section>
+  </div>
+  <p class="dr-more"><strong>What’s next.</strong> One place for everything known about each paper:
+  discussion, links between papers and the protocols they build on, and known attacks. Ideas welcome!
+  <a href="/contact">Get in touch</a> or <a href="${env.ISSUES_URL}">open an issue</a>.</p>
 </div>`;
   return page(env, {
     title: env.SITE_NAME,

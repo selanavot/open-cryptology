@@ -532,18 +532,30 @@ ol.year-list .badge { margin-left: .35rem; }
 .hm-primary:hover { background: #000; color: #fff; }
 
 
-/* homepage: the letter, with Submit and the latest manuscripts beside it (phones: Submit, letter, list) */
-.hm { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "letter" "latest"; gap: 1.25rem; padding: .5rem 1rem; }
-@media (min-width: 992px) {
-  .hm { grid-template-columns: minmax(0, 1fr) 21rem; grid-template-areas: "letter latest"; gap: 1rem 3rem; }
-}
-.hm-letter { grid-area: letter; } .hm-latest { grid-area: latest; align-self: start; }
-/* the letter's links to act on: quiet, with an arrow */
-.home-letter .hm-links { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; margin: -.4rem 0 1.25rem; }
-.home-letter .hm-links a { font-weight: 600; text-decoration: none; }
-.home-letter .hm-links a::after { content: " \2192"; }
-.home-letter .hm-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
-
+/* homepage: a greeting and one line, then two doors (manuscripts, the ePrint mirror) */
+.dr { max-width: 62rem; margin: 0 auto; padding: .5rem 1rem 1rem; }
+.dr-intro { margin: .5rem 0 1.5rem; }
+.dr-hello { margin: 0 0 .25rem; color: var(--muted); font-size: 1.05rem; }
+.dr-thesis { font-size: 1.75rem; font-weight: 600; line-height: 1.3; margin: 0; }
+.dr-doors { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+@media (min-width: 768px) { .dr-doors { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.dr-door { display: flex; flex-direction: column; border: 1px solid #eee7d6; border-radius: .7rem; padding: 1.2rem 1.35rem; background: #fff; line-height: 1.6; }
+.dr-door-ms { background: #fff8e1; border-color: #f0d27a; }
+.dr-door h2 { font-size: 1.35rem; font-weight: 600; margin: 0 0 .5rem; }
+.dr-door h2 a { color: var(--text); text-decoration: none; }
+.dr-door h2 a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.dr-door > p { margin: 0 0 .75rem; }
+.dr-stat { color: var(--muted); font-size: .95rem; }
+.dr-latest { margin: 0 0 .75rem; }
+.dr-latest .ms-day { margin: .25rem 0 .2rem; }
+.dr-latest .ms-row { border-top-color: #f0e2b6; padding: .45rem 0; }
+.dr-go { margin: auto 0 0 !important; padding-top: .25rem; display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; }
+.dr-go a { font-weight: 600; text-decoration: none; }
+.dr-go a::after { content: " \2192"; }
+.dr-go a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.dr-more { margin: 1.5rem 0 0; color: var(--muted); font-size: .95rem; line-height: 1.6; max-width: 48rem; }
+.dr-more strong { color: var(--text); }
+@media (max-width: 575.98px) { .dr-thesis { font-size: 1.4rem; } .dr { padding: .25rem .25rem 1rem; } }
 .hm-latest-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 .hm-latest-head .ms-day { margin-top: .25rem; }
 .ms-more { font-size: .9rem; white-space: nowrap; }
