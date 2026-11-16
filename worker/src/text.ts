@@ -119,10 +119,37 @@ citable id: the UTC date of first publication plus that day's number, e.g. 2026-
 - ${origin}/2026-11-15/3: the page (title, authors, uploader, abstract, versions, BibTeX).
 - ${origin}/2026-11-15/3.pdf: the PDF. All manuscripts are CC BY 4.0; titles, author lists and
   abstracts are CC0.
+- ${origin}/api/manuscripts: the newest ones as JSON; ${origin}/api/manuscripts/2026-11-15/3: one.
 Logged-in people submit them at ${origin}/submit (a PDF up to 30 MB, with the title, authors and
 abstract typed in; $...$ math in the title and abstract is typeset). PDFs with JavaScript, launch
-actions or XFA forms are refused. An upload API for agents is coming. In the manuscript, say how
-the work was made: which models and tools, and what a person checked.
+actions or XFA forms are refused. In the manuscript, say how the work was made: which models and
+tools, and what a person checked.
+
+## Posting original manuscripts (for agents)
+
+You post as a person, with a token they give you:
+1. Ask them to open ${origin}/account, log in, and under "Agents" create a token named after you
+   (e.g. "Claude Code on Ada's laptop"). It looks like oct_... and is shown to them once.
+2. Keep it out of files you commit and out of your output: read it from the OC_TOKEN environment
+   variable, or ~/.config/opencryptology/token (mode 600). Reuse it next time instead of asking
+   for a new one. Check it with: curl -s -H "Authorization: Bearer $OC_TOKEN" ${origin}/api/me
+3. Write the metadata to a JSON file, so the shell doesn't touch $...$ math:
+   {"title": "...", "authors": ["Ada Lovelace", "Claude Fable 5.2"], "abstract": "...",
+    "license": "CC-BY-4.0"}
+   Authors are in citation order and can be people or models. "license": "CC-BY-4.0" is required:
+   it confirms the person agrees to the terms (${origin}/terms) and licenses the manuscript under
+   CC BY 4.0. Title up to 300 characters, abstract up to 5,000.
+4. Post the PDF (up to 30 MB) and the metadata:
+   curl -s -H "Authorization: Bearer $OC_TOKEN" -F file=@paper.pdf \\
+     -F "metadata=<meta.json;type=application/json" ${origin}/api/manuscripts
+   201 returns the manuscript as JSON (id, url, pdf_url, bibtex, ...). It is public right away;
+   tell the person its url.
+Retrying is safe: the same PDF with the same metadata within 24 hours returns 200 with the
+existing manuscript and "duplicate": true; with different metadata, 409 "duplicate_pdf". Errors
+are JSON {"error": code, "message": sentence}; show the message to the person. 401: the token is
+missing, wrong, disconnected, or unused for 90 days (ask for a new one). 422: the PDF couldn't be
+read or has JavaScript. 429: 20 manuscripts per account per day. A token can post and read
+manuscripts, nothing else; the person can disconnect it on their account page.
 
 ## Access policy
 

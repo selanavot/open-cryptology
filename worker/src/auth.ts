@@ -722,6 +722,7 @@ export async function mergeAccounts(env: Env, keepId: string, goneId: string, of
     env.DB.prepare("UPDATE users SET custom_name = COALESCE(custom_name, (SELECT custom_name FROM users WHERE id = ?2)) WHERE id = ?1").bind(keepId, goneId),
     env.DB.prepare("UPDATE identities SET user_id = ?1 WHERE user_id = ?2").bind(keepId, goneId),
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(goneId),
+    env.DB.prepare("UPDATE api_tokens SET user_id = ?1 WHERE user_id = ?2").bind(keepId, goneId),
     env.DB.prepare("UPDATE users SET merged_into = ?1 WHERE merged_into = ?2").bind(keepId, goneId),
     env.DB.prepare("UPDATE users SET custom_name = NULL, deleted_at = ?3, merged_into = ?1 WHERE id = ?2 AND deleted_at IS NULL").bind(keepId, goneId, nowIso()),
     env.DB.prepare("DELETE FROM pending_merges WHERE id = ?1 OR other_user_id = ?2 OR user_id = ?2").bind(offerId, goneId),
@@ -737,6 +738,7 @@ export async function dropMerge(env: Env, offerId: string): Promise<void> {
 export async function deleteAccount(env: Env, userId: string): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
+    env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL").bind(userId, nowIso()),
     env.DB.prepare("DELETE FROM identities WHERE user_id = ?1").bind(userId),
     env.DB.prepare("UPDATE users SET custom_name = NULL, deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL").bind(userId, nowIso()),
   ]);

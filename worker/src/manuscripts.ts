@@ -11,6 +11,7 @@ import { avatar, identityDetail, providerTag } from "./account";
 import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type User } from "./auth";
 import { siteOrigin } from "./seo";
 import { inspectPdf } from "./verify";
+import { revokeTokenOfManuscript } from "./agentapi";
 
 export const MS_RE = /^\/(\d{4}-\d{2}-\d{2})\/(\d{1,4})(\.pdf)?\/?$/;
 const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
@@ -18,8 +19,11 @@ const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
 export const isManuscriptPath = (path: string): boolean =>
   MS_RE.test(path) || PROFILE_RE.test(path) || ["/manuscripts", "/submit", "/terms", "/manuscripts/remove"].includes(path);
 
-const MAX_PDF = 30 * 1024 * 1024; // bytes; Workers accept request bodies up to 100 MB
+export const MAX_PDF = 30 * 1024 * 1024; // bytes; Workers accept request bodies up to 100 MB
 const MAX_PER_DAY = 20; // new manuscripts per account per 24 hours
+// Site-wide, per 24 hours: accounts are free and R2 is on a personal bill.
+const SITE_PER_DAY = 300;
+const SITE_BYTES_PER_DAY = 2 * 1024 ** 3;
 const LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/";
 const NO_STORE = { cache: "no-store", noindex: true } as const;
 
@@ -71,28 +75,48 @@ async function getManuscript(env: Env, id: string): Promise<{ m: Manuscript; ver
 
 /** Create a manuscript with its first version; returns its id. The day's number is taken inside
  *  the same transaction, so two uploads in the same second never collide. */
-async function createManuscript(env: Env, uploaderId: string, f: { title: string; authors: string[]; abstract: string; pdf: ArrayBuffer }): Promise<string> {
+const sha256Hex = async (buf: ArrayBuffer) =>
+  [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+async function createManuscript(
+  env: Env,
+  uploaderId: string,
+  f: { title: string; authors: string[]; abstract: string; pdf: ArrayBuffer; sha: string; viaToken?: string; since: string },
+): Promise<string | null> {
   const now = new Date().toISOString();
   const day = now.slice(0, 10);
-  const sha = [...new Uint8Array(await crypto.subtle.digest("SHA-256", f.pdf))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const sha = f.sha;
   // The file goes in first, under a random key, so a row never points at a missing file.
   const key = `manuscripts/${crypto.randomUUID()}.pdf`;
   await env.PDFS.put(key, f.pdf, { httpMetadata: { contentType: "application/pdf" }, customMetadata: { sha256: sha, uploader: uploaderId } });
+  // One transaction. The version attaches to exactly the row just inserted (last_insert_rowid,
+  // which also guards against two posts from one account in the same millisecond); nothing is
+  // inserted if the daily limit or a duplicate stops the first statement.
   const [ins] = await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO manuscripts (id, day, num, uploader_id, created_at)
-       SELECT ?1 || '/' || (COALESCE(MAX(num), 0) + 1), ?1, COALESCE(MAX(num), 0) + 1, ?2, ?3 FROM manuscripts WHERE day = ?1
+       SELECT ?1 || '/' || n, ?1, n, ?2, ?3 FROM (SELECT COALESCE(MAX(num), 0) + 1 AS n FROM manuscripts WHERE day = ?1)
+        WHERE (SELECT count(*) FROM manuscripts WHERE uploader_id = ?2 AND created_at > ?4) < ?5
+          AND NOT EXISTS (SELECT 1 FROM manuscripts m JOIN manuscript_versions v ON v.manuscript_id = m.id
+                           WHERE m.uploader_id = ?2 AND v.sha256 = ?6 AND m.created_at > ?4 AND m.removed_at IS NULL)
        RETURNING id`,
-    ).bind(day, uploaderId, now),
+    ).bind(day, uploaderId, now, f.since, MAX_PER_DAY, sha),
     env.DB.prepare(
       `INSERT INTO manuscript_versions (manuscript_id, v, title, authors, abstract, format, file_key, sha256, size, created_at)
-       SELECT id, 1, ?3, ?4, ?5, 'pdf', ?6, ?7, ?8, ?2 FROM manuscripts WHERE uploader_id = ?1 AND created_at = ?2`,
+       SELECT id, 1, ?3, ?4, ?5, 'pdf', ?6, ?7, ?8, ?2 FROM manuscripts
+        WHERE rowid = last_insert_rowid() AND uploader_id = ?1 AND created_at = ?2`,
     ).bind(uploaderId, now, f.title, JSON.stringify(f.authors), f.abstract, key, sha, f.pdf.byteLength),
+    ...(f.viaToken
+      ? [env.DB.prepare(`INSERT INTO manuscript_tokens (manuscript_id, token_id) SELECT manuscript_id, ?2 FROM manuscript_versions WHERE file_key = ?1`).bind(key, f.viaToken)]
+      : []),
   ]).catch(async (e) => {
     await env.PDFS.delete(key).catch(() => {});
     throw e;
   });
-  return (ins.results as { id: string }[])[0].id;
+  const id = (ins.results as { id: string }[])[0]?.id ?? null;
+  // Nothing inserted (the daily limit or a duplicate, from a parallel post): drop the file.
+  if (!id) await env.PDFS.delete(key).catch(() => {});
+  return id;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -112,6 +136,51 @@ function bibtex(m: Manuscript, v: Version, origin: string): string {
   url          = {${origin}/${m.id}},
   note         = {Version ${v.v}}
 }`;
+}
+
+/** A manuscript as JSON for the API (null if there's no such manuscript; `removed` if a maintainer
+ *  removed it). The uploader is shown by name and profile link, as on the page. */
+export async function manuscriptJson(env: Env, origin: string, id: string): Promise<Record<string, unknown> | null> {
+  const got = await getManuscript(env, id);
+  if (!got) return null;
+  const { m, versions } = got;
+  if (m.removed_at) return { id: m.id, removed: true };
+  const v = versions[0];
+  const up = (await publicUsers(env, [m.uploader_id])).get(m.uploader_id);
+  return {
+    id: m.id,
+    url: `${origin}/${m.id}`,
+    pdf_url: `${origin}/${m.id}.pdf`,
+    title: v.title,
+    authors: authorsOf(v),
+    abstract: v.abstract,
+    license: "CC-BY-4.0",
+    uploaded_by: up && !up.deleted ? { name: up.displayName, profile_url: `${origin}/u/${up.id}` } : null,
+    created_at: m.created_at,
+    version: v.v,
+    versions: versions.map((x) => ({ v: x.v, created_at: x.created_at })),
+    withdrawn: m.withdrawn_at ? { at: m.withdrawn_at, reason: m.withdrawn_reason } : null,
+    cite_as: `Open Cryptology ${m.id}`,
+    bibtex: bibtex(m, v, origin),
+  };
+}
+
+/** The newest manuscripts as JSON (for GET /api/manuscripts). */
+export async function latestManuscriptsJson(env: Env, origin: string, limit: number): Promise<Record<string, unknown>[]> {
+  const r = await env.DB.prepare(`${LIST_SQL} ORDER BY m.created_at DESC LIMIT ?1`).bind(limit).all<Row>();
+  const people = await publicUsers(env, [...new Set(r.results.map((x) => x.uploader_id))]);
+  return r.results.map((x) => {
+    const up = people.get(x.uploader_id);
+    return {
+      id: x.id,
+      url: `${origin}/${x.id}`,
+      pdf_url: `${origin}/${x.id}.pdf`,
+      title: x.title,
+      authors: authorsOf(x),
+      uploaded_by: up && !up.deleted ? { name: up.displayName, profile_url: `${origin}/u/${up.id}` } : null,
+      withdrawn: !!x.withdrawn_at,
+    };
+  });
 }
 
 function goneResponse(env: Env, m: Manuscript): Response {
@@ -335,36 +404,107 @@ function submitPage(env: Env, f: Form, status = 200): Response {
   });
 }
 
+/** What a new manuscript needs, from the web form or the agent API. */
+export interface NewManuscript {
+  title: string;
+  authors: string[];
+  abstract: string;
+  file: File | null;
+  /** Whether the uploader accepted the terms and CC BY 4.0, and what to say if not. */
+  license: { accepted: boolean; message: string };
+  /** The agent token it came through (stored for moderation, never shown). */
+  viaToken?: string;
+}
+export type PublishResult =
+  | { ok: true; id: string; duplicate: boolean }
+  | { ok: false; status: number; code: string; message: string; existing?: string };
+
+const cleanTitle = (s: string) => s.replace(/\s+/g, " ").trim();
+export const cleanAuthors = (xs: string[]) => xs.map((a) => a.replace(/\s+/g, " ").trim()).filter(Boolean);
+
+/** Check and publish a new manuscript: the same rules for the form and the API. An identical PDF
+ *  from the same account in the last 24 hours returns that manuscript instead of a copy, so an
+ *  agent can safely retry. */
+export async function publishManuscript(env: Env, uploaderId: string, n: NewManuscript): Promise<PublishResult> {
+  const fail = (status: number, code: string, message: string): PublishResult => ({ ok: false, status, code, message });
+  const title = cleanTitle(n.title);
+  const authors = cleanAuthors(n.authors);
+  const abstract = n.abstract.trim();
+  if (!n.file || !n.file.size) return fail(400, "no_pdf", "Choose a PDF file.");
+  if (n.file.size > MAX_PDF) return fail(413, "too_large", "That file is over 30 MB.");
+  const pdf = await n.file.arrayBuffer();
+  if (new TextDecoder("latin1").decode(new Uint8Array(pdf, 0, Math.min(5, pdf.byteLength))) !== "%PDF-") return fail(415, "not_pdf", "That file isn't a PDF.");
+  if (!title) return fail(400, "no_title", "Add a title.");
+  if (title.length > 300) return fail(400, "title_too_long", "The title is over 300 characters.");
+  if (!authors.length) return fail(400, "no_authors", "Add at least one author.");
+  if (authors.length > 100 || authors.some((a) => a.length > 200)) return fail(400, "authors_too_long", "That's too many authors, or a very long name.");
+  if (!abstract) return fail(400, "no_abstract", "Add an abstract.");
+  if (abstract.length > 5000) return fail(400, "abstract_too_long", "The abstract is over 5,000 characters.");
+  if (!n.license.accepted) return fail(400, "license_not_accepted", n.license.message);
+  const sha = await sha256Hex(pdf);
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const same = () => sameFileAs(env, uploaderId, sha, since, { title, authors, abstract });
+  const dup = await same();
+  if (dup) return dup;
+  const [mine, site] = await env.DB.batch([
+    env.DB.prepare("SELECT count(*) AS n FROM manuscripts WHERE uploader_id = ?1 AND created_at > ?2").bind(uploaderId, since),
+    env.DB.prepare("SELECT count(*) AS n, COALESCE(SUM(size), 0) AS bytes FROM manuscript_versions WHERE created_at > ?1").bind(since),
+  ]);
+  if (((mine.results[0] as { n: number })?.n ?? 0) >= MAX_PER_DAY) return fail(429, "daily_limit", `You can post up to ${MAX_PER_DAY} manuscripts a day. Try again tomorrow.`);
+  const s = site.results[0] as { n: number; bytes: number } | undefined;
+  if ((s?.n ?? 0) >= SITE_PER_DAY || (s?.bytes ?? 0) + pdf.byteLength > SITE_BYTES_PER_DAY)
+    return fail(429, "site_daily_limit", "The site has taken as many new manuscripts as it can for today. Please try again tomorrow.");
+  // Last, as it's the slow part: the same safety checks as uploads to the ePrint mirror.
+  const check = await inspectPdf(pdf);
+  if (check.problem) return fail(422, "unreadable_pdf", `We couldn't read that PDF (${check.problem.slice(0, 120)}). Try exporting it again.`);
+  if (check.active)
+    return fail(422, "active_content", `That PDF contains ${check.active === "scripts" ? "JavaScript" : check.active}, which we don't host. Export it again without it (for example with "Print to PDF").`);
+  // The insert re-checks the daily limit and duplicates itself, so parallel posts can't get past them.
+  const id = await createManuscript(env, uploaderId, { title, authors, abstract, pdf, sha, viaToken: n.viaToken, since });
+  if (!id) return (await same()) ?? fail(429, "daily_limit", `You can post up to ${MAX_PER_DAY} manuscripts a day. Try again tomorrow.`);
+  return { ok: true, id, duplicate: false };
+}
+
+/** The same PDF from the same account in the last 24 hours: that manuscript if the metadata
+ *  matches too (a retry), else a 409 (changing a manuscript needs a new version). */
+async function sameFileAs(
+  env: Env,
+  uploaderId: string,
+  sha: string,
+  since: string,
+  f: { title: string; authors: string[]; abstract: string },
+): Promise<PublishResult | null> {
+  const d = await env.DB.prepare(
+    `SELECT m.id, v.title, v.authors, v.abstract FROM manuscripts m JOIN manuscript_versions v ON v.manuscript_id = m.id
+      WHERE m.uploader_id = ?1 AND v.sha256 = ?2 AND m.created_at > ?3 AND m.removed_at IS NULL LIMIT 1`,
+  )
+    .bind(uploaderId, sha, since)
+    .first<{ id: string; title: string; authors: string; abstract: string }>();
+  if (!d) return null;
+  if (d.title === f.title && d.authors === JSON.stringify(f.authors) && d.abstract === f.abstract) return { ok: true, id: d.id, duplicate: true };
+  return {
+    ok: false,
+    status: 409,
+    code: "duplicate_pdf",
+    message: `You posted this PDF as ${d.id} with different details. Changing a manuscript needs a new version, which isn't available yet.`,
+    existing: d.id,
+  };
+}
+
 async function submitPost(env: Env, req: Request, uploaderId: string): Promise<Response> {
   const form = await req.formData().catch(() => null);
   if (!form) return submitPage(env, { title: "", authors: [], abstract: "", err: "That didn't arrive as a form. Please try again." }, 400);
-  const authors = form.getAll("author").map((a) => String(a).replace(/\s+/g, " ").trim()).filter(Boolean);
-  const f: Form = { title: String(form.get("title") ?? "").replace(/\s+/g, " ").trim(), authors, abstract: String(form.get("abstract") ?? "").trim() };
-  const bad = (err: string) => submitPage(env, { ...f, err }, 400);
+  const f: Form = { title: cleanTitle(String(form.get("title") ?? "")), authors: cleanAuthors(form.getAll("author").map(String)), abstract: String(form.get("abstract") ?? "").trim() };
   const file = form.get("file");
-  if (!(file instanceof File) || !file.size) return bad("Choose a PDF file.");
-  if (file.size > MAX_PDF) return bad("That file is over 30 MB.");
-  const pdf = await file.arrayBuffer();
-  if (new TextDecoder("latin1").decode(new Uint8Array(pdf, 0, Math.min(5, pdf.byteLength))) !== "%PDF-") return bad("That file isn't a PDF.");
-  if (!f.title) return bad("Add a title.");
-  if (f.title.length > 300) return bad("The title is over 300 characters.");
-  if (!f.authors.length) return bad("Add at least one author.");
-  if (f.authors.length > 100 || f.authors.some((a) => a.length > 200)) return bad("That's too many authors, or a very long name.");
-  if (!f.abstract) return bad("Add an abstract.");
-  if (f.abstract.length > 5000) return bad("The abstract is over 5,000 characters.");
-  if (form.get("agree") !== "yes") return bad("Tick the box to agree to the terms and the CC BY 4.0 license.");
-  const recent = await env.DB.prepare("SELECT count(*) AS n FROM manuscripts WHERE uploader_id = ?1 AND created_at > ?2")
-    .bind(uploaderId, new Date(Date.now() - 86_400_000).toISOString())
-    .first<{ n: number }>();
-  if ((recent?.n ?? 0) >= MAX_PER_DAY) return submitPage(env, { ...f, err: `You can post up to ${MAX_PER_DAY} manuscripts a day. Try again tomorrow.` }, 429);
-  // Last, as it's the slow part: the same safety checks as uploads to the ePrint mirror.
-  const check = await inspectPdf(pdf);
-  if (check.problem) return bad(`We couldn't read that PDF (${check.problem.slice(0, 120)}). Try exporting it again.`);
-  if (check.active)
-    return bad(`That PDF contains ${check.active === "scripts" ? "JavaScript" : check.active}, which we don't host. Export it again without it (for example with "Print to PDF").`);
-  const id = await createManuscript(env, uploaderId, { title: f.title, authors: f.authors, abstract: f.abstract, pdf });
-  return redirect303(`/${id}`);
+  const r = await publishManuscript(env, uploaderId, {
+    ...f,
+    file: file instanceof File ? file : null,
+    license: { accepted: form.get("agree") === "yes", message: "Tick the box to agree to the terms and the CC BY 4.0 license." },
+  });
+  if (!r.ok) return submitPage(env, { ...f, err: r.message }, r.status === 429 ? 429 : 400);
+  return redirect303(`/${r.id}`);
 }
+
 
 // ---------------------------------------------------------------------------------------------
 // maintainer removal (form on /review)
@@ -381,7 +521,14 @@ async function removePost(env: Env, req: Request): Promise<Response> {
   ]);
   const ok = (r[0].meta.changes ?? 0) > 0;
   if (ok && files.results.length) await env.PDFS.delete(files.results.map((x) => x.file_key));
-  return messagePage(env, ok ? 200 : 404, ok ? "Removed" : "Not found", ok ? html`<p>Original manuscript ${id} was removed.</p>` : html`<p>No original manuscript ${id} to remove.</p>`, NO_STORE);
+  const revoked = form.get("revoke") === "yes" && (await revokeTokenOfManuscript(env, id));
+  return messagePage(
+    env,
+    ok ? 200 : 404,
+    ok ? "Removed" : "Not found",
+    ok ? html`<p>Original manuscript ${id} was removed.${revoked ? " The agent that posted it was disconnected." : ""}</p>` : html`<p>No original manuscript ${id} to remove.</p>`,
+    NO_STORE,
+  );
 }
 
 // ---------------------------------------------------------------------------------------------

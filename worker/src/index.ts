@@ -18,6 +18,7 @@ import { siteOrigin, sitemap } from "./seo";
 import { handleAuth, isAuthPath } from "./auth";
 import { handleAccount, isAccountPath } from "./account";
 import { handleManuscripts, isManuscriptPath } from "./manuscripts";
+import { handleAgentApi, isAgentApiPath } from "./agentapi";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
@@ -90,6 +91,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (req.method !== "GET" && req.method !== "POST") return methodNotAllowed("GET, POST");
     return handleReview(req, env, url);
   }
+  if (isAgentApiPath(path, req)) return handleAgentApi(req, env, url);
   if (isAuthPath(path)) return handleAuth(req, env, url);
   if (isAccountPath(path)) return handleAccount(req, env, url);
   if (isManuscriptPath(path)) return handleManuscripts(req, env, url);

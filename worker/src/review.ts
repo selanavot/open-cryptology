@@ -85,10 +85,11 @@ async function reviewIndex(env: Env, url: URL): Promise<Response> {
     </ol>
     <h4 class="mt-4">Remove an original manuscript</h4>
     <p class="small text-muted">Hides it and deletes its content; the id is never reused.</p>
-    <form method="post" action="/manuscripts/remove" class="d-flex gap-2">
+    <form method="post" action="/manuscripts/remove" class="d-flex gap-2" id="ms-remove">
       <input class="form-control" name="id" placeholder="2026-11-15/3 or its link" required aria-label="Original manuscript to remove">
       <button class="btn btn-outline-dark">Remove</button>
-    </form>`,
+    </form>
+    <label class="acct-check mt-2"><input type="checkbox" name="revoke" value="yes" form="ms-remove"> Also disconnect the agent that posted it (if an agent did)</label>`,
     NO_STORE,
   );
 }

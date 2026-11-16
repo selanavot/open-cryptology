@@ -197,3 +197,25 @@ CREATE TABLE IF NOT EXISTS manuscript_versions (
   created_at        TEXT NOT NULL,
   PRIMARY KEY (manuscript_id, v)
 );
+
+-- agent API (2026-11): worker/src/agentapi.ts (tokens made on the account page). Only CREATE ... IF NOT EXISTS, so this section can
+-- be run on its own:  sed -n '/^-- agent API/,$p' db/schema.sql
+-- A token lets an agent post original manuscripts as one person. Only its SHA-256 is stored.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id            TEXT PRIMARY KEY,            -- random; also recorded on what the token posted
+  hash          TEXT NOT NULL UNIQUE,        -- hex SHA-256 of the token
+  user_id       TEXT NOT NULL,               -- users.id (moved to the kept account on a merge)
+  name          TEXT NOT NULL,               -- what the person calls the agent
+  scopes        TEXT NOT NULL,               -- space-separated; 'manuscripts' (post and read them)
+  created_at    TEXT NOT NULL,
+  last_used     TEXT,                        -- written at most once an hour
+  revoked_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens(user_id);
+
+-- Which token (if any) posted each manuscript: for moderation only, never shown.
+CREATE TABLE IF NOT EXISTS manuscript_tokens (
+  manuscript_id TEXT PRIMARY KEY,
+  token_id      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS manuscript_tokens_token ON manuscript_tokens(token_id);
