@@ -531,10 +531,6 @@ ol.year-list .badge { margin-left: .35rem; }
 .hm-primary { background: var(--text); color: #fff; padding: .55rem 1.1rem; }
 .hm-primary:hover { background: #000; color: #fff; }
 
-/* navbar: Submit as an outlined button */
-.nav-links a.nav-submit { border: 1.5px solid var(--nav-text); border-radius: .4rem; padding: .3rem .85rem; margin: .2rem 0 .2rem 1.5rem; font-weight: 600; }
-.nav-links a.nav-submit:hover { background: var(--nav-text); color: var(--nav); text-decoration: none; }
-@media (max-width: 991.98px) { .nav-links a.nav-submit { display: inline-block; margin: .35rem .75rem; } }
 
 /* homepage: the letter, with Submit and the latest manuscripts beside it (phones: Submit, letter, list) */
 .hm { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "letter" "latest"; gap: 1.25rem; padding: .5rem 1rem; }
