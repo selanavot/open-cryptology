@@ -556,7 +556,11 @@ ol.year-list .badge { margin-left: .35rem; }
   .hm { grid-template-columns: minmax(0, 1fr) 21rem; grid-template-areas: "letter latest"; gap: 1rem 3rem; }
 }
 .hm-letter { grid-area: letter; } .hm-latest { grid-area: latest; align-self: start; }
-.hm-buttons { display: flex; flex-wrap: wrap; gap: .5rem; margin: -.25rem 0 1.25rem; }
+/* the letter's links to act on: quiet, with an arrow */
+.home-letter .hm-links { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; margin: -.4rem 0 1.25rem; }
+.home-letter .hm-links a { font-weight: 600; text-decoration: none; }
+.home-letter .hm-links a::after { content: " \2192"; }
+.home-letter .hm-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .hm-latest-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 .hm-latest-head .ms-day { margin-top: .25rem; }
