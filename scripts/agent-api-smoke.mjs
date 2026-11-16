@@ -33,11 +33,26 @@ class Client {
   login(login, ghid) {
     return this.req(`/auth/dev-login?login=${login}&ghid=${ghid}&name=${encodeURIComponent(login)}`);
   }
-  async newToken(label) {
-    const r = await this.req("/account", { method: "POST", body: new URLSearchParams({ action: "token-new", label }) });
-    return (await r.text()).match(/<code id="new-token">(oct_[A-Za-z0-9_-]+)<\/code>/)?.[1];
+  /** The whole connect flow: the agent asks, this person approves, the agent collects. */
+  async newToken(name) {
+    const d = await startConnect(name);
+    await this.approve(d.user_code, "approve");
+    return (await collect(d.device_code)).j.access_token;
+  }
+  approve(code, decision) {
+    return this.req("/connect", { method: "POST", body: new URLSearchParams({ code, decision }) });
   }
 }
+
+const startConnect = async (name) =>
+  (await fetch(`${BASE}/api/oauth/device`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: name }) })).json();
+const collect = async (device_code) => {
+  const r = await fetch(`${BASE}/api/oauth/token`, {
+    method: "POST",
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code }),
+  });
+  return { s: r.status, j: await r.json().catch(() => ({})) };
+};
 
 /** A small valid one-page PDF. */
 function makePdf(text, catalog = "") {
@@ -75,15 +90,38 @@ const body = async (r) => r.json().catch(() => ({}));
 const me = new Client();
 await me.login(`agent${RUN}`, 1400000 + (RUN % 1e5));
 
-console.log("\n# tokens on the account page");
-const tok = await me.newToken("Claude Code test");
-check("token created and shown once", /^oct_/.test(tok ?? ""), tok);
+console.log("\n# connecting: the agent asks, the person approves with one click");
+let d = await startConnect("Claude Code test");
+check("device authorization response (RFC 8628 fields)", d.device_code && /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(d.user_code) && d.verification_uri_complete?.endsWith(`/connect?code=${d.user_code}`) && d.interval === 5 && d.expires_in === 900, JSON.stringify(d));
+check("no name: 400 invalid_request", (await fetch(`${BASE}/api/oauth/device`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status === 400);
+let c = await collect(d.device_code);
+check("before approval: authorization_pending", c.s === 400 && c.j.error === "authorization_pending", JSON.stringify(c));
+const linkPath = new URL(d.verification_uri_complete).pathname + new URL(d.verification_uri_complete).search;
+let r = await new Client().req(linkPath);
+check("approve link, logged out: sent to log in and back", r.status === 303 && r.headers.get("location") === `/account?next=${encodeURIComponent(`/connect?code=${d.user_code}`)}`, r.headers.get("location"));
+let t = await (await me.req(linkPath)).text();
+check("approve page: who asks, as whom, what it can do", t.includes("Connect an agent?") && t.includes("Claude Code test") && t.includes(`agent${RUN}`) && /can’t change your account/.test(t));
+check("approve page has no key to copy", !/oct_/.test(t));
+r = await me.req("/connect", { method: "POST", body: new URLSearchParams({ code: d.user_code, decision: "approve" }), origin: "https://evil.example" });
+check("cross-site approve refused", r.status === 403);
+r = await me.approve(d.user_code, "approve");
+check("approve: connected", r.status === 200 && /Connected/.test(await r.text()));
+c = await collect(d.device_code);
+const tok = c.j.access_token;
+check("agent collects its token", c.s === 200 && /^oct_/.test(tok ?? "") && c.j.token_type === "Bearer" && c.j.user?.displayName === `agent${RUN}`, JSON.stringify(c.j).slice(0, 120));
+c = await collect(d.device_code);
+check("only once: then expired_token", c.s === 400 && c.j.error === "expired_token");
+check("the link is used up", (await me.req(linkPath)).status === 410);
+d = await startConnect("Declined agent");
+await me.approve(d.user_code, "deny");
+check("declined: access_denied", (await collect(d.device_code)).j.error === "access_denied");
+check("unknown code: 410", (await me.req("/connect?code=BBBB-CCCC")).status === 410);
+check("unknown device_code: expired_token", (await collect("nope")).j.error === "expired_token");
 const acct = await (await me.req("/account")).text();
-check("listed on the account page, without the secret", acct.includes("Claude Code test") && !acct.includes(tok));
-check("account page asks for a label", (await me.req("/account", { method: "POST", body: new URLSearchParams({ action: "token-new", label: "  " }) })).status === 400);
+check("account page lists the agent, with no way to make keys", acct.includes("Claude Code test") && !acct.includes(tok) && !/token-new|Create token/.test(acct));
 
 console.log("\n# /api/me");
-let r = await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tok}` } });
+r = await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tok}` } });
 let j = await body(r);
 check("token: who you post as", r.status === 200 && j.user?.displayName === `agent${RUN}` && /\/u\/[a-z2-7]{12}$/.test(j.user?.profile_url ?? "") && j.token?.name === "Claude Code test", JSON.stringify(j));
 r = await fetch(`${BASE}/api/me`, { headers: { authorization: "Bearer oct_nope" } });

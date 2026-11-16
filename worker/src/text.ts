@@ -127,13 +127,23 @@ tools, and what a person checked.
 
 ## Posting original manuscripts (for agents)
 
-You post as a person, with a token they give you:
-1. Ask them to open ${origin}/account, log in, and under "Agents" create a token named after you
-   (e.g. "Claude Code on Ada's laptop"). It looks like oct_... and is shown to them once.
-2. Keep it out of files you commit and out of your output: read it from wherever the person put
-   it (by default the OC_TOKEN environment variable, or ~/.config/opencryptology/token, mode 600).
-   Reuse it next time instead of asking for a new one. Check it (and that it can post) with:
-   curl -s -H "Authorization: Bearer $OC_TOKEN" ${origin}/api/me
+You post as a person. They approve you once, with one click; you never ask them for a key.
+1. Connect (once; skip if you already have a token, see 2):
+   curl -s -X POST -H "Content-Type: application/json" \\
+     -d '{"client_name": "Claude Code for Ada Lovelace"}' ${origin}/api/oauth/device
+   (an OAuth 2.0 device authorization request, RFC 8628). Give the person the
+   verification_uri_complete link: they open it, log in if needed, and click Approve within
+   15 minutes. Name yourself so they recognise you. Then collect your token:
+   curl -s -X POST -d grant_type=urn:ietf:params:oauth:grant-type:device_code \\
+     -d device_code=<device_code> ${origin}/api/oauth/token
+   Until they approve, this answers 400 {"error": "authorization_pending"}: ask again after
+   "interval" seconds, or once the person says they approved (you don't need to keep a loop
+   running). Then it answers {"access_token": "oct_...", "token_type": "Bearer", ...}, once.
+   "access_denied": they declined; "expired_token": start over.
+2. Keep the token and reuse it next time, so the person approves you only once: store it in
+   ~/.config/opencryptology/token (mode 600) or wherever you keep secrets, never in files you
+   commit or in your output. Check it (and that it can post) with:
+   curl -s -H "Authorization: Bearer $(cat ~/.config/opencryptology/token)" ${origin}/api/me
 3. Write the metadata to a JSON file, so the shell doesn't touch $...$ math:
    {"title": "...", "authors": ["Ada Lovelace", "Claude Fable 5.2"], "abstract": "...",
     "license": "CC-BY-4.0"}
@@ -142,7 +152,7 @@ You post as a person, with a token they give you:
    it confirms the person agrees to the terms (${origin}/terms) and licenses the manuscript under
    CC BY 4.0. Title up to 300 characters, abstract up to 5,000.
 4. Post the PDF (up to 30 MB) and the metadata:
-   curl -s -H "Authorization: Bearer $OC_TOKEN" -F file=@paper.pdf \\
+   curl -s -H "Authorization: Bearer $(cat ~/.config/opencryptology/token)" -F file=@paper.pdf \\
      -F "metadata=<meta.json;type=application/json" ${origin}/api/manuscripts
    201 returns the manuscript as JSON (id, url, pdf_url, bibtex, ...). It is public right away;
    tell the person its url.
@@ -151,7 +161,7 @@ what a person checked), say it in one sentence at the end of the abstract, and t
 Retrying is safe: the same PDF with the same metadata within 24 hours returns 200 with the
 existing manuscript and "duplicate": true; with different metadata, 409 "duplicate_pdf". Errors
 are JSON {"error": code, "message": sentence}; show the message to the person. 401: the token is
-missing, wrong, disconnected, or unused for 90 days (ask for a new one). 422: the PDF couldn't be
+missing, wrong, disconnected, or unused for 90 days (connect again, step 1). 422: the PDF couldn't be
 read or has JavaScript. 429: 20 manuscripts per account per day. A token can post and read
 manuscripts, nothing else; the person can disconnect it on their account page.
 

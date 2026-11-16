@@ -567,7 +567,5 @@ ol.year-list .badge { margin-left: .35rem; }
 }
 
 /* account page: agents */
-.agent-made { background: #fff8e1; border: 1px solid #f0d27a; border-radius: .5rem; padding: .75rem 1rem; margin: 0 0 .75rem; }
-.agent-token { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
-.agent-token code { background: #fff; border: 1px solid #eee; border-radius: .3rem; padding: .3rem .5rem; overflow-wrap: anywhere; font-size: .85rem; }
-.agent-new { margin-top: .75rem; }
+.connect-points { padding-left: 1.2rem; margin: .75rem 0; line-height: 1.55; }
+.connect-points li { margin: .2rem 0; }

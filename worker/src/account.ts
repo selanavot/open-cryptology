@@ -31,8 +31,7 @@ import {
   sameOrigin,
   setCustomName,
 } from "./auth";
-import { siteOrigin } from "./seo";
-import { cleanLabel, LABEL_MAX, mintToken, revokeToken, tokenExpires, TOKEN_IDLE_DAYS, tokensOf, type TokenRow } from "./agentapi";
+import { revokeToken, tokenExpires, TOKEN_IDLE_DAYS, tokensOf, type TokenRow } from "./agentapi";
 
 export const isAccountPath = (path: string): boolean => path === "/account" || path === "/account/merge";
 
@@ -130,29 +129,15 @@ interface Notice {
   err?: string;
 }
 
-/** What the Agents card shows: the connected agents, and a token just made (shown once). */
-interface Agents {
-  tokens: TokenRow[];
-  made?: { label: string; token: string };
-}
-
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
-function agentsCard(env: Env, ag: Agents): Html {
+/** Connected agents: each one the person approved, with Disconnect. Agents connect themselves
+ *  (agentapi.ts); there's nothing to create here. */
+function agentsCard(tokens: TokenRow[]): Html {
   return html`<section class="settings-card" id="agents">
   <h2 class="settings-h">Agents</h2>
-  <p class="settings-hint">Let an AI agent post original manuscripts as you. Each agent gets its own token, which can post and read
-  manuscripts but can’t change your account. A token stops working after ${TOKEN_IDLE_DAYS} days without use.</p>
-  ${ag.made &&
-  html`<div class="agent-made" role="status">
-    <p class="mb-1"><strong>Token for “${ag.made.label}”.</strong> Copy it now: it won’t be shown again.</p>
-    <div class="agent-token"><code id="new-token">${ag.made.token}</code>
-      <button type="button" class="btn btn-sm btn-outline-dark" data-copy="new-token" aria-label="Copy the token">Copy</button></div>
-    <p class="settings-hint mb-0 mt-2">Give it to your agent, for example: “Post my manuscript to Open Cryptology (see
-    ${siteOrigin(env, new URL("https://opencryptology.org"))}/llms.txt); my token is in the OC_TOKEN environment variable.”</p>
-  </div>`}
-  ${ag.tokens.length
-    ? html`<ul class="settings-rows">${ag.tokens.map((t) => {
+  ${tokens.length
+    ? html`<ul class="settings-rows">${tokens.map((t) => {
         const expired = tokenExpires(t).getTime() < Date.now();
         return html`<li class="settings-row">
       <span class="settings-row-value"><strong>${t.name}</strong><br><span class="settings-hint">Connected ${shortDate(t.created_at)} ·
@@ -160,23 +145,15 @@ function agentsCard(env: Env, ag: Agents): Html {
       <form method="post" action="/account"><input type="hidden" name="action" value="token-revoke"><input type="hidden" name="token" value="${t.id}">
         <button class="btn btn-sm btn-outline-dark" type="submit">Disconnect</button></form>
     </li>`;
-      })}</ul>`
-    : ""}
-  <details class="agent-new"${ag.tokens.length ? "" : " open"}>
-    <summary class="settings-link">Connect an agent</summary>
-    <form method="post" action="/account" class="name-form">
-      <input type="hidden" name="action" value="token-new">
-      <label class="visually-hidden" for="agent-label">Agent name</label>
-      <input class="form-control form-control-sm" id="agent-label" name="label" maxlength="${LABEL_MAX}" required placeholder="e.g. Claude Code on my laptop">
-      <button class="btn btn-sm btn-outline-dark" type="submit">Create token</button>
-    </form>
-    <p class="settings-hint mt-2 mb-0">Manuscripts your agents post are published right away under CC BY 4.0 and the
-    <a href="/terms">terms</a>, as yours. Disconnecting an agent doesn’t remove what it posted; <a href="/contact?topic=manuscript">write to us</a> for that.</p>
-  </details>
+      })}</ul>
+    <p class="settings-hint mt-2 mb-0">Agents can post and read original manuscripts as you, nothing else. One unused for ${TOKEN_IDLE_DAYS}
+    days disconnects itself. Disconnecting doesn’t remove what it posted; <a href="/contact?topic=manuscript">write to us</a> for that.</p>`
+    : html`<p class="settings-hint mb-0">No agents connected. To connect one, ask it to post a manuscript to Open Cryptology: it will
+    send you a link, and you approve it with one click.</p>`}
 </section>`;
 }
 
-function accountPage(env: Env, a: Actor, notice: Notice, status: number, agents: Agents): Response {
+function accountPage(env: Env, a: Actor, notice: Notice, status: number, tokens: TokenRow[]): Response {
   const u = a.user;
   const missing = PROVIDERS.filter((p) => !u.identities.some((i) => i.provider === p));
   const order = (i: Identity) => PROVIDERS.indexOf(i.provider);
@@ -232,7 +209,7 @@ ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert"
   </ul>
 </section>
 
-${agentsCard(env, agents)}
+${agentsCard(tokens)}
 
 ${u.role === "maintainer" &&
 html`<section class="settings-card">
@@ -264,8 +241,8 @@ html`<section class="settings-card">
   );
 }
 
-async function renderAccount(env: Env, a: Actor, notice: Notice, status = 200, made?: Agents["made"]): Promise<Response> {
-  return accountPage(env, a, notice, status, { tokens: await tokensOf(env, a.user.id), made });
+async function renderAccount(env: Env, a: Actor, notice: Notice, status = 200): Promise<Response> {
+  return accountPage(env, a, notice, status, await tokensOf(env, a.user.id));
 }
 
 /** /account/merge: the log-in method just connected belongs to another account; merge it in? */
@@ -327,14 +304,6 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
     await mergeAccounts(env, a.user.id, m.other.id, m.id);
     const u = await loadUser(env, a.user.id);
     return redirect303("/account?saved=merged", [clearMergeCookie, ...(u ? [loginCookie(u)] : [])]);
-  }
-  if (action === "token-new") {
-    const label = cleanLabel(form.get("label"));
-    if (!label) return renderAccount(env, a, { err: "Name the agent, so you can tell your tokens apart." }, 400);
-    if ((await tokensOf(env, a.user.id)).length >= 20) return renderAccount(env, a, { err: "You have 20 agents connected. Disconnect one first." }, 400);
-    const t = await mintToken(env, a.user.id, label);
-    // Shown on this response only (never in a URL or a redirect), so it isn't cached or logged.
-    return renderAccount(env, a, {}, 200, { label, token: t.token });
   }
   if (action === "token-revoke") {
     const ok = await revokeToken(env, a.user.id, form.get("token")?.toString() ?? "");

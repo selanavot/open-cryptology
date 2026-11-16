@@ -198,20 +198,36 @@ CREATE TABLE IF NOT EXISTS manuscript_versions (
   PRIMARY KEY (manuscript_id, v)
 );
 
--- agent API (2026-11): worker/src/agentapi.ts (tokens made on the account page). Only CREATE ... IF NOT EXISTS, so this section can
--- be run on its own:  sed -n '/^-- agent API/,$p' db/schema.sql
+-- agent API (2026-11): worker/src/agentapi.ts. An agent asks to connect (OAuth device flow), the
+-- person approves it with one click, and the agent receives a token. Only CREATE ... IF NOT EXISTS,
+-- so this section can be run on its own:  sed -n '/^-- agent API/,$p' db/schema.sql
 -- A token lets an agent post original manuscripts as one person. Only its SHA-256 is stored.
 CREATE TABLE IF NOT EXISTS api_tokens (
   id            TEXT PRIMARY KEY,            -- random; also recorded on what the token posted
   hash          TEXT NOT NULL UNIQUE,        -- hex SHA-256 of the token
   user_id       TEXT NOT NULL,               -- users.id (moved to the kept account on a merge)
-  name          TEXT NOT NULL,               -- what the person calls the agent
+  name          TEXT NOT NULL,               -- the agent's name for itself, as approved
   scopes        TEXT NOT NULL,               -- space-separated; 'manuscripts' (post and read them)
   created_at    TEXT NOT NULL,
   last_used     TEXT,                        -- written at most once an hour
   revoked_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens(user_id);
+
+-- An agent asking to connect. The token is minted when the agent collects it after approval, so
+-- no token secret is ever stored. Rows older than a day are deleted when new requests come in.
+CREATE TABLE IF NOT EXISTS agent_connect (
+  id            TEXT PRIMARY KEY,            -- hex SHA-256 of the agent's device_code
+  user_code     TEXT NOT NULL UNIQUE,        -- 'WXYZ2345', shown as WXYZ-2345 and in the approve link
+  name          TEXT NOT NULL,               -- what the agent calls itself
+  ip_hash       TEXT NOT NULL,
+  country       TEXT,                        -- where the request came from (CF-IPCountry), shown on the approve page
+  created_at    TEXT NOT NULL,
+  expires_at    TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending', -- pending | approved | denied | claimed
+  user_id       TEXT                         -- who approved or denied it
+);
+CREATE INDEX IF NOT EXISTS agent_connect_ip ON agent_connect(ip_hash, created_at);
 
 -- Which token (if any) posted each manuscript: for moderation only, never shown.
 CREATE TABLE IF NOT EXISTS manuscript_tokens (
