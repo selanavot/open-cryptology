@@ -6,6 +6,8 @@
 #   - the main checkout's local D1/R2/KV state (worker/.wrangler/state) instead of an empty one.
 #     DEV_STATE=copy uses a private copy instead, for tests that write (uploads set pdf_key).
 # Extra arguments go to wrangler dev (e.g. --port 8788).
+# LOCAL_DEV=1 tells the Worker it runs locally: wrangler dev hands it the production host (the
+# routes in wrangler.jsonc), so the host alone can't tell (index.ts keeps local runs on http).
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
 bash "$root/scripts/worker-deps.sh"
@@ -29,4 +31,4 @@ if [ "$main" != "$root" ]; then
     echo "dev: using the main checkout's local state ($state); DEV_STATE=copy for a private copy" >&2
   fi
 fi
-exec npx --no-install wrangler dev ${persist[@]+"${persist[@]}"} "$@"
+exec npx --no-install wrangler dev --var LOCAL_DEV:1 ${persist[@]+"${persist[@]}"} "$@"

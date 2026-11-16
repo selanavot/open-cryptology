@@ -152,9 +152,9 @@ export default {
     const host = u.hostname;
     // One hop to https on the bare domain (local dev stays on plain http). `wrangler dev` hands the
     // Worker the production host from the routes in wrangler.jsonc, so local runs are recognized
-    // by their localhost AUTH_ORIGIN (.dev.vars) as well as by the host.
+    // by LOCAL_DEV (set by scripts/dev.sh) or a localhost AUTH_ORIGIN, as well as by the host.
     const local =
-      host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost") ||
+      env.LOCAL_DEV === "1" || host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost") ||
       /^http:\/\/(localhost|127\.0\.0\.1|[a-z0-9.-]+\.localhost)(:\d+)?$/.test(env.AUTH_ORIGIN ?? "");
     if (host.startsWith("www.") || (u.protocol === "http:" && !local)) {
       const to = new URL(req.url);
@@ -186,8 +186,7 @@ export default {
         env,
         500,
         "Something went wrong",
-        html`<p>Sorry — an unexpected error occurred. If it keeps happening, please
-        <a href="${env.ISSUES_URL}">report an issue</a>.</p>`,
+        html`<p>If it keeps happening, <a href="${env.ISSUES_URL}">report an issue</a>.</p>`,
       );
     }
   },
