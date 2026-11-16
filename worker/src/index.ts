@@ -148,11 +148,16 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const host = new URL(req.url).hostname;
-    if (host.startsWith("www.")) {
+    const u = new URL(req.url);
+    const host = u.hostname;
+    // One hop to https on the bare domain (local dev stays on plain http).
+    const local = host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost");
+    if (host.startsWith("www.") || (u.protocol === "http:" && !local)) {
       const to = new URL(req.url);
-      to.hostname = host.slice(4);
-      return Response.redirect(to.toString(), 301);
+      if (host.startsWith("www.")) to.hostname = host.slice(4);
+      if (!local) to.protocol = "https:";
+      const isGet = req.method === "GET" || req.method === "HEAD";
+      return Response.redirect(to.toString(), isGet ? 301 : 308);
     }
     // Private-preview gate: while REQUIRE_ACCESS=1, only serve requests that came through
     // Cloudflare Access (which adds this header after login). Remove the var to go public.

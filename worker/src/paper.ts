@@ -260,6 +260,8 @@ export async function servePdf(
     "access-control-allow-origin": "*",
   });
   if (lic.url) headers.set("link", `<${lic.url}>; rel="license"`);
+  // A stored version is often the same file as the default PDF; point search engines at that one.
+  if (stamp && p.pdf_key) headers.append("link", `<${siteOrigin(env, new URL(req.url))}/${id}.pdf>; rel="canonical"`);
   if (lic.code) headers.set("x-license", lic.code);
   if (etag) headers.set("etag", etag);
   if (!stamp && p.pdf_maybe_stale) headers.set("x-mirror-note", "may-be-older-revision");
