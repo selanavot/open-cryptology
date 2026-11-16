@@ -123,7 +123,7 @@ const UPLOAD_NOTICES: Record<string, { ok: boolean; text: string }> = {
   have: { ok: true, text: "We already have that exact file." },
   have_flagged: {
     ok: true,
-    text: "We already have that exact file, but it’s still marked outdated: the PDF size we last saw on ePrint is different. If ePrint posted a new version recently, we check again within 8 hours. No need to upload it again.",
+    text: "We already have that exact file. It stays marked outdated because ePrint lists a different size; we check again within 8 hours.",
   },
   confirmed: { ok: true, text: "Same file as ours: now marked as the latest. Thank you!" },
   older: { ok: false, text: "That’s an earlier version. Please upload the latest from ePrint." },

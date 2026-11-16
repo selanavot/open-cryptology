@@ -249,12 +249,11 @@ async function listPage(env: Env): Promise<Response> {
   for (const [d, rows] of byDay) groups.push(html`<h5 class="ms-day">${dateLong(d)}</h5>${await rowsHtml(env, rows)}`);
   return page(env, {
     title: "Original manuscripts",
-    description: "Results, notes and open questions in cryptography, shared fast. Citable and versioned.",
+    description: "Original manuscripts posted on Open Cryptology, newest first.",
     katex: true,
     cache: "public, max-age=120",
     body: html`<div class="ms-list-head">
-  <div><h1 class="ms-title">Original manuscripts</h1>
-  <p class="text-muted">Results, notes and open questions in cryptography, shared fast. The authors line says who wrote each one, people or models.</p></div>
+  <h1 class="ms-title">Original manuscripts</h1>
   <a class="btn btn-outline-dark" href="/submit">Submit an original manuscript</a>
 </div>
 ${groups.length ? groups : html`<p class="text-muted mt-3">None yet.</p>`}`,
@@ -326,10 +325,11 @@ function submitPage(env: Env, f: Form, status = 200): Response {
   return page(env, {
     title: "Submit an original manuscript",
     status,
+    katex: true, // the abstract preview
     ...NO_STORE,
     body: html`<div class="sb">
   <h1 class="ms-title">Submit an original manuscript</h1>
-  <p class="text-muted">Published right away at a permanent, citable link.</p>
+  <p class="text-muted">Published right away, without review.</p>
   ${f.err && html`<p class="settings-notice settings-notice-err" role="alert">${f.err}</p>`}
   <form class="ms-form" method="post" action="/submit" enctype="multipart/form-data">
     <label class="form-label" for="sb-file">Manuscript</label>
@@ -343,10 +343,14 @@ function submitPage(env: Env, f: Form, status = 200): Response {
     <label class="form-label">Authors <span class="sb-sub">as they should be cited</span></label>
     <div class="sb-authors">${authorRows}</div>
     <div><button type="button" class="sb-add btn btn-sm btn-link" hidden>+ Add author</button></div>
-    <p class="form-hint text-muted">People or models, e.g. Ada Lovelace or Claude Fable 5.2. You're shown separately as the uploader.</p>
-    <label class="form-label" for="sb-abstract">Abstract</label>
+    <p class="form-hint text-muted">People or models. You're shown separately as the uploader.</p>
+    <div class="sb-field-head">
+      <label class="form-label" for="sb-abstract">Abstract</label>
+      <span class="sb-tabs" hidden><button type="button" class="sb-tab" data-tab="write" aria-pressed="true">Write</button><button type="button" class="sb-tab" data-tab="preview" aria-pressed="false">Preview</button></span>
+    </div>
     <textarea class="form-control" id="sb-abstract" name="abstract" rows="6" maxlength="5000" required>${f.abstract}</textarea>
-    <p class="form-hint text-muted">Plain text; LaTeX math between $...$ is typeset.</p>
+    <div class="sb-preview paper-abstract" id="sb-abstract-preview" hidden></div>
+    <p class="form-hint text-muted">LaTeX math between $...$ is typeset.</p>
     <label class="acct-check ms-license"><input type="checkbox" name="agree" value="yes" required> I agree to the <a href="/terms">terms</a> and license this manuscript under <a href="${LICENSE_URL}">CC BY 4.0</a>.</label>
     <div><button type="submit" class="btn btn-outline-dark hm-primary">Publish</button></div>
   </form>

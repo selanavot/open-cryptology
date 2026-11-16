@@ -4,25 +4,26 @@
 
   // KaTeX auto-render (loaded deferred from cdnjs only on pages that contain TeX).
   // Falls back to the plain text if the CDN is unavailable.
-  function renderTex() {
+  var TEX_OPTS = {
+    delimiters: [
+      { left: "$$", right: "$$", display: true },
+      { left: "\\[", right: "\\]", display: true },
+      { left: "$", right: "$", display: false },
+      { left: "\\(", right: "\\)", display: false },
+    ],
+    throwOnError: false,
+    ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option", "input"],
+  };
+  function texIn(el) {
     if (typeof window.renderMathInElement !== "function") return;
-    var opts = {
-      delimiters: [
-        { left: "$$", right: "$$", display: true },
-        { left: "\\[", right: "\\]", display: true },
-        { left: "$", right: "$", display: false },
-        { left: "\\(", right: "\\)", display: false },
-      ],
-      throwOnError: false,
-      ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option", "input"],
-    };
-    document.querySelectorAll(".tex").forEach(function (el) {
-      try {
-        window.renderMathInElement(el, opts);
-      } catch (e) {
-        /* keep plain text */
-      }
-    });
+    try {
+      window.renderMathInElement(el, TEX_OPTS);
+    } catch (e) {
+      /* keep plain text */
+    }
+  }
+  function renderTex() {
+    document.querySelectorAll(".tex").forEach(texIn);
   }
 
   // Copy-to-clipboard buttons: <button data-copy="elementId">.
@@ -176,9 +177,37 @@
     }
   }
 
-  // Submit an original manuscript: "+ Add author" / remove rows, and the chosen PDF's name in the
-  // drop zone.
+  // Submit an original manuscript: "+ Add author" / remove rows, the chosen PDF's name in the
+  // drop zone, and Write / Preview for the abstract (Preview typesets it as the manuscript page will).
   function setupManuscriptForm() {
+    var abs = document.getElementById("sb-abstract");
+    var preview = document.getElementById("sb-abstract-preview");
+    var tabs = document.querySelector(".sb-tabs");
+    if (abs && preview && tabs) {
+      var show = function (which) {
+        var previewing = which === "preview";
+        if (previewing) {
+          var text = abs.value.trim();
+          preview.style.minHeight = abs.offsetHeight + "px";
+          preview.textContent = text || "Nothing to preview yet.";
+          preview.classList.toggle("is-empty", !text);
+          if (text) texIn(preview);
+        }
+        abs.hidden = previewing;
+        preview.hidden = !previewing;
+        tabs.querySelectorAll(".sb-tab").forEach(function (b) {
+          b.setAttribute("aria-pressed", String(b.getAttribute("data-tab") === which));
+        });
+        if (!previewing) abs.focus();
+      };
+      tabs.hidden = false;
+      tabs.addEventListener("click", function (e) {
+        var b = e.target.closest(".sb-tab");
+        if (b) show(b.getAttribute("data-tab"));
+      });
+      // Publishing with an empty abstract while previewing: back to Write so the browser can point at it.
+      abs.addEventListener("invalid", function () { if (abs.hidden) show("write"); });
+    }
     var list = document.querySelector(".sb-authors");
     var add = document.querySelector(".sb-add");
     if (list && add) {
