@@ -160,7 +160,13 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
   }
   .nav-links a { padding: .5rem .75rem; }
   .nav-toggle:checked ~ .nav-links { display: flex; }
-  .nav-search-dd { right: 0; width: 100%; }
+  /* phones and tablets: search opens as a yellow panel under the bar, like the menu, with a full-size field */
+  .nav-search-dd {
+    right: 0; width: 100%; padding: .25rem .75rem .9rem; background: var(--nav);
+    border: 0; border-radius: 0; box-shadow: 0 2px 4px rgba(0, 0, 0, .12);
+  }
+  .nav-search-dd .form-control { background-color: #fff; font-size: 1.1rem; padding: .7rem .9rem; border-radius: .5rem 0 0 .5rem; }
+  .nav-search-dd .btn { font-size: 1.05rem; padding: .7rem 1.1rem; border-radius: 0 .5rem .5rem 0; }
 }
 @media (max-width: 767.98px) { .site-name { font-size: 1.4rem; } }
 @media (max-width: 359.98px) { .site-name { font-size: 1.15rem; gap: .4rem; } .site-logo { width: 1.6rem; height: 1.6rem; } }
