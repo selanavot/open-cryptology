@@ -93,8 +93,9 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
 export async function eprintPage(env: Env, url: URL): Promise<Response> {
   const { card, gapsYear } = await missingCard(env, url.origin);
   const body = html`<h1 class="ms-title">ePrint papers</h1>
-<div class="home-side ep-side">${card}</div>
-<div class="ep-text">
+<div class="ep-layout">
+<div class="home-side ep-main">${card}</div>
+<aside class="ep-text">
   <p>An unofficial, non-commercial mirror of the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>,
   readable by you and your AI agents.</p>
   <ul class="ep-points">
@@ -104,6 +105,7 @@ export async function eprintPage(env: Env, url: URL): Promise<Response> {
     missing, download it from ePrint and upload it anonymously here.</li>
     <li><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the original. Please respect it.</li>
   </ul>
+</aside>
 </div>`;
   return page(env, {
     title: "ePrint papers",
