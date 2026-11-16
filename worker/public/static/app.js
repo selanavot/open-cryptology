@@ -74,6 +74,9 @@
   function setupNavSearch() {
     var d = document.querySelector(".nav-search");
     if (!d) return;
+    // The full hint doesn't fit a phone-width field; keep the part that teaches the 2024/123 shortcut.
+    var field = d.querySelector("input");
+    if (field && window.matchMedia && window.matchMedia("(max-width: 575.98px)").matches) field.placeholder = "Search, or go to 2024/123";
     d.addEventListener("toggle", function () {
       if (d.open) {
         var i = d.querySelector("input");
