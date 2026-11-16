@@ -35,35 +35,42 @@ class Client {
   }
 }
 
-const MD = `# A $2^{61}$ attack on 7-round SampleCipher-${RUN}
+/** A small valid one-page PDF. `catalog` adds entries to the document catalog; `objects` adds
+ *  numbered objects from 5 up (for attachments). */
+function makePdf(text, { catalog = "", objects = [] } = {}) {
+  const content = `BT /F1 18 Tf 72 720 Td (${text}) Tj ET`;
+  const objs = [
+    `<< /Type /Catalog /Pages 2 0 R ${catalog} >>`,
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    ...objects,
+  ];
+  let out = "%PDF-1.7\n";
+  const offsets = [];
+  objs.forEach((o, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(out);
+}
+const PDF = makePdf(`SampleCipher ${RUN}`);
+const WITH_ATTACHMENT = makePdf("With an attachment", {
+  catalog: "/Names << /EmbeddedFiles << /Names [(attack.py) 5 0 R] >> >>",
+  objects: ["<< /Type /Filespec /F (attack.py) /EF << /F 6 0 R >> >>", "<< /Type /EmbeddedFile /Length 5 >>\nstream\nprint\nendstream"],
+});
+const WITH_JS = makePdf("With a script", { catalog: "/OpenAction << /S /JavaScript /JS (app.alert(1)) >>" });
 
-## Abstract
-
-We attack 7 rounds in time $2^{61}$ with $a_1 * b_2$ in the abstract.
-
-## Introduction
-
-The best attack reaches 6 rounds[^old25], see also ePrint 2019/256 and <script>alert(1)</script>.
-
-> **Theorem 1.** Seven rounds fall in time $2^{61}$.
-
-## Methodology
-
-Written by an agent.
-
-| Rounds | Correlation |
-|---|---|
-| 5 | $2^{-18}$ |
-
-[^old25]: A. Author. Cryptanalysis of reduced SampleCipher. 2025.
-`;
-
-function submitForm(fields, file = { name: "paper.md", text: MD }) {
+function submitForm(fields, file = { name: "paper.pdf", bytes: PDF }) {
   const fd = new FormData();
-  if (file) fd.append("file", new Blob([file.text], { type: "text/markdown" }), file.name);
+  if (file) fd.append("file", new Blob([file.bytes], { type: "application/pdf" }), file.name);
   for (const [k, v] of Object.entries(fields)) for (const x of [].concat(v)) fd.append(k, x);
   return fd;
 }
+const FIELDS = { title: `A $2^{61}$ attack on 7-round SampleCipher-${RUN}`, abstract: "We attack 7 rounds in time $2^{61}$ with $a_1 * b_2$.", agree: "yes" };
 
 const me = new Client();
 await me.login(`ms${RUN}`, 1300000 + (RUN % 1e5));
@@ -72,7 +79,10 @@ console.log("\n# submit page");
 let r = await new Client().req("/submit");
 check("logged out: sent to log in", r.status === 303 && r.headers.get("location") === "/account?next=/submit", `${r.status} ${r.headers.get("location")}`);
 r = await me.req("/submit");
-check("logged in: the form", r.status === 200 && /Submit an original manuscript/.test(await r.text()), r.status);
+const form = await r.text();
+check("logged in: the form", r.status === 200 && /Submit an original manuscript/.test(form), r.status);
+check("asks for a PDF", form.includes('accept="application/pdf,.pdf"'));
+check("title, first author, abstract required", /id="sb-title"[^>]*required/.test(form) && /aria-label="Author 1"[^>]*required/.test(form) && /id="sb-abstract"[^>]*required/.test(form));
 
 console.log("\n# validation");
 const bad = async (name, fd, re) => {
@@ -80,15 +90,19 @@ const bad = async (name, fd, re) => {
   const t = await x.text();
   check(name, x.status === 400 && re.test(t), `${x.status} ${t.match(/role="alert">([^<]*)/)?.[1]}`);
 };
-await bad("no file", submitForm({ author: "A", agree: "yes" }, null), /Choose a Markdown/);
-await bad("not Markdown", submitForm({ author: "A", agree: "yes" }, { name: "x.pdf", text: "%PDF" }), /Markdown \(\.md\) files/);
-await bad("no authors", submitForm({ agree: "yes" }), /at least one author/);
-await bad("no agreement", submitForm({ author: "A" }), /agree to the terms/);
-r = await me.req("/submit", { method: "POST", body: submitForm({ author: "A", agree: "yes" }), origin: "https://evil.example" });
+await bad("no file", submitForm({ ...FIELDS, author: "A" }, null), /Choose a PDF/);
+await bad("not a PDF", submitForm({ ...FIELDS, author: "A" }, { name: "x.pdf", bytes: new TextEncoder().encode("# Markdown") }), /isn&#39;t a PDF/);
+await bad("truncated PDF", submitForm({ ...FIELDS, author: "A" }, { name: "x.pdf", bytes: PDF.slice(0, 200) }), /couldn&#39;t read that PDF/);
+await bad("JavaScript refused", submitForm({ ...FIELDS, author: "A" }, { name: "js.pdf", bytes: WITH_JS }), /contains JavaScript/);
+await bad("no title", submitForm({ ...FIELDS, title: "", author: "A" }), /Add a title/);
+await bad("no authors", submitForm({ ...FIELDS }), /at least one author/);
+await bad("no abstract", submitForm({ ...FIELDS, abstract: "", author: "A" }), /Add an abstract/);
+await bad("no agreement", submitForm({ ...FIELDS, agree: "", author: "A" }), /agree to the terms/);
+r = await me.req("/submit", { method: "POST", body: submitForm({ ...FIELDS, author: "A" }), origin: "https://evil.example" });
 check("cross-site post refused", r.status === 403, r.status);
 
 console.log("\n# publish");
-r = await me.req("/submit", { method: "POST", body: submitForm({ author: ["Claude Fable 5.2", "  ", `Ada ${RUN}`], agree: "yes" }) });
+r = await me.req("/submit", { method: "POST", body: submitForm({ ...FIELDS, author: ["Claude Fable 5.2", "  ", `Ada ${RUN}`] }) });
 const loc = r.headers.get("location") ?? "";
 check("published, redirected to /YYYY-MM-DD/N", r.status === 303 && /^\/\d{4}-\d{2}-\d{2}\/\d+$/.test(loc), `${r.status} ${loc}`);
 const id = loc.slice(1);
@@ -97,65 +111,51 @@ check("id is today's UTC date", id.startsWith(today + "/"), id);
 
 console.log("\n# manuscript page");
 const pg = await (await new Client().req(`/${id}`)).text();
-check("title from the file (# heading)", pg.includes(`SampleCipher-${RUN}`));
+check("title", pg.includes(`SampleCipher-${RUN}`) && pg.includes("$2^{61}$"));
 check("authors, blank ones dropped", pg.includes(`Claude Fable 5.2, Ada ${RUN}`));
 check("uploaded by, with the profile link", /Uploaded by <a class="ms-person" href="\/u\/[a-z2-7]{12}"/.test(pg));
-check("abstract from ## Abstract", pg.includes("$a_1 * b_2$"));
+check("abstract, math left for KaTeX", pg.includes("$a_1 * b_2$"));
 check("Cite as", pg.includes(`Open Cryptology ${id}`));
 check("BibTeX, one braced entry per author", pg.includes(`author       = {{Claude Fable 5.2} and {Ada ${RUN}}}`));
-check("links to the .md", pg.includes(`href="/${id}.md"`));
-check("Scholar tags", pg.includes('name="citation_title"') && (pg.match(/name="citation_author"/g) ?? []).length === 2);
-check("full text not on this page", !pg.includes("Seven rounds fall"));
+check("PDF button", pg.includes(`href="/${id}.pdf"`) && /PDF<\/a>/.test(pg));
+check("Scholar tags", pg.includes('name="citation_title"') && (pg.match(/name="citation_author"/g) ?? []).length === 2 && pg.includes('name="citation_pdf_url"'));
 
-console.log("\n# reading page and raw Markdown");
-const rd = await (await new Client().req(`/${id}.md`, { headers: { accept: "text/html" } })).text();
-check("reading page", rd.includes('class="rd"') && rd.includes("Seven rounds fall"));
-check("numbered sections + contents", rd.includes('id="introduction"') && rd.includes(">1 Introduction<") && rd.includes(">2 Methodology<"));
-check("title and abstract not repeated in the body", (rd.match(/SampleCipher-\d+<\/h1>/g) ?? []).length === 1 && !rd.includes('id="abstract"'));
-check("theorem block", rd.includes('<blockquote class="thm">'));
-check("math left intact", rd.includes("$a_1 * b_2$") && rd.includes("$2^{-18}$"));
-check("reference numbered and linked", /footnote-ref"><a href="#fn1" id="fnref1">\[1\]<\/a>/.test(rd) && rd.includes('id="references"'));
-check("ePrint id linked", rd.includes('<a href="/2019/256">ePrint 2019/256</a>'));
-check("no raw HTML", !rd.includes("<script>alert") && rd.includes("&lt;script&gt;"));
-check("table", rd.includes("<table>"));
-check("uploaded by on the reading page", rd.includes("Uploaded by"));
-const raw = await new Client().req(`/${id}.md`, { headers: { accept: "*/*" } });
-check("agents get the raw Markdown", raw.headers.get("content-type")?.startsWith("text/markdown") && (await raw.text()) === MD, raw.headers.get("content-type"));
-const dl = await new Client().req(`/${id}.md?download`, { headers: { accept: "text/html" } });
-check("download", /attachment/.test(dl.headers.get("content-disposition") ?? ""), dl.headers.get("content-disposition"));
+console.log("\n# the PDF");
+const file = await new Client().req(`/${id}.pdf`);
+const got = new Uint8Array(await file.arrayBuffer());
+check("served as application/pdf, inline", file.headers.get("content-type") === "application/pdf" && /^inline;/.test(file.headers.get("content-disposition") ?? ""), file.headers.get("content-type"));
+check("same bytes", got.length === PDF.length && got.every((b, i) => b === PDF[i]), `${got.length} vs ${PDF.length}`);
+const etag = file.headers.get("etag");
+check("304 on a matching ETag", !!etag && (await new Client().req(`/${id}.pdf`, { headers: { "if-none-match": etag } })).status === 304);
+
+console.log("\n# attachments are fine now");
+r = await me.req("/submit", { method: "POST", body: submitForm({ ...FIELDS, title: "With an attachment", author: "B" }, { name: "att.pdf", bytes: WITH_ATTACHMENT }) });
+check("PDF with an embedded file is published", r.status === 303, `${r.status} ${(await r.text()).match(/role="alert">([^<]*)/)?.[1] ?? ""}`);
+const id2 = (r.headers.get("location") ?? "").slice(1);
+check("next number the same day", id2 === `${today}/${Number(id.split("/")[1]) + 1}`, `${id} then ${id2}`);
 
 console.log("\n# list and profile");
 const list = await (await new Client().req("/manuscripts")).text();
 check("in the list", list.includes(`href="/${id}"`) && list.includes(`Ada ${RUN}`));
 const prof = pg.match(/href="(\/u\/[a-z2-7]{12})"/)?.[1];
-const pp = await (await new Client().req(prof)).text();
+const pp = prof ? await (await new Client().req(prof)).text() : "";
 check("on the uploader's profile", pp.includes(`href="/${id}"`) && pp.includes(`ms${RUN}`));
-
-console.log("\n# numbering");
-r = await me.req("/submit", { method: "POST", body: submitForm({ author: "B", title: "Second", abstract: "Two.", agree: "yes" }, { name: "b.md", text: "Just text." }) });
-const id2 = (r.headers.get("location") ?? "").slice(1);
-check("next number the same day", id2 === `${today}/${Number(id.split("/")[1]) + 1}`, `${id} then ${id2}`);
-check("form fields win over the file", (await (await new Client().req(`/${id2}`)).text()).includes(">Second<"));
 
 console.log("\n# removal");
 r = await me.req("/manuscripts/remove", { method: "POST", body: new URLSearchParams({ id }), headers: { "content-type": "application/x-www-form-urlencoded" } });
 check("members can't remove", r.status === 403, r.status);
 const m = new Client();
 await m.login(`maint${RUN}`, 4242);
-r = await m.req("/manuscripts/remove", { method: "POST", body: new URLSearchParams({ id: `https://opencryptology.org/${id}` }), headers: { "content-type": "application/x-www-form-urlencoded" } });
+r = await m.req("/manuscripts/remove", { method: "POST", body: new URLSearchParams({ id: `https://opencryptology.org/${id}.pdf` }), headers: { "content-type": "application/x-www-form-urlencoded" } });
 check("maintainer removes (link accepted)", r.status === 200, r.status);
 check("page is gone (410)", (await new Client().req(`/${id}`)).status === 410);
-check(".md is gone (410)", (await new Client().req(`/${id}.md`)).status === 410);
+check("PDF is gone (410)", (await new Client().req(`/${id}.pdf`)).status === 410);
 check("out of the list", !(await (await new Client().req("/manuscripts")).text()).includes(`href="/${id}"`));
 
 console.log("\n# other pages");
 check("terms", /Acceptable use/.test(await (await new Client().req("/terms")).text()));
-const guide = await (await new Client().req("/manuscripts/format")).text();
-check("format guide, with live examples", guide.includes("How to format a manuscript") && guide.includes('<blockquote class="thm">') && guide.includes('<a href="/2019/256">'));
-const tpl = await new Client().req("/manuscripts/template.md");
-check("template", tpl.headers.get("content-type")?.startsWith("text/markdown") && /^# /.test(await tpl.text()), tpl.headers.get("content-type"));
-check("submit form links the guide", (await (await me.req("/submit")).text()).includes('href="/manuscripts/format"'));
 check("unknown id 404", (await new Client().req(`/${today}/9999`)).status === 404);
+check(".md is not a manuscript path any more", (await new Client().req(`/${id2}.md`)).status === 404);
 const ep = await new Client().req("/2024/1");
 check("ePrint ids still work", ep.status === 301 && ep.headers.get("location") === "/2024/001", `${ep.status} ${ep.headers.get("location")}`);
 

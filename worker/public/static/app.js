@@ -176,8 +176,8 @@
     }
   }
 
-  // Submit an original manuscript: "+ Add author" / remove rows, and fill the title and abstract
-  // from the chosen Markdown file (its first "# " heading and its "## Abstract" section).
+  // Submit an original manuscript: "+ Add author" / remove rows, and the chosen PDF's name in the
+  // drop zone.
   function setupManuscriptForm() {
     var list = document.querySelector(".sb-authors");
     var add = document.querySelector(".sb-add");
@@ -214,21 +214,7 @@
     file.addEventListener("change", function () {
       var f = file.files && file.files[0];
       var name = drop.querySelector(".sb-name");
-      if (name) name.textContent = f ? f.name : "Drop a Markdown file here";
-      if (!f || !/\.(md|markdown)$/i.test(f.name)) return;
-      f.text().then(function (text) {
-        var lines = text.replace(/\r\n?/g, "\n").split("\n");
-        var title = document.getElementById("sb-title");
-        var abs = document.getElementById("sb-abstract");
-        var h = lines.find(function (l) { return /^#\s+\S/.test(l); });
-        if (h && title && !title.value.trim()) title.value = h.replace(/^#\s+/, "").trim();
-        var a = lines.findIndex(function (l) { return /^##\s+abstract\s*$/i.test(l); });
-        if (a !== -1 && abs && !abs.value.trim()) {
-          var out = [];
-          for (var i = a + 1; i < lines.length && !/^#{1,2}\s/.test(lines[i]); i++) out.push(lines[i]);
-          abs.value = out.join("\n").trim();
-        }
-      });
+      if (name) name.textContent = f ? f.name : "Drop a PDF here";
     });
   }
 

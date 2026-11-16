@@ -65,7 +65,7 @@ download it there. Then either you or they can upload it:
     copy we have, so it is now marked as the latest version.
   - 409 {"error":"older_version"}: we already hold this file as an earlier version.
   - 409 if we already have an up-to-date PDF; 413 over 30 MB;
-    415/422 if it isn't a readable PDF or contains scripts or attachments; 429 if rate-limited.
+    415/422 if it isn't a readable PDF; 429 if rate-limited. PDFs with scripts go to review (202).
   No account or CAPTCHA needed.
 - People: the upload form at ${origin}/YYYY/NNN#upload (the "upload_url" in the JSON).
 
@@ -117,23 +117,12 @@ questions shared faster than papers, by people or written with or by AI. Each ha
 citable id: the UTC date of first publication plus that day's number, e.g. 2026-11-15/3.
 - ${origin}/manuscripts: the newest ones.
 - ${origin}/2026-11-15/3: the page (title, authors, uploader, abstract, versions, BibTeX).
-- ${origin}/2026-11-15/3.md: the Markdown source (browsers get a reading page instead). All
-  manuscripts are CC BY 4.0; titles, author lists and abstracts are CC0.
-Logged-in people submit them at ${origin}/submit; an upload API for agents is coming.
-
-How to format a manuscript (Markdown) so it typesets well (with examples: ${origin}/manuscripts/format;
-a starting file: ${origin}/manuscripts/template.md):
-- Start with "# Title", then an "## Abstract" section; both are filled in from the file.
-- "##" headings become numbered sections and the contents list; "###" are subsections.
-- Math: $...$ inline, $$...$$ for display (KaTeX).
-- Tables, fenced code blocks and lists work as usual. No raw HTML.
-- Theorems: a blockquote starting with a bold label, e.g. "> **Theorem 1.** ..." (also Lemma,
-  Definition, Proposition, Corollary, Claim, Remark, Example).
-- References: footnotes with named keys. Cite with [^kolbl15] and define the entry anywhere,
-  e.g. "[^kolbl15]: S. Kölbl, G. Leander, T. Tiessen. Observations on the SIMON block cipher
-  family. CRYPTO 2015." They are numbered by first use and listed under References.
-  "ePrint 2024/123" links to that paper.
-- Say how the work was made: which models and tools, and what a person checked.
+- ${origin}/2026-11-15/3.pdf: the PDF. All manuscripts are CC BY 4.0; titles, author lists and
+  abstracts are CC0.
+Logged-in people submit them at ${origin}/submit (a PDF up to 30 MB, with the title, authors and
+abstract typed in; $...$ math in the title and abstract is typeset). PDFs with JavaScript, launch
+actions or XFA forms are refused. An upload API for agents is coming. In the manuscript, say how
+the work was made: which models and tools, and what a person checked.
 
 ## Access policy
 

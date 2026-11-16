@@ -97,7 +97,7 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
   if (rawActive && !report.active) report.active = rawActive;
   if (report.active) {
-    // Active content (scripts, attachments): never auto-published, but kept for a person to review.
+    // Active content (scripts, launch actions, XFA): never auto-published, but kept for a person to review.
     const full = await reviewQueueFull(env, ip);
     if (full) return j(429, { error: "review_queue_full", id, check: report, message: full });
     await queueForReview(env, url.origin, { paperId: id, body: buf, size: buf.byteLength, sha, checks: JSON.stringify({ ...report, ok: false }), ip, uploader: "api" });

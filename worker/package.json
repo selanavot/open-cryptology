@@ -10,14 +10,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261110.1",
-    "@types/markdown-it": "^14.2.0",
-    "@types/markdown-it-footnote": "^3.0.4",
     "typescript": "5.9.3",
     "wrangler": "4.160.0"
   },
   "dependencies": {
-    "markdown-it": "^14.3.3",
-    "markdown-it-footnote": "^4.0.0",
     "unpdf": "1.9.1"
   }
 }

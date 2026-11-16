@@ -136,7 +136,7 @@ const UPLOAD_NOTICES: Record<string, { ok: boolean; text: string }> = {
   no_file: { ok: false, text: "Please choose a PDF file to upload." },
   empty: { ok: false, text: "That file is empty." },
   not_pdf: { ok: false, text: "That file doesn’t look like a PDF." },
-  bad_pdf: { ok: false, text: "That PDF couldn’t be accepted: it looks truncated, or contains scripts or embedded files." },
+  bad_pdf: { ok: false, text: "That PDF couldn’t be accepted: it looks truncated or damaged." },
 };
 
 function uploadNotice(code: string | null): Html | "" {
@@ -466,7 +466,7 @@ export async function handleUpload(
   if (await pendingDuplicate(env, id, sha)) return thanks(true);
 
   // Instant verification: page 1-2 text must contain the title and an author surname.
-  // PDFs with active content (scripts, attachments) are never auto-published: they go to review.
+  // PDFs with active content (scripts, launch actions, XFA) are never auto-published: they go to review.
   const rawActive = activeContentScan(buf);
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
   if (rawActive && !report.active) report.active = rawActive;
