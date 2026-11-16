@@ -302,6 +302,7 @@ function submitPage(env: Env, f: Form, status = 200): Response {
   return page(env, {
     title: "Submit an original manuscript",
     status,
+    katex: true, // the abstract preview
     ...NO_STORE,
     body: html`<div class="sb">
   <h1 class="ms-title">Submit an original manuscript</h1>
@@ -320,8 +321,12 @@ function submitPage(env: Env, f: Form, status = 200): Response {
     <div class="sb-authors">${authorRows}</div>
     <div><button type="button" class="sb-add btn btn-sm btn-link" hidden>+ Add author</button></div>
     <p class="form-hint text-muted">People or models. You're shown separately as the uploader.</p>
-    <label class="form-label" for="sb-abstract">Abstract</label>
+    <div class="sb-field-head">
+      <label class="form-label" for="sb-abstract">Abstract</label>
+      <span class="sb-tabs" hidden><button type="button" class="sb-tab" data-tab="write" aria-pressed="true">Write</button><button type="button" class="sb-tab" data-tab="preview" aria-pressed="false">Preview</button></span>
+    </div>
     <textarea class="form-control" id="sb-abstract" name="abstract" rows="6" maxlength="5000" required>${f.abstract}</textarea>
+    <div class="sb-preview paper-abstract" id="sb-abstract-preview" hidden></div>
     <p class="form-hint text-muted">LaTeX math between $...$ is typeset.</p>
     <label class="acct-check ms-license"><input type="checkbox" name="agree" value="yes" required> I agree to the <a href="/terms">terms</a> and license this manuscript under <a href="${LICENSE_URL}">CC BY 4.0</a>.</label>
     <div><button type="submit" class="btn btn-outline-dark hm-primary">Publish</button></div>
