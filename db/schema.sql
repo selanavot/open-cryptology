@@ -181,7 +181,8 @@ CREATE TABLE IF NOT EXISTS manuscripts (
 CREATE INDEX IF NOT EXISTS manuscripts_uploader ON manuscripts(uploader_id, created_at);
 CREATE INDEX IF NOT EXISTS manuscripts_created ON manuscripts(created_at);
 
--- Every version of a manuscript (v1, v2, ...). Markdown is kept here; PDFs (later) in R2.
+-- Every version of a manuscript (v1, v2, ...). PDFs live in R2 (file_key, under manuscripts/);
+-- body is for Markdown manuscripts (parked on the manuscripts/markdown branch).
 CREATE TABLE IF NOT EXISTS manuscript_versions (
   manuscript_id     TEXT NOT NULL,
   v                 INTEGER NOT NULL,
