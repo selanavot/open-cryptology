@@ -3,7 +3,7 @@ import { highlighted, html, stripMarks, type Html } from "./html";
 import { categoryBadge, hasTex, messagePage, page } from "./layout";
 import { missingCard, yearStats } from "./years";
 import { ogImage, siteOrigin } from "./seo";
-import { manuscriptsAtAGlance, searchManuscripts } from "./manuscripts";
+import { searchManuscripts } from "./manuscripts";
 
 export const day = (iso: string | null | undefined): string => (iso ? iso.slice(0, 10) : "");
 export const fmtInt = (n: number): string => n.toLocaleString("en-US");
@@ -42,16 +42,6 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 
 // ---------------------------------------------------------------------------- home
 
-/** Small line icons for the homepage tiles (stroke follows the text color). */
-function icon(name: "file" | "archive" | "mail"): Html {
-  const d = {
-    file: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
-    archive: "M4 5h16v4H4zM5 9v10h14V9M10 13h4",
-    mail: "M4 6h16v12H4zM4 7l8 6 8-6",
-  }[name];
-  return html`<svg class="pt-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
-}
-
 /** Papers per year, oldest to newest, as a small bar chart. */
 function yearBars(years: { year: number; total: number }[]): Html {
   const ys = [...years].sort((a, b) => a.year - b.year);
@@ -59,14 +49,14 @@ function yearBars(years: { year: number; total: number }[]): Html {
   const max = Math.max(...ys.map((y) => y.total));
   const w = 6, gap = 2, h = 48;
   const width = ys.length * (w + gap) - gap;
-  return html`<figure class="pt-bars"><svg viewBox="0 0 ${width} ${h}" preserveAspectRatio="none" role="img" aria-label="ePrint papers per year, ${ys[0].year} to ${ys[ys.length - 1].year}">
+  return html`<figure class="hm-bars"><svg viewBox="0 0 ${width} ${h}" preserveAspectRatio="none" role="img" aria-label="ePrint papers per year, ${ys[0].year} to ${ys[ys.length - 1].year}">
 ${ys.map((y, i) => { const bh = Math.max(1, Math.round((y.total / max) * h)); return html`<rect x="${i * (w + gap)}" y="${h - bh}" width="${w}" height="${bh}" rx="1"><title>${y.year}: ${fmtInt(y.total)} papers</title></rect>`; })}
 </svg><figcaption><span>${ys[0].year}</span><span>${ys[ys.length - 1].year}</span></figcaption></figure>`;
 }
 
 // The letter is Sela's (drafted together on 2026-11-16); don't reword it without asking.
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const [ms, years] = await Promise.all([manuscriptsAtAGlance(env, 2), yearStats(env, url.origin)]);
+  const years = await yearStats(env, url.origin);
   const papers = years.reduce((n, y) => n + y.total, 0);
   const body = html`<div class="hm">
   <article class="home-letter hm-letter">
@@ -80,26 +70,22 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     blocks them from fetching PDFs. Our unofficial, non-commercial mirror gives them access.</p>
     <p><strong>What’s next.</strong> One place for everything known about each paper: discussion,
     links between papers and the protocols they build on, and known attacks. Ideas welcome!</p>
-    <p>Something wrong or missing? Want to help? Get in touch!</p>
   </article>
-  <div class="pt-col">
-    <section class="pt">
-      <h2><a class="pt-link" href="/manuscripts">${icon("file")} Original manuscripts</a></h2>
-      <p class="pt-sub">Post anything, published instantly</p>
-      ${ms.latest.length ? html`<ul class="pt-titles">${ms.latest.map((m) => html`<li class="tex">${m.title}</li>`)}</ul>` : ""}
-      <a class="pt-action" href="/submit">Submit a manuscript</a>
-    </section>
-    <section class="pt">
-      <h2><a class="pt-link" href="/eprint">${icon("archive")} ePrint mirror</a></h2>
-      <p class="pt-sub">${fmtInt(papers)} papers, readable by agents</p>
+  <nav class="hm-nav" aria-label="Open Cryptology">
+    <a class="hm-item" href="/manuscripts">
+      <span class="hm-item-title">Original manuscripts</span>
+      <span class="hm-item-sub">Post anything, published instantly</span>
+    </a>
+    <a class="hm-item" href="/eprint">
+      <span class="hm-item-title">ePrint mirror</span>
+      <span class="hm-item-sub">${fmtInt(papers)} papers, readable by agents</span>
       ${yearBars(years)}
-    </section>
-    <section class="pt">
-      <h2><a class="pt-link" href="/contact">${icon("mail")} Get in touch</a></h2>
-      <p class="pt-sub">Something wrong or missing? Want to help?</p>
-      <a class="pt-action" href="${env.ISSUES_URL}">Open an issue</a>
-    </section>
-  </div>
+    </a>
+    <a class="hm-item" href="/contact">
+      <span class="hm-item-title">Get in touch</span>
+      <span class="hm-item-sub">Something wrong or missing? Want to help?</span>
+    </a>
+  </nav>
 </div>`;
   return page(env, {
     title: env.SITE_NAME,
