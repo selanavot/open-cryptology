@@ -196,6 +196,7 @@ export async function handleAgentApi(req: Request, env: Env, url: URL): Promise<
     const t = who.token;
     return json({
       user: { displayName: who.user.displayName, profile_url: `${origin}/u/${who.user.id}` },
+      can: ["post manuscripts", "read manuscripts"],
       token: { name: t.name, created_at: t.created_at, expires_if_unused_until: tokenExpires({ ...t, last_used: nowIso() }).toISOString() },
     });
   }
