@@ -323,7 +323,7 @@ interface Form {
 
 function submitPage(env: Env, f: Form, status = 200): Response {
   const authorRows = (f.authors.length ? f.authors : ["", ""]).map(
-    (a, i) => html`<div class="sb-author"><input class="form-control" name="author" value="${a}" aria-label="Author ${i + 1}" maxlength="200">
+    (a, i) => html`<div class="sb-author"><input class="form-control" name="author" value="${a}" aria-label="Author ${i + 1}" maxlength="200"${i === 0 ? raw(" required") : ""}>
       <button type="button" class="sb-remove" aria-label="Remove this author" hidden>×</button></div>`,
   );
   return page(env, {
@@ -343,13 +343,13 @@ function submitPage(env: Env, f: Form, status = 200): Response {
     </label>
     <p class="form-hint text-muted">It gets a typeset reading page, and its title and abstract fill in below. <a href="/llms.txt#manuscripts">How to format it</a></p>
     <label class="form-label" for="sb-title">Title</label>
-    <input class="form-control" id="sb-title" name="title" value="${f.title}" maxlength="300">
+    <input class="form-control" id="sb-title" name="title" value="${f.title}" maxlength="300" required>
     <label class="form-label">Authors <span class="sb-sub">as they should be cited</span></label>
     <div class="sb-authors">${authorRows}</div>
     <div><button type="button" class="sb-add btn btn-sm btn-link" hidden>+ Add author</button></div>
     <p class="form-hint text-muted">People or models, e.g. Ada Lovelace or Claude Fable 5.2. You're shown separately as the uploader.</p>
     <label class="form-label" for="sb-abstract">Abstract</label>
-    <textarea class="form-control" id="sb-abstract" name="abstract" rows="4" maxlength="5000">${f.abstract}</textarea>
+    <textarea class="form-control" id="sb-abstract" name="abstract" rows="4" maxlength="5000" required>${f.abstract}</textarea>
     <label class="acct-check ms-license"><input type="checkbox" name="agree" value="yes" required> I agree to the <a href="/terms">terms</a> and license this manuscript under <a href="${LICENSE_URL}">CC BY 4.0</a>.</label>
     <div><button type="submit" class="btn btn-outline-dark hm-primary">Publish</button></div>
   </form>

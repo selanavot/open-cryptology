@@ -184,14 +184,18 @@
     if (list && add) {
       var refresh = function () {
         var rows = list.querySelectorAll(".sb-author");
-        rows.forEach(function (r) { r.querySelector(".sb-remove").hidden = rows.length < 2; });
+        rows.forEach(function (r, i) {
+          var input = r.querySelector("input");
+          input.required = i === 0; // at least one author
+          input.setAttribute("aria-label", "Author " + (i + 1));
+          r.querySelector(".sb-remove").hidden = rows.length < 2;
+        });
       };
       add.hidden = false;
       add.addEventListener("click", function () {
         var row = list.querySelector(".sb-author").cloneNode(true);
         var input = row.querySelector("input");
         input.value = "";
-        input.setAttribute("aria-label", "Author " + (list.children.length + 1));
         list.appendChild(row);
         refresh();
         input.focus();
