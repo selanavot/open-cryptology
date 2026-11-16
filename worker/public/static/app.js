@@ -163,6 +163,7 @@
   function setupAccountLink() {
     var a = document.querySelector(".nav-account");
     if (!a) return;
+    var menu = document.querySelector(".nav-login");
     var m = document.cookie.match(/(?:^|;\s*)oc_login=([^;]+)/);
     var info = null;
     try { info = m && JSON.parse(decodeURIComponent(m[1])); } catch (e) { /* ignore a malformed cookie */ }
@@ -172,8 +173,10 @@
       a.title = info.n;
       a.setAttribute("aria-label", "Your account (" + info.n + ")");
       a.appendChild(avatarEl(info.n, info.a));
+      if (menu) menu.remove();
     } else if (location.pathname !== "/account") {
       a.href = "/account?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+      if (menu) menu.firstElementChild.href = a.href;
     }
   }
 

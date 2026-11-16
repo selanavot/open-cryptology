@@ -118,6 +118,8 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
 .nav-burger span { display: block; width: 28px; height: 2px; margin: 5px 0; background: var(--nav-text); }
 .nav-toggle:focus-visible + .nav-burger { outline: 2px solid var(--nav-text); outline-offset: 2px; }
 
+/* "Log in" sits in the top bar on wide screens and in the ☰ menu on phones (a signed-in avatar stays in the bar) */
+.nav-links .nav-login { display: none; }
 .nav-account { margin-left: 1.5rem; padding: .5rem 0; font-size: 1.1rem; color: var(--nav-text); white-space: nowrap; }
 .nav-account:visited { color: var(--nav-text); }
 .nav-account:hover { color: var(--nav-hover); text-decoration: underline; text-underline-offset: 4px; }
@@ -149,6 +151,8 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
   .site-name { order: 1; flex: 1; text-align: center; justify-content: center; }
   .site-logo { width: 2.1rem; height: 2.1rem; }
   .nav-account { order: 2; margin-left: 0; padding: .5rem .25rem; font-size: 1rem; }
+  .nav-account:not(.has-avatar) { display: none; }
+  .nav-links .nav-login { display: block; }
   .nav-search { order: 3; margin-left: 0; }
   .nav-links {
     order: 4; display: none; flex-basis: 100%; flex-direction: column;
