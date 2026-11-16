@@ -517,7 +517,7 @@ ol.year-list .badge { margin-left: .35rem; }
 .ms-person { color: var(--text); font-weight: 600; }
 .ms-person:hover { color: var(--link-hover); }
 .avatar-xs { width: 1.25rem; height: 1.25rem; font-size: .55rem; box-shadow: none; margin-right: .35rem; }
-.ms-list-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.ms-list-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .ms-day { margin: 1.5rem 0 .4rem; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
 .ms-list { list-style: none; padding: 0; margin: 0; }
 .ms-row { padding: .65rem 0; border-top: 1px solid #f0eee8; }

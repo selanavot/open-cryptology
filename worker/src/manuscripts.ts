@@ -249,12 +249,11 @@ async function listPage(env: Env): Promise<Response> {
   for (const [d, rows] of byDay) groups.push(html`<h5 class="ms-day">${dateLong(d)}</h5>${await rowsHtml(env, rows)}`);
   return page(env, {
     title: "Original manuscripts",
-    description: "Results, notes and open questions in cryptography, shared fast. Citable and versioned.",
+    description: "Original manuscripts posted on Open Cryptology, newest first.",
     katex: true,
     cache: "public, max-age=120",
     body: html`<div class="ms-list-head">
-  <div><h1 class="ms-title">Original manuscripts</h1>
-  <p class="text-muted">Results, notes and open questions in cryptography, shared fast. The authors line says who wrote each one, people or models.</p></div>
+  <h1 class="ms-title">Original manuscripts</h1>
   <a class="btn btn-outline-dark" href="/submit">Submit an original manuscript</a>
 </div>
 ${groups.length ? groups : html`<p class="text-muted mt-3">None yet.</p>`}`,
@@ -306,7 +305,7 @@ function submitPage(env: Env, f: Form, status = 200): Response {
     ...NO_STORE,
     body: html`<div class="sb">
   <h1 class="ms-title">Submit an original manuscript</h1>
-  <p class="text-muted">Published right away at a permanent, citable link.</p>
+  <p class="text-muted">Published right away, without review.</p>
   ${f.err && html`<p class="settings-notice settings-notice-err" role="alert">${f.err}</p>`}
   <form class="ms-form" method="post" action="/submit" enctype="multipart/form-data">
     <label class="form-label" for="sb-file">Manuscript</label>
@@ -320,10 +319,10 @@ function submitPage(env: Env, f: Form, status = 200): Response {
     <label class="form-label">Authors <span class="sb-sub">as they should be cited</span></label>
     <div class="sb-authors">${authorRows}</div>
     <div><button type="button" class="sb-add btn btn-sm btn-link" hidden>+ Add author</button></div>
-    <p class="form-hint text-muted">People or models, e.g. Ada Lovelace or Claude Fable 5.2. You're shown separately as the uploader.</p>
+    <p class="form-hint text-muted">People or models. You're shown separately as the uploader.</p>
     <label class="form-label" for="sb-abstract">Abstract</label>
     <textarea class="form-control" id="sb-abstract" name="abstract" rows="6" maxlength="5000" required>${f.abstract}</textarea>
-    <p class="form-hint text-muted">Plain text; LaTeX math between $...$ is typeset.</p>
+    <p class="form-hint text-muted">LaTeX math between $...$ is typeset.</p>
     <label class="acct-check ms-license"><input type="checkbox" name="agree" value="yes" required> I agree to the <a href="/terms">terms</a> and license this manuscript under <a href="${LICENSE_URL}">CC BY 4.0</a>.</label>
     <div><button type="submit" class="btn btn-outline-dark hm-primary">Publish</button></div>
   </form>
@@ -390,9 +389,9 @@ function termsPage(env: Env): Response {
     cache: "public, max-age=3600",
     body: html`<article class="tou">
   <h1 class="ms-title">Terms of use</h1>
-  <p class="text-muted">Last updated 15 November 2026.</p>
+  <p class="text-muted">Last updated 16 November 2026.</p>
   <p>Open Cryptology is a free, non-commercial site run by Sela Navot (“we”). By using it you agree to these terms.
-  Original manuscripts are published as soon as they're posted, without review, so these terms are how we keep the site useful and safe.</p>
+  Original manuscripts are published without review.</p>
 
   <h2>Licenses for original manuscripts</h2>
   <ul>
@@ -402,8 +401,7 @@ function termsPage(env: Env): Response {
     copy, convert, index, display and distribute each version, in any format and through any service, now and later. This doesn't transfer
     your copyright.</li>
     <li><strong>Titles, author lists and abstracts</strong> are dedicated to the public domain
-    (<a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>), so anyone, including search engines and AI agents, may reuse
-    them freely.</li>
+    (<a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>).</li>
     <li><strong>You confirm you have the right to grant these licenses</strong>, including for anything produced with AI tools (under those
     tools' terms), and that posting doesn't break an agreement with a publisher, employer or funder.</li>
   </ul>
@@ -414,7 +412,7 @@ function termsPage(env: Env): Response {
     <li>anything illegal, or anything that infringes someone else's copyright or other rights;</li>
     <li>other people's private information, credentials, keys or leaked data;</li>
     <li>malware, or working exploits against specific deployed systems whose owners haven't had a fair chance to fix them
-    (attacks on algorithms, protocols and published constructions are what this site is for);</li>
+    (attacks on algorithms, protocols and published constructions are fine);</li>
     <li>harassment, threats, hate, or impersonating a person or organization;</li>
     <li>naming real people as authors without their consent;</li>
     <li>spam, advertising, or content that has nothing to do with cryptography;</li>
@@ -440,7 +438,7 @@ function termsPage(env: Env): Response {
   licenses already granted stay as they were.</p>
 
   <h2>No warranty</h2>
-  <p>The site and everything on it are provided as is. Manuscripts aren't reviewed; read them critically. To the extent the law allows,
+  <p>The site and everything on it are provided as is. Manuscripts aren't reviewed. To the extent the law allows,
   we aren't liable for losses from using the site.</p>
 
   <p class="text-muted small">See also the <a href="/privacy">privacy page</a>.</p>

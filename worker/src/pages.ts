@@ -81,7 +81,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
   return page(env, {
     title: env.SITE_NAME,
     description:
-      "Unofficial mirror of the Cryptology ePrint Archive: fast search and easy access to papers for humans and AI assistants.",
+      "An unofficial mirror of the Cryptology ePrint Archive, with original manuscripts.",
     body,
     canonical: `${siteOrigin(env, url)}/`,
     ogImage: ogImage(siteOrigin(env, url)),

@@ -11,8 +11,8 @@ export function privacyPage(env: Env): Response {
     cache: "public, max-age=3600",
     body: html`<section class="message privacy">
   <h3>Privacy</h3>
-  <p>${env.SITE_NAME} is a non-commercial site run by one person. It keeps as little about you as it
-  can, and it doesn't sell or share anything with advertisers.</p>
+  <p>${env.SITE_NAME} is a non-commercial site run by one person. Nothing is sold or shared with
+  advertisers.</p>
 
   <h4>Reading the site</h4>
   <p>You don't need an account to read or download papers. The site uses Cloudflare Web Analytics,
@@ -54,7 +54,7 @@ export function privacyPage(env: Env): Response {
   and sessions right away. What you posted stays, credited to “deleted user”.</p>
 
   <p>Questions: use the <a href="/#contact">contact form</a>.</p>
-  <p class="text-muted small">Last updated 14 November 2026.</p>
+  <p class="text-muted small">Last updated 16 November 2026.</p>
 </section>`,
   });
 }
