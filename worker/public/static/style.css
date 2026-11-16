@@ -290,6 +290,28 @@ div.eprintCard p { margin-top: .5rem; margin-bottom: .5rem; }
 .search-help { padding: .5rem; margin-top: 1rem; color: #495057; }
 .search-help ul { padding-left: 1.2rem; margin: 0; }
 .search-results-col { min-height: 60vh; }
+.search-help > summary { list-style: none; cursor: default; margin-bottom: .25rem; }
+.search-help > summary::-webkit-details-marker { display: none; }
+/* phones and tablets: a compact form (query; sort + button on one row), 16px fields so iPhones
+   don't zoom in, and the tips behind a tap */
+@media (max-width: 991.98px) {
+  .search-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; align-items: center; }
+  .search-form label[for="anything"], .search-form #anything { grid-column: 1 / -1; }
+  .search-form label[for="anything"] { margin: 0; }
+  .search-form label[for="sort"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .search-form > div { margin: 0 !important; }
+  .search-form .form-control, .search-form .form-select { font-size: 1rem; padding-top: .45rem; padding-bottom: .45rem; }
+  .search-form .btn { font-size: 1rem; padding: .45rem 1rem; }
+  .search-help { margin-top: 0; }
+  .search-help > summary { cursor: pointer; }
+  .search-help > summary::after { content: " \25B8"; color: var(--muted); }
+  .search-help[open] > summary::after { content: " \25BE"; }
+}
+/* phones: thousands of tiny squares can't be tapped; the year page lists every paper below anyway */
+@media (max-width: 575.98px) {
+  .year-page .paper-grid, .year-page .grid-legend, .year-page .grid-hint,
+  .home-grid .paper-grid, .home-grid .grid-legend { display: none; }
+}
 .results-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1rem; margin: 1rem 0 0 1.5rem; }
 .results-bar .results-h { margin: 0; }
 .search-results-col > .results-h { margin: 1rem 0 0 1.5rem; }
@@ -323,6 +345,11 @@ span.authorName { font-style: italic; }
 .paper-abstract { white-space: pre-wrap; overflow-wrap: break-word; }
 .paper-abstract .katex-display { margin: .4em 0; overflow-x: auto; overflow-y: hidden; white-space: normal; }
 .paper-meta { margin-top: 1.5rem; overflow-wrap: anywhere; }
+/* phones: the metadata column sits below the abstract, so repeat the PDF and BibTeX links under the authors */
+.paper-quick { display: none; }
+@media (max-width: 767.98px) {
+  .paper-quick { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; margin: .9rem 0 0; }
+}
 @media (min-width: 768px) { .paper-meta { margin-top: 0; } }
 #metadata dt { margin-top: 1rem; }
 #metadata dt + dd { margin-top: .75rem; }

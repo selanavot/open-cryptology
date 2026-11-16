@@ -196,15 +196,15 @@ export async function searchPage(env: Env, url: URL): Promise<Response> {
       </select>
       <div class="mt-3"><button class="btn btn-outline-dark btn-sm" type="submit">Search</button></div>
     </form>
-    <div class="search-help small">
-      <p class="mb-1"><strong>Tips</strong></p>
+    <details class="search-help small" open>
+      <summary><strong>Tips</strong></summary>
       <ul>
         <li><code>"zero knowledge"</code> matches a phrase</li>
         <li><code>lattic*</code> matches a prefix</li>
         <li><code>author:boneh</code>, <code>title:snark</code> or <code>abstract:…</code> target one field</li>
         <li>an ID like <code>2024/123</code> goes straight to the paper</li>
       </ul>
-    </div>
+    </details>
   </div>
   <div class="search-results-col">
     ${!fts

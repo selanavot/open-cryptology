@@ -71,6 +71,12 @@
     });
   }
 
+  // Search page: on narrow screens the tips start folded, so results come first.
+  function foldSearchTips() {
+    var t = document.querySelector("details.search-help");
+    if (t && window.matchMedia && window.matchMedia("(max-width: 991.98px)").matches) t.open = false;
+  }
+
   function setupNavSearch() {
     var d = document.querySelector(".nav-search");
     if (!d) return;
@@ -274,6 +280,7 @@
   setupCopy();
   setupUpload();
   setupNavSearch();
+  foldSearchTips();
   setupNavMenu();
   setupManuscriptForm();
 })();

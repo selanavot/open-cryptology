@@ -47,6 +47,7 @@ export async function paperPage(
     </div>`}
     <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${title}</a></h3>
     ${authors.map((a, i) => html`<div class="author"><span class="authorName">${a}</span>${affs[i] && html`<span class="affiliation">, ${affs[i]}</span>`}</div>`)}
+    <p class="paper-quick">${pdfHref ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF${withdrawn ? " (withdrawn)" : ""}</a>` : ""}<a href="#bibtex">BibTeX</a><a href="${orig}" rel="noopener">ePrint ↗</a></p>
     ${pdfHref && !outdated ? uploadNotice(url.searchParams.get("upload")) : ""}
     ${(!pdfHref || outdated) && uploadForm(env, p, orig, uploadNotice(url.searchParams.get("upload")))}
     <h5 class="mt-3">Abstract</h5>
