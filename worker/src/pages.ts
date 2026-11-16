@@ -91,10 +91,11 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
 /** /eprint: what the mirror is, the newest ePrint papers, and the papers-by-year card. Paper pages
  *  keep their URLs (/2024/123). */
 export async function eprintPage(env: Env, url: URL): Promise<Response> {
-  const [{ card, gapsYear }, { latest }] = await Promise.all([missingCard(env, url.origin), homeData(env, 10)]);
-  const body = html`<div class="ep-head">
-  <h1 class="ms-title">ePrint papers</h1>
-  <p class="ep-lede">An unofficial, non-commercial mirror of the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>,
+  const { card, gapsYear } = await missingCard(env, url.origin);
+  const body = html`<h1 class="ms-title">ePrint papers</h1>
+<div class="home-side ep-side">${card}</div>
+<div class="ep-text">
+  <p>An unofficial, non-commercial mirror of the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>,
   readable by you and your AI agents.</p>
   <ul class="ep-points">
     <li><strong>New papers</strong> appear here within days of being accepted on ePrint; to post one,
@@ -103,22 +104,12 @@ export async function eprintPage(env: Env, url: URL): Promise<Response> {
     missing, download it from ePrint and upload it anonymously here.</li>
     <li><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the original. Please respect it.</li>
   </ul>
-</div>
-<div class="ep-grid">
-  <section>
-    <div class="hm-latest-head"><h2 class="ms-day">Newest ePrint papers</h2><a class="ms-more" href="/search">More →</a></div>
-    <ol class="ms-list">${latest.map((p) => html`<li class="ms-row"><div class="ms-row-main">
-      <a class="ms-row-title tex" href="/${p.id}">${p.title || "Untitled"}</a>${p.category ? html` ${categoryBadge(p.category)}` : ""}
-      <div class="ms-row-authors">${authorLine(parseAuthors(p.authors))}</div></div></li>`)}</ol>
-  </section>
-  <aside class="home-side ep-side">${card}</aside>
 </div>`;
   return page(env, {
     title: "ePrint papers",
     description: "An unofficial, non-commercial mirror of the Cryptology ePrint Archive: every paper, readable by people and AI agents.",
     body,
     canonical: `${siteOrigin(env, url)}/eprint`,
-    katex: hasTex(...latest.map((p) => p.title)),
     cache: "public, max-age=300",
   });
 }

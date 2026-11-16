@@ -557,18 +557,18 @@ ol.year-list .badge { margin-left: .35rem; }
 }
 .hm-letter { grid-area: letter; } .hm-latest { grid-area: latest; align-self: start; }
 .hm-buttons { display: flex; flex-wrap: wrap; gap: .5rem; margin: -.25rem 0 1.25rem; }
-.ep-points { max-width: 46rem; padding-left: 1.2rem; margin: 0 0 .5rem; line-height: 1.6; }
-.ep-points li { margin: .25rem 0; }
+
 .hm-latest-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 .hm-latest-head .ms-day { margin-top: .25rem; }
 .ms-more { font-size: .9rem; white-space: nowrap; }
 
-/* /eprint */
-.ep-lede { font-size: 1.05rem; line-height: 1.6; max-width: 46rem; margin: 0 0 .5rem; }
-.ep-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
-@media (min-width: 992px) { .ep-grid { grid-template-columns: minmax(0, 1fr) 22rem; gap: 3rem; } }
-.ep-grid .ms-row .badge { margin-left: .35rem; vertical-align: middle; }
-.ep-side .eprintCardHeader { margin-top: 1.5rem; }
+/* /eprint: the papers-by-year card, then what the mirror is */
+.ep-side { max-width: 36rem; }
+.ep-side .eprintCardHeader { margin-top: .75rem; }
+.ep-text { max-width: 46rem; margin-top: 1.5rem; line-height: 1.6; }
+.ep-text p { margin: 0 0 .5rem; }
+.ep-points { padding-left: 1.2rem; margin: 0; }
+.ep-points li { margin: .25rem 0; }
 
 /* search: matching manuscripts above the ePrint results */
 .search-ms { margin: 0 0 1.5rem; }
