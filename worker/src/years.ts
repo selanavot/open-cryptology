@@ -97,7 +97,7 @@ function statOf(year: number, cells: Cell[]): YearStat {
   return s;
 }
 
-async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
+export async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
   return cached(origin, YEARS_KEY, 300, async () => {
     const r = await env.DB.prepare(
       `SELECT year, count(*) AS total, sum(pdf_key IS NOT NULL) AS have,

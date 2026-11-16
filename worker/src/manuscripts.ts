@@ -260,6 +260,18 @@ ${groups.length ? groups : html`<p class="text-muted mt-3">None yet.</p>`}`,
   });
 }
 
+/** How many manuscripts there are, and the newest few titles (homepage tile). */
+export async function manuscriptsAtAGlance(env: Env, limit: number): Promise<{ count: number; latest: { id: string; title: string }[] }> {
+  const [n, r] = await env.DB.batch([
+    env.DB.prepare("SELECT count(*) AS n FROM manuscripts WHERE removed_at IS NULL"),
+    env.DB.prepare(`${LIST_SQL} ORDER BY m.created_at DESC LIMIT ?1`).bind(limit),
+  ]);
+  return {
+    count: Number((n.results[0] as { n: number } | undefined)?.n ?? 0),
+    latest: (r.results as unknown as Row[]).map((x) => ({ id: x.id, title: x.title })),
+  };
+}
+
 /** The newest manuscripts as list rows (homepage). */
 export async function latestManuscripts(env: Env, limit: number): Promise<{ rows: Html | null; count: number }> {
   const r = await env.DB.prepare(`${LIST_SQL} ORDER BY m.created_at DESC LIMIT ?1`).bind(limit).all<Row>();

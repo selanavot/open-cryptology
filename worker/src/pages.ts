@@ -1,9 +1,9 @@
 import { homeData, parseAuthors, search, toFtsQuery, type Env, type ListItem, type SearchHit } from "./db";
 import { highlighted, html, stripMarks, type Html } from "./html";
 import { categoryBadge, hasTex, messagePage, page } from "./layout";
-import { missingCard } from "./years";
+import { missingCard, yearStats } from "./years";
 import { ogImage, siteOrigin } from "./seo";
-import { latestManuscripts, searchManuscripts } from "./manuscripts";
+import { manuscriptsAtAGlance, searchManuscripts } from "./manuscripts";
 
 export const day = (iso: string | null | undefined): string => (iso ? iso.slice(0, 10) : "");
 export const fmtInt = (n: number): string => n.toLocaleString("en-US");
@@ -42,34 +42,57 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 
 // ---------------------------------------------------------------------------- home
 
+/** Small line icons for the homepage tiles (stroke follows the text color). */
+function icon(name: "file" | "archive"): Html {
+  const d = name === "file"
+    ? "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"
+    : "M4 5h16v4H4zM5 9v10h14V9M10 13h4";
+  return html`<svg class="pt-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+/** Papers per year, oldest to newest, as a small bar chart. */
+function yearBars(years: { year: number; total: number }[]): Html {
+  const ys = [...years].sort((a, b) => a.year - b.year);
+  if (!ys.length) return html``;
+  const max = Math.max(...ys.map((y) => y.total));
+  const w = 6, gap = 2, h = 48;
+  const width = ys.length * (w + gap) - gap;
+  return html`<figure class="pt-bars"><svg viewBox="0 0 ${width} ${h}" preserveAspectRatio="none" role="img" aria-label="ePrint papers per year, ${ys[0].year} to ${ys[ys.length - 1].year}">
+${ys.map((y, i) => { const bh = Math.max(1, Math.round((y.total / max) * h)); return html`<rect x="${i * (w + gap)}" y="${h - bh}" width="${w}" height="${bh}" rx="1"><title>${y.year}: ${fmtInt(y.total)} papers</title></rect>`; })}
+</svg><figcaption><span>${ys[0].year}</span><span>${ys[ys.length - 1].year}</span></figcaption></figure>`;
+}
+
 // The letter is Sela's (drafted together on 2026-11-16); don't reword it without asking.
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const [latest, { papers }] = await Promise.all([latestManuscripts(env, 3), homeData(env, 1)]);
-  const body = html`<div class="dr">
-  <header class="dr-intro">
-    <p class="dr-hello">Hello cryptographers!</p>
-    <h1 class="dr-thesis">Research is changing, and so is the way we share it.</h1>
-  </header>
-  <div class="dr-doors">
-    <section class="dr-door dr-door-ms" aria-labelledby="dr-ms">
-      <h2 id="dr-ms"><a href="/manuscripts">Original manuscripts</a></h2>
-      <p>Anything useful goes: a result, an open problem, an unverified idea from your agent, or the
-      approaches it spent tokens on that didn’t work. Each gets published immediately with a citable
-      link, and authorship is flexible: humans, models, or the universe itself.</p>
-      ${latest.rows && html`<div class="dr-latest"><h3 class="ms-day">Latest</h3>${latest.rows}</div>`}
-      <p class="dr-go"><a href="/submit">Submit a manuscript</a><a href="/manuscripts">Browse manuscripts</a></p>
+  const [ms, years] = await Promise.all([manuscriptsAtAGlance(env, 2), yearStats(env, url.origin)]);
+  const papers = years.reduce((n, y) => n + y.total, 0);
+  const body = html`<div class="hm">
+  <article class="home-letter hm-letter">
+    <p>Hello cryptographers!</p>
+    <p>Research is changing, and so is the way we share it. Open Cryptology does two things:</p>
+    <p><strong>1. Original manuscripts.</strong> Anything useful goes: a result, an open problem, an
+    unverified idea from your agent, or the approaches it spent tokens on that didn’t work. Each gets
+    published immediately with a citable link, and authorship is flexible: humans, models, or the
+    universe itself.</p>
+    <p><strong>2. An ePrint mirror.</strong> Agents need prior work, but the Cryptology ePrint Archive
+    blocks them from fetching PDFs. Our unofficial, non-commercial mirror gives them access.</p>
+    <p><strong>What’s next.</strong> One place for everything known about each paper: discussion,
+    links between papers and the protocols they build on, and known attacks. Ideas welcome!</p>
+    <p>Something wrong or missing? Want to help? Get in touch!</p>
+  </article>
+  <div class="pt-col">
+    <section class="pt pt-ms">
+      <h2><a class="pt-link" href="/manuscripts">${icon("file")} Original manuscripts</a></h2>
+      <p class="pt-sub">${ms.count ? `${fmtInt(ms.count)} so far` : "Post anything, published instantly"}</p>
+      ${ms.latest.length ? html`<ul class="pt-titles">${ms.latest.map((m) => html`<li class="tex">${m.title}</li>`)}</ul>` : ""}
+      <a class="pt-action" href="/submit">Submit a manuscript</a>
     </section>
-    <section class="dr-door" aria-labelledby="dr-ep">
-      <h2 id="dr-ep"><a href="/eprint">ePrint mirror</a></h2>
-      <p>Agents need prior work, but the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>
-      blocks them from fetching PDFs. Our unofficial, non-commercial mirror gives them access.</p>
-      ${papers ? html`<p class="dr-stat">${fmtInt(papers)} papers</p>` : ""}
-      <p class="dr-go"><a href="/eprint">Browse the mirror</a></p>
+    <section class="pt">
+      <h2><a class="pt-link" href="/eprint">${icon("archive")} ePrint mirror</a></h2>
+      <p class="pt-sub">${fmtInt(papers)} papers, readable by agents</p>
+      ${yearBars(years)}
     </section>
   </div>
-  <p class="dr-more"><strong>What’s next.</strong> One place for everything known about each paper:
-  discussion, links between papers and the protocols they build on, and known attacks. Ideas welcome!
-  <a href="/contact">Get in touch</a> or <a href="${env.ISSUES_URL}">open an issue</a>.</p>
 </div>`;
   return page(env, {
     title: env.SITE_NAME,
