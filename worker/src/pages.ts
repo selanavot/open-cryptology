@@ -1,9 +1,9 @@
 import { homeData, parseAuthors, search, toFtsQuery, type Env, type ListItem, type SearchHit } from "./db";
 import { highlighted, html, stripMarks, type Html } from "./html";
 import { categoryBadge, hasTex, messagePage, page } from "./layout";
-import { missingCard } from "./years";
+import { missingCard, yearStats } from "./years";
 import { ogImage, siteOrigin } from "./seo";
-import { latestManuscripts, searchManuscripts } from "./manuscripts";
+import { searchManuscripts } from "./manuscripts";
 
 export const day = (iso: string | null | undefined): string => (iso ? iso.slice(0, 10) : "");
 export const fmtInt = (n: number): string => n.toLocaleString("en-US");
@@ -42,9 +42,22 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 
 // ---------------------------------------------------------------------------- home
 
+/** Papers per year, oldest to newest, as a small bar chart. */
+function yearBars(years: { year: number; total: number }[]): Html {
+  const ys = [...years].sort((a, b) => a.year - b.year);
+  if (!ys.length) return html``;
+  const max = Math.max(...ys.map((y) => y.total));
+  const w = 6, gap = 2, h = 48;
+  const width = ys.length * (w + gap) - gap;
+  return html`<figure class="hm-bars"><svg viewBox="0 0 ${width} ${h}" preserveAspectRatio="none" role="img" aria-label="ePrint papers per year, ${ys[0].year} to ${ys[ys.length - 1].year}">
+${ys.map((y, i) => { const bh = Math.max(1, Math.round((y.total / max) * h)); return html`<rect x="${i * (w + gap)}" y="${h - bh}" width="${w}" height="${bh}" rx="1"><title>${y.year}: ${fmtInt(y.total)} papers</title></rect>`; })}
+</svg><figcaption><span>${ys[0].year}</span><span>${ys[ys.length - 1].year}</span></figcaption></figure>`;
+}
+
 // The letter is Sela's (drafted together on 2026-11-16); don't reword it without asking.
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const latest = await latestManuscripts(env, 6);
+  const years = await yearStats(env, url.origin);
+  const papers = years.reduce((n, y) => n + y.total, 0);
   const body = html`<div class="hm">
   <article class="home-letter hm-letter">
     <p>Hello cryptographers!</p>
@@ -53,22 +66,26 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     unverified idea from your agent, or the approaches it spent tokens on that didn’t work. Each gets
     published immediately with a citable link, and authorship is flexible: humans, models, or the
     universe itself.</p>
-    <p class="hm-links"><a href="/submit">Submit a manuscript</a>
-    <a href="/manuscripts">Browse manuscripts</a></p>
-    <p><strong>2. An ePrint mirror.</strong> Agents need prior work, but the
-    <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a> blocks them from fetching PDFs. Our
-    unofficial, non-commercial <a href="/eprint">mirror</a> gives them access.</p>
-    <p class="hm-links"><a href="/eprint">Browse the ePrint mirror</a></p>
+    <p><strong>2. An ePrint mirror.</strong> Agents need prior work, but the Cryptology ePrint Archive
+    blocks them from fetching PDFs. Our unofficial, non-commercial mirror gives them access.</p>
     <p><strong>What’s next.</strong> One place for everything known about each paper: discussion,
     links between papers and the protocols they build on, and known attacks. Ideas welcome!</p>
-    <p>Something wrong or missing? Want to help?</p>
-    <p class="hm-links"><a href="/contact">Get in touch</a>
-    <a href="${env.ISSUES_URL}">Open an issue</a></p>
   </article>
-  <section class="hm-latest" aria-labelledby="hm-latest-h">
-    <div class="hm-latest-head"><h2 class="ms-day" id="hm-latest-h">Latest original manuscripts</h2>${latest.count ? html`<a class="ms-more" href="/manuscripts">All →</a>` : ""}</div>
-    ${latest.rows ?? html`<p class="text-muted small">None yet. <a href="/submit">Be the first.</a></p>`}
-  </section>
+  <nav class="hm-nav" aria-label="Open Cryptology">
+    <a class="hm-item" href="/manuscripts">
+      <span class="hm-item-title">Original manuscripts</span>
+      <span class="hm-item-sub">Share ideas openly, citable at once</span>
+    </a>
+    <a class="hm-item" href="/eprint">
+      <span class="hm-item-title">ePrint mirror</span>
+      <span class="hm-item-sub">${fmtInt(papers)} papers, readable by agents</span>
+      ${yearBars(years)}
+    </a>
+    <a class="hm-item" href="/contact">
+      <span class="hm-item-title">Get in touch</span>
+      <span class="hm-item-sub">Report a problem or help out</span>
+    </a>
+  </nav>
 </div>`;
   return page(env, {
     title: env.SITE_NAME,

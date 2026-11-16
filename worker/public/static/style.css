@@ -349,6 +349,7 @@ span.authorName { font-style: italic; }
 }
 .home-letter { max-width: 42rem; font-size: 1.05rem; line-height: 1.65; }
 .home-letter p { margin: 0 0 1rem; }
+.home-letter strong { font-weight: 600; }
 .contact-page { max-width: 36rem; }
 .contact-page .contact-form { margin-top: 1rem; }
 .home-side .eprintCardHeader { margin: 0; padding: .5rem; }
@@ -532,17 +533,20 @@ ol.year-list .badge { margin-left: .35rem; }
 .hm-primary:hover { background: #000; color: #fff; }
 
 
-/* homepage: the letter, with Submit and the latest manuscripts beside it (phones: Submit, letter, list) */
-.hm { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "letter" "latest"; gap: 1.25rem; padding: .5rem 1rem; }
-@media (min-width: 992px) {
-  .hm { grid-template-columns: minmax(0, 1fr) 21rem; grid-template-areas: "letter latest"; gap: 1rem 3rem; }
-}
-.hm-letter { grid-area: letter; } .hm-latest { grid-area: latest; align-self: start; }
-/* the letter's links to act on: quiet, with an arrow */
-.home-letter .hm-links { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; margin: -.4rem 0 1.25rem; }
-.home-letter .hm-links a { font-weight: 600; text-decoration: none; }
-.home-letter .hm-links a::after { content: " \2192"; }
-.home-letter .hm-links a:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* homepage: the letter, with a short list of where to go beside it (phones: below it) */
+.hm { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; padding: .5rem 1rem; }
+@media (min-width: 992px) { .hm { grid-template-columns: minmax(0, 1fr) 18rem; gap: 3rem; } }
+.hm-nav { align-self: start; border-top: 1px solid #eee7d6; }
+.hm-item { display: block; padding: .85rem 0; border-bottom: 1px solid #eee7d6; color: var(--text); text-decoration: none; }
+.hm-item:hover, .hm-item:visited { color: var(--text); }
+.hm-item-title { display: block; font-weight: 600; }
+.hm-item-title::after { content: " \2192"; color: var(--muted); }
+.hm-item:hover .hm-item-title { text-decoration: underline; text-underline-offset: 3px; }
+.hm-item-sub { display: block; color: var(--muted); font-size: .9rem; margin-top: .1rem; }
+.hm-bars { margin: .6rem 0 0; }
+.hm-bars svg { display: block; width: 100%; height: 40px; fill: #e0b94a; }
+.hm-bars figcaption { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); margin-top: .2rem; }
+
 
 .hm-latest-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 .hm-latest-head .ms-day { margin-top: .25rem; }
