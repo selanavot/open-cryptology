@@ -532,6 +532,33 @@ ol.year-list .badge { margin-left: .35rem; }
 .hm-primary { background: var(--text); color: #fff; padding: .55rem 1.1rem; }
 .hm-primary:hover { background: #000; color: #fff; }
 
+/* navbar: Submit as an outlined button */
+.nav-links a.nav-submit { border: 1.5px solid var(--nav-text); border-radius: .4rem; padding: .3rem .85rem; margin: .2rem 0 .2rem 1.5rem; font-weight: 600; }
+.nav-links a.nav-submit:hover { background: var(--nav-text); color: var(--nav); text-decoration: none; }
+@media (max-width: 991.98px) { .nav-links a.nav-submit { display: inline-block; margin: .35rem .75rem; } }
+
+/* homepage: the letter, with Submit and the latest manuscripts beside it (phones: Submit, letter, list) */
+.hm { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "cta" "letter" "latest"; gap: 1.25rem; padding: .5rem 1rem; }
+@media (min-width: 992px) {
+  .hm { grid-template-columns: minmax(0, 1fr) 21rem; grid-template-areas: "letter cta" "letter latest"; grid-template-rows: auto 1fr; gap: 1rem 3rem; }
+}
+.hm-cta { grid-area: cta; } .hm-letter { grid-area: letter; } .hm-latest { grid-area: latest; align-self: start; }
+.hm-submit { display: block; text-align: center; font-size: 1.05rem; }
+.hm-latest-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.hm-latest-head .ms-day { margin-top: .25rem; }
+.ms-more { font-size: .9rem; white-space: nowrap; }
+
+/* /eprint */
+.ep-lede { font-size: 1.05rem; line-height: 1.6; max-width: 46rem; margin: 0 0 .5rem; }
+.ep-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+@media (min-width: 992px) { .ep-grid { grid-template-columns: minmax(0, 1fr) 22rem; gap: 3rem; } }
+.ep-grid .ms-row .badge { margin-left: .35rem; vertical-align: middle; }
+.ep-side .eprintCardHeader { margin-top: 1.5rem; }
+
+/* search: matching manuscripts above the ePrint results */
+.search-ms { margin: 0 0 1.5rem; }
+@media (min-width: 992px) { .search-ms { margin-left: 1.5rem; } }
+
 /* submit */
 .sb { max-width: 40rem; margin: 0 auto; }
 .ms-form { display: flex; flex-direction: column; gap: .35rem; }

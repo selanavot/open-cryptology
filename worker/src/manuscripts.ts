@@ -261,6 +261,29 @@ ${groups.length ? groups : html`<p class="text-muted mt-3">None yet.</p>`}`,
   });
 }
 
+/** The newest manuscripts as list rows (homepage). */
+export async function latestManuscripts(env: Env, limit: number): Promise<{ rows: Html | null; count: number }> {
+  const r = await env.DB.prepare(`${LIST_SQL} ORDER BY m.created_at DESC LIMIT ?1`).bind(limit).all<Row>();
+  return { rows: r.results.length ? await rowsHtml(env, r.results) : null, count: r.results.length };
+}
+
+/** Manuscripts whose title, authors or abstract contain every word of `q` (search page). There are
+ *  few enough manuscripts that a scan is fine; ePrint papers use the full-text index instead. */
+export async function searchManuscripts(env: Env, q: string, limit: number): Promise<{ rows: Html | null; count: number }> {
+  const words = q
+    .toLowerCase()
+    .replace(/\b(author|title|abstract):/g, " ")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 1)
+    .slice(0, 8);
+  if (!words.length) return { rows: null, count: 0 };
+  const where = words.map((_, i) => `AND lower(v.title || ' ' || v.authors || ' ' || v.abstract) LIKE ?${i + 1}`).join(" ");
+  const r = await env.DB.prepare(`${LIST_SQL} ${where} ORDER BY m.created_at DESC LIMIT ${Math.floor(limit)}`)
+    .bind(...words.map((w) => `%${w}%`))
+    .all<Row>();
+  return { rows: r.results.length ? await rowsHtml(env, r.results) : null, count: r.results.length };
+}
+
 /** A person's public profile: their log-in methods and the manuscripts they uploaded. */
 async function profilePage(env: Env, userId: string): Promise<Response> {
   const u = (await publicUsers(env, [userId])).get(userId);

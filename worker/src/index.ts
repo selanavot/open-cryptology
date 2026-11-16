@@ -9,7 +9,7 @@ import { messagePage } from "./layout";
 import { apiPaper, handleUpload, paperPage, servePdf } from "./paper";
 import { gridFragment, yearPage } from "./years";
 import { apiMissing, missingPage } from "./missing";
-import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
+import { apiSearch, eprintPage, homePage, json, notFound, searchPage } from "./pages";
 import { supportPage } from "./support";
 import { privacyPage } from "./privacy";
 import { llmsTxt, robotsTxt } from "./text";
@@ -120,6 +120,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return homePage(env, url);
     case "/search":
       return searchPage(env, url);
+    case "/eprint":
+      return eprintPage(env, url);
     case "/api/search":
       return apiSearch(env, url);
     case "/missing":
