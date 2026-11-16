@@ -43,10 +43,12 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 // ---------------------------------------------------------------------------- home
 
 /** Small line icons for the homepage tiles (stroke follows the text color). */
-function icon(name: "file" | "archive"): Html {
-  const d = name === "file"
-    ? "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"
-    : "M4 5h16v4H4zM5 9v10h14V9M10 13h4";
+function icon(name: "file" | "archive" | "mail"): Html {
+  const d = {
+    file: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
+    archive: "M4 5h16v4H4zM5 9v10h14V9M10 13h4",
+    mail: "M4 6h16v12H4zM4 7l8 6 8-6",
+  }[name];
   return html`<svg class="pt-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
 
@@ -81,9 +83,9 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
     <p>Something wrong or missing? Want to help? Get in touch!</p>
   </article>
   <div class="pt-col">
-    <section class="pt pt-ms">
+    <section class="pt">
       <h2><a class="pt-link" href="/manuscripts">${icon("file")} Original manuscripts</a></h2>
-      <p class="pt-sub">${ms.count ? `${fmtInt(ms.count)} so far` : "Post anything, published instantly"}</p>
+      <p class="pt-sub">Post anything, published instantly</p>
       ${ms.latest.length ? html`<ul class="pt-titles">${ms.latest.map((m) => html`<li class="tex">${m.title}</li>`)}</ul>` : ""}
       <a class="pt-action" href="/submit">Submit a manuscript</a>
     </section>
@@ -91,6 +93,11 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
       <h2><a class="pt-link" href="/eprint">${icon("archive")} ePrint mirror</a></h2>
       <p class="pt-sub">${fmtInt(papers)} papers, readable by agents</p>
       ${yearBars(years)}
+    </section>
+    <section class="pt">
+      <h2><a class="pt-link" href="/contact">${icon("mail")} Get in touch</a></h2>
+      <p class="pt-sub">Something wrong or missing? Want to help?</p>
+      <a class="pt-action" href="${env.ISSUES_URL}">Open an issue</a>
     </section>
   </div>
 </div>`;

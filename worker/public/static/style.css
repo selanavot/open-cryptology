@@ -538,7 +538,6 @@ ol.year-list .badge { margin-left: .35rem; }
 .pt-col { display: grid; gap: 1rem; align-content: start; }
 .pt { position: relative; border: 1px solid #eee7d6; border-radius: .7rem; padding: 1rem 1.1rem; background: #fff; transition: border-color .15s; }
 .pt:hover { border-color: #c9a64a; }
-.pt-ms { background: #fff8e1; border-color: #f0d27a; }
 .pt h2 { font-size: 1.1rem; font-weight: 600; margin: 0; }
 .pt-link { color: var(--text); text-decoration: none; display: inline-flex; align-items: center; gap: .45rem; }
 .pt-link::after { content: ""; position: absolute; inset: 0; border-radius: .7rem; }
@@ -546,7 +545,7 @@ ol.year-list .badge { margin-left: .35rem; }
 .pt-icon { flex: none; }
 .pt-sub { color: var(--muted); font-size: .9rem; margin: .2rem 0 0; }
 .pt-titles { list-style: none; padding: 0; margin: .6rem 0 0; font-size: .9rem; }
-.pt-titles li { padding: .35rem 0; border-top: 1px solid #f0e2b6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-titles li { padding: .35rem 0; border-top: 1px solid #eee7d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pt-action { position: relative; z-index: 1; display: inline-block; margin-top: .6rem; font-weight: 600; font-size: .9rem; text-decoration: none; }
 .pt-action::after { content: " \2192"; }
 .pt-action:hover { text-decoration: underline; text-underline-offset: 3px; }
