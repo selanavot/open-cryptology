@@ -22,8 +22,10 @@ export interface MatchResult {
   noText?: boolean;
 }
 
-/** Fraction of significant title words needed. */
-export const TITLE_THRESHOLD = 0.85;
+/** Fraction of significant title words needed (an author name is always required too). Was 0.85;
+ *  lowered on 2026-11-16 after 25 of 122 hand-reviewed uploads scored 0.6-0.8 with an author found,
+ *  all of them the right paper. */
+export const TITLE_THRESHOLD = 0.75;
 /** The title must start within this many words of the top of page 1 or 2 (page 2: cover sheets).
  *  Without this, a paper citing the authors' earlier work by title on page 1-2 matched that work. */
 export const TITLE_MAX_POS = 120;
