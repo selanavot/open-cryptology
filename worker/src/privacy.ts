@@ -33,6 +33,11 @@ export function privacyPage(env: Env): Response {
   a personal one like gmail.com). Profile photos are loaded from GitHub or Google when shown; we
   don't keep copies.</p>
 
+  <h4>Original manuscripts</h4>
+  <p>What you post is public right away, with your name and photo shown as the uploader, and it stays
+  public as described in the <a href="/terms">terms</a>. We keep each version you post, with when you posted
+  it.</p>
+
   <h4>Cookies</h4>
   <p>Only when you sign in: a session cookie that keeps you signed in, a cookie with your display name
   so pages can show it, and a short-lived cookie during sign-in itself. We store only a hash of the

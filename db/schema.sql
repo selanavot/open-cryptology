@@ -161,3 +161,39 @@ CREATE TABLE IF NOT EXISTS pending_merges (
   provider_user_id  TEXT NOT NULL,
   expires_at        TEXT NOT NULL
 );
+
+-- original manuscripts (2026-11): worker/src/manuscripts.ts. Only CREATE ... IF NOT EXISTS, so this
+-- section can be run on its own:  sed -n '/^-- original manuscripts/,$p' db/schema.sql
+-- Ids are the UTC date of first publication plus that day's number ('2026-11-15/3'); numbers are
+-- never reused, so removed manuscripts keep their row.
+CREATE TABLE IF NOT EXISTS manuscripts (
+  id                TEXT PRIMARY KEY,        -- '2026-11-15/3'
+  day               TEXT NOT NULL,           -- '2026-11-15' (UTC)
+  num               INTEGER NOT NULL,        -- 1, 2, ... within the day
+  uploader_id       TEXT NOT NULL,           -- users.id (shown as "uploaded by", never as an id)
+  created_at        TEXT NOT NULL,
+  withdrawn_at      TEXT,                    -- set by the uploader; versions stay readable
+  withdrawn_reason  TEXT,
+  removed_at        TEXT,                    -- set by a maintainer; content is deleted
+  removed_by        TEXT,
+  UNIQUE (day, num)
+);
+CREATE INDEX IF NOT EXISTS manuscripts_uploader ON manuscripts(uploader_id, created_at);
+CREATE INDEX IF NOT EXISTS manuscripts_created ON manuscripts(created_at);
+
+-- Every version of a manuscript (v1, v2, ...). PDFs live in R2 (file_key, under manuscripts/);
+-- body is for Markdown manuscripts (parked on the manuscripts/markdown branch).
+CREATE TABLE IF NOT EXISTS manuscript_versions (
+  manuscript_id     TEXT NOT NULL,
+  v                 INTEGER NOT NULL,
+  title             TEXT NOT NULL,
+  authors           TEXT NOT NULL,           -- JSON array, as they should be cited
+  abstract          TEXT NOT NULL,
+  format            TEXT NOT NULL,           -- 'md' | 'pdf'
+  body              TEXT,                    -- the Markdown source (format 'md')
+  file_key          TEXT,                    -- R2 key (format 'pdf')
+  sha256            TEXT NOT NULL,
+  size              INTEGER NOT NULL,
+  created_at        TEXT NOT NULL,
+  PRIMARY KEY (manuscript_id, v)
+);

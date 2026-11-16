@@ -176,6 +176,48 @@
     }
   }
 
+  // Submit an original manuscript: "+ Add author" / remove rows, and the chosen PDF's name in the
+  // drop zone.
+  function setupManuscriptForm() {
+    var list = document.querySelector(".sb-authors");
+    var add = document.querySelector(".sb-add");
+    if (list && add) {
+      var refresh = function () {
+        var rows = list.querySelectorAll(".sb-author");
+        rows.forEach(function (r, i) {
+          var input = r.querySelector("input");
+          input.required = i === 0; // at least one author
+          input.setAttribute("aria-label", "Author " + (i + 1));
+          r.querySelector(".sb-remove").hidden = rows.length < 2;
+        });
+      };
+      add.hidden = false;
+      add.addEventListener("click", function () {
+        var row = list.querySelector(".sb-author").cloneNode(true);
+        var input = row.querySelector("input");
+        input.value = "";
+        list.appendChild(row);
+        refresh();
+        input.focus();
+      });
+      list.addEventListener("click", function (e) {
+        var btn = e.target.closest(".sb-remove");
+        if (btn) { btn.closest(".sb-author").remove(); refresh(); }
+      });
+      refresh();
+    }
+    var file = document.getElementById("sb-file");
+    if (!file) return;
+    var drop = file.closest(".sb-drop");
+    ["dragenter", "dragover"].forEach(function (t) { drop.addEventListener(t, function () { drop.classList.add("is-over"); }); });
+    ["dragleave", "drop"].forEach(function (t) { drop.addEventListener(t, function () { drop.classList.remove("is-over"); }); });
+    file.addEventListener("change", function () {
+      var f = file.files && file.files[0];
+      var name = drop.querySelector(".sb-name");
+      if (name) name.textContent = f ? f.name : "Drop a PDF here";
+    });
+  }
+
   renderTex();
   setupAccountLink();
   scrollToUpload();
@@ -183,6 +225,7 @@
   setupCopy();
   setupUpload();
   setupNavSearch();
+  setupManuscriptForm();
 })();
 
 // Open the contact panel when arriving via #contact or clicking a #contact link.

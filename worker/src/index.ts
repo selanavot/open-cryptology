@@ -17,6 +17,7 @@ import { indexNowKeyFile, pingIndexNow } from "./indexnow";
 import { siteOrigin, sitemap } from "./seo";
 import { handleAuth, isAuthPath } from "./auth";
 import { handleAccount, isAccountPath } from "./account";
+import { handleManuscripts, isManuscriptPath } from "./manuscripts";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
@@ -91,6 +92,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   }
   if (isAuthPath(path)) return handleAuth(req, env, url);
   if (isAccountPath(path)) return handleAccount(req, env, url);
+  if (isManuscriptPath(path)) return handleManuscripts(req, env, url);
   if (path === "/contact") {
     if (req.method === "POST") return handleContact(env, req, url);
     if (!isGet) return methodNotAllowed("GET, HEAD, POST");
@@ -148,8 +150,12 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const u = new URL(req.url);
     const host = u.hostname;
-    // One hop to https on the bare domain (local dev stays on plain http).
-    const local = host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost");
+    // One hop to https on the bare domain (local dev stays on plain http). `wrangler dev` hands the
+    // Worker the production host from the routes in wrangler.jsonc, so local runs are recognized
+    // by their localhost AUTH_ORIGIN (.dev.vars) as well as by the host.
+    const local =
+      host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost") ||
+      /^http:\/\/(localhost|127\.0\.0\.1|[a-z0-9.-]+\.localhost)(:\d+)?$/.test(env.AUTH_ORIGIN ?? "");
     if (host.startsWith("www.") || (u.protocol === "http:" && !local)) {
       const to = new URL(req.url);
       if (host.startsWith("www.")) to.hostname = host.slice(4);
