@@ -57,6 +57,20 @@
   }
 
   // Navbar search dropdown (<details>): focus the box on open; close on outside click / Escape.
+  // Phones: the ☰ menu (a CSS checkbox) closes on a tap outside it, or on Escape.
+  function setupNavMenu() {
+    var t = document.getElementById("nav-toggle");
+    var links = document.querySelector(".nav-links");
+    var burger = document.querySelector(".nav-burger");
+    if (!t || !links) return;
+    document.addEventListener("click", function (ev) {
+      if (t.checked && ev.target !== t && !links.contains(ev.target) && !(burger && burger.contains(ev.target))) t.checked = false;
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && t.checked) t.checked = false;
+    });
+  }
+
   function setupNavSearch() {
     var d = document.querySelector(".nav-search");
     if (!d) return;
@@ -257,6 +271,7 @@
   setupCopy();
   setupUpload();
   setupNavSearch();
+  setupNavMenu();
   setupManuscriptForm();
 })();
 
