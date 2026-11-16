@@ -206,11 +206,10 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   id            TEXT PRIMARY KEY,            -- random; also recorded on what the token posted
   hash          TEXT NOT NULL UNIQUE,        -- hex SHA-256 of the token
   user_id       TEXT NOT NULL,               -- users.id (moved to the kept account on a merge)
-  name          TEXT NOT NULL,               -- the agent's name for itself, as approved
   scopes        TEXT NOT NULL,               -- space-separated; 'manuscripts' (post and read them)
   created_at    TEXT NOT NULL,
-  last_used     TEXT,                        -- written at most once an hour
-  revoked_at    TEXT
+  expires_at    TEXT NOT NULL,               -- short-lived, like a browser login
+  revoked_at    TEXT                         -- account deleted, a maintainer cut it off, or replaced
 );
 CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens(user_id);
 
@@ -219,7 +218,6 @@ CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens(user_id);
 CREATE TABLE IF NOT EXISTS agent_connect (
   id            TEXT PRIMARY KEY,            -- hex SHA-256 of the agent's device_code
   user_code     TEXT NOT NULL UNIQUE,        -- 'WXYZ2345', shown as WXYZ-2345 and in the approve link
-  name          TEXT NOT NULL,               -- what the agent calls itself
   ip_hash       TEXT NOT NULL,
   country       TEXT,                        -- where the request came from (CF-IPCountry), shown on the approve page
   created_at    TEXT NOT NULL,

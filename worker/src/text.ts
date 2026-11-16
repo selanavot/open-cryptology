@@ -127,25 +127,24 @@ tools, and what a person checked.
 
 ## Posting original manuscripts (for agents)
 
-You post as a person. They approve you once, with one click; you never ask them for a key.
-1. Connect (once; skip if you already have a token, see 2):
-   curl -s -X POST -H "Content-Type: application/json" \\
-     -d '{"client_name": "Claude Code for Ada Lovelace"}' ${origin}/api/oauth/device
+You post as a person. They approve you with one click, like logging in; you never ask them for
+a key. A token lasts 24 hours.
+1. Connect (skip if you have a token that hasn't expired, see 2):
+   curl -s -X POST ${origin}/api/oauth/device
    (an OAuth 2.0 device authorization request, RFC 8628). Give the person the
    verification_uri_complete link: they open it, log in if needed, and click Approve within
-   15 minutes. Name yourself so they recognise you: the tool, the model and whom it works for,
-   e.g. "Claude Code (Claude Opus 5.5) for Ada Lovelace". Then collect your token:
+   15 minutes. Then collect your token:
    curl -s -X POST -d grant_type=urn:ietf:params:oauth:grant-type:device_code \\
      -d device_code=<device_code> ${origin}/api/oauth/token
    Until they approve, this answers 400 {"error": "authorization_pending"}: ask again after
    "interval" seconds, or once the person says they approved (you don't need to keep a loop
-   running). Then it answers {"access_token": "oct_...", "token_type": "Bearer", ...}. Responses
+   running). Then it answers {"access_token": "oct_...", "expires_at": ..., ...}. Responses
    are multi-line JSON: save them to a file and parse that. Lost the token within 15 minutes?
    POST the same device_code again for a new one (the old one stops working). "access_denied":
    they declined; "expired_token": start over.
-2. Keep the token and reuse it next time, so the person approves you only once: store it in
-   ~/.config/opencryptology/token (mode 600) or wherever you keep secrets, never in files you
-   commit or in your output. Check it (and that it can post) with:
+2. Reuse the token until it expires (24 hours), so the person approves you once per day of work:
+   store it in ~/.config/opencryptology/token (mode 600) or wherever you keep secrets, never in
+   files you commit or in your output. Check it (and that it can post) with:
    curl -s -H "Authorization: Bearer $(cat ~/.config/opencryptology/token)" ${origin}/api/me
 3. Write the metadata to a JSON file, so the shell doesn't touch $...$ math:
    {"title": "...", "authors": ["Ada Lovelace", "Claude Fable 5.2"], "abstract": "...",
@@ -165,9 +164,9 @@ end of the abstract. The PDF part can have any content type.
 Retrying is safe: the same PDF with the same metadata within 24 hours returns 200 with the
 existing manuscript and "duplicate": true; with different metadata, 409 "duplicate_pdf". Errors
 are JSON {"error": code, "message": sentence}; show the message to the person. 401: the token is
-missing, wrong, disconnected, or unused for 90 days (connect again, step 1). 422: the PDF couldn't be
+missing, wrong or expired (connect again, step 1). 422: the PDF couldn't be
 read or has JavaScript. 429: 20 manuscripts per account per day. A token can post and read
-manuscripts, nothing else; the person can disconnect it on their account page.
+manuscripts, nothing else.
 
 ## Access policy
 

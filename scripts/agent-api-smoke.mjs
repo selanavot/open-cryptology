@@ -34,8 +34,8 @@ class Client {
     return this.req(`/auth/dev-login?login=${login}&ghid=${ghid}&name=${encodeURIComponent(login)}`);
   }
   /** The whole connect flow: the agent asks, this person approves, the agent collects. */
-  async newToken(name) {
-    const d = await startConnect(name);
+  async newToken() {
+    const d = await startConnect();
     await this.approve(d.user_code, "approve");
     return (await collect(d.device_code)).j.access_token;
   }
@@ -44,8 +44,7 @@ class Client {
   }
 }
 
-const startConnect = async (name) =>
-  (await fetch(`${BASE}/api/oauth/device`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: name }) })).json();
+const startConnect = async () => (await fetch(`${BASE}/api/oauth/device`, { method: "POST" })).json();
 const collect = async (device_code) => {
   const r = await fetch(`${BASE}/api/oauth/token`, {
     method: "POST",
@@ -91,16 +90,15 @@ const me = new Client();
 await me.login(`agent${RUN}`, 1400000 + (RUN % 1e5));
 
 console.log("\n# connecting: the agent asks, the person approves with one click");
-let d = await startConnect("Claude Code test");
+let d = await startConnect();
 check("device authorization response (RFC 8628 fields)", d.device_code && /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(d.user_code) && d.verification_uri_complete?.endsWith(`/connect?code=${d.user_code}`) && d.interval === 5 && d.expires_in === 900, JSON.stringify(d));
-check("no name: 400 invalid_request", (await fetch(`${BASE}/api/oauth/device`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status === 400);
 let c = await collect(d.device_code);
 check("before approval: authorization_pending", c.s === 400 && c.j.error === "authorization_pending", JSON.stringify(c));
 const linkPath = new URL(d.verification_uri_complete).pathname + new URL(d.verification_uri_complete).search;
 let r = await new Client().req(linkPath);
 check("approve link, logged out: sent to log in and back", r.status === 303 && r.headers.get("location") === `/account?next=${encodeURIComponent(`/connect?code=${d.user_code}`)}`, r.headers.get("location"));
 let t = await (await me.req(linkPath)).text();
-check("approve page: who asks, as whom, what it can do", t.includes("Connect an agent?") && t.includes("Claude Code test") && t.includes(`agent${RUN}`) && /can’t change your account/.test(t));
+check("approve page: as whom, what it can do, for how long", t.includes("Connect an agent?") && t.includes(`agent${RUN}`) && /can’t change your account/.test(t) && /ends after 24 hours/.test(t));
 check("approve page has no key to copy", !/oct_/.test(t));
 r = await me.req("/connect", { method: "POST", body: new URLSearchParams({ code: d.user_code, decision: "approve" }), origin: "https://evil.example" });
 check("cross-site approve refused", r.status === 403);
@@ -108,24 +106,24 @@ r = await me.approve(d.user_code, "approve");
 check("approve: connected", r.status === 200 && /Connected/.test(await r.text()));
 c = await collect(d.device_code);
 const lost = c.j.access_token;
-check("agent collects its token", c.s === 200 && /^oct_/.test(lost ?? "") && c.j.token_type === "Bearer" && c.j.user?.displayName === `agent${RUN}`, JSON.stringify(c.j).slice(0, 120));
+check("agent collects its token, valid 24 hours", c.s === 200 && /^oct_/.test(lost ?? "") && c.j.token_type === "Bearer" && c.j.expires_in === 86400 && Math.abs(Date.parse(c.j.expires_at) - Date.now() - 86400e3) < 60e3 && c.j.user?.displayName === `agent${RUN}`, JSON.stringify(c.j).slice(0, 160));
 c = await collect(d.device_code);
 const tok = c.j.access_token;
 check("lost it? the same device_code gives a new token", c.s === 200 && /^oct_/.test(tok ?? "") && tok !== lost);
 check("and the lost one stops working", (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${lost}` } })).status === 401);
 check("the link is used up", (await me.req(linkPath)).status === 410);
-d = await startConnect("Declined agent");
+d = await startConnect();
 await me.approve(d.user_code, "deny");
 check("declined: access_denied", (await collect(d.device_code)).j.error === "access_denied");
 check("unknown code: 410", (await me.req("/connect?code=BBBB-CCCC")).status === 410);
 check("unknown device_code: expired_token", (await collect("nope")).j.error === "expired_token");
 const acct = await (await me.req("/account")).text();
-check("account page lists the agent once, with no way to make keys", (acct.match(/Claude Code test/g) ?? []).length === 1 && !acct.includes(tok) && !/token-new|Create token/.test(acct));
+check("nothing to manage on the account page", !/id="agents"|Disconnect|Create token|oct_/.test(acct));
 
 console.log("\n# /api/me");
 r = await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tok}` } });
 let j = await body(r);
-check("token: who you post as", r.status === 200 && j.user?.displayName === `agent${RUN}` && /\/u\/[a-z2-7]{12}$/.test(j.user?.profile_url ?? "") && j.token?.name === "Claude Code test", JSON.stringify(j));
+check("token: who you post as", r.status === 200 && j.user?.displayName === `agent${RUN}` && /\/u\/[a-z2-7]{12}$/.test(j.user?.profile_url ?? "") && Date.parse(j.expires_at) > Date.now(), JSON.stringify(j));
 r = await fetch(`${BASE}/api/me`, { headers: { authorization: "Bearer oct_nope" } });
 check("unknown token: 401 token_revoked + WWW-Authenticate", r.status === 401 && (await body(r)).error === "token_revoked" && /Bearer/.test(r.headers.get("www-authenticate") ?? ""));
 check("cookie /api/me unchanged", (await me.req("/api/me")).status === 200);
@@ -189,21 +187,16 @@ j = await body(r);
 check("GET one: public JSON", r.status === 200 && j.id === id && r.headers.get("access-control-allow-origin") === "*");
 check("GET unknown: 404", (await fetch(`${BASE}/api/manuscripts/2001-01-01/9`)).status === 404);
 
-console.log("\n# disconnecting");
-const tok2 = await me.newToken("second agent");
-const acct2 = await (await me.req("/account")).text();
-const tid = [...acct2.matchAll(/name="token" value="([a-z2-7]+)"/g)].map((m) => m[1]);
-r = await me.req("/account", { method: "POST", body: new URLSearchParams({ action: "token-revoke", token: tid[0] }) });
-check("disconnect from the account page", r.status === 303);
-const after = await Promise.all([tok, tok2].map((t) => fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${t}` } }).then((x) => x.status)));
-check("exactly the disconnected token stops working", after.filter((s) => s === 401).length === 1 && after.filter((s) => s === 200).length === 1, after.join(","));
-const live = after[0] === 200 ? tok : tok2;
+console.log("\n# several agents, cut off by a maintainer");
+const tok2 = await me.newToken();
+check("a second connect gives a second working token", tok2 && tok2 !== tok && (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tok2}` } })).status === 200);
+const live = tok;
 const m = new Client();
 await m.login(`maint${RUN}`, 4242);
 // The live token posts one more (another account, under its limit) to test removal + disconnect.
 const other = new Client();
 await other.login(`agentb${RUN}`, 1500000 + (RUN % 1e5));
-const tokB = await other.newToken("agent B");
+const tokB = await other.newToken();
 j = await body(await post(tokB, makePdf(`spam ${RUN}`), { ...META, title: `Spam ${RUN}` }));
 r = await m.req("/manuscripts/remove", { method: "POST", body: new URLSearchParams({ id: j.id, revoke: "yes" }), headers: { "content-type": "application/x-www-form-urlencoded" } });
 check("maintainer removes and disconnects its agent", r.status === 200 && /disconnected/.test(await r.text()));
@@ -214,7 +207,7 @@ check("the other account's token still works", (await fetch(`${BASE}/api/me`, { 
 console.log("\n# deleting the account revokes its tokens");
 const del = new Client();
 await del.login(`agentc${RUN}`, 1600000 + (RUN % 1e5));
-const tokC = await del.newToken("doomed");
+const tokC = await del.newToken();
 await del.req("/account", { method: "POST", body: new URLSearchParams({ action: "delete", confirm: "yes" }) });
 check("token of a deleted account: 401", (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tokC}` } })).status === 401);
 

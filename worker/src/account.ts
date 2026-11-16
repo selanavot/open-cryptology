@@ -31,7 +31,6 @@ import {
   sameOrigin,
   setCustomName,
 } from "./auth";
-import { revokeToken, tokenExpires, TOKEN_IDLE_DAYS, tokensOf, type TokenRow } from "./agentapi";
 
 export const isAccountPath = (path: string): boolean => path === "/account" || path === "/account/merge";
 
@@ -121,7 +120,6 @@ const SAVED: Record<string, string> = {
   name: "Name saved.",
   "name-reset": "Name reset.",
   linked: "Connected.",
-  "agent-disconnected": "Agent disconnected.",
 };
 
 interface Notice {
@@ -129,31 +127,7 @@ interface Notice {
   err?: string;
 }
 
-const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-
-/** Connected agents: each one the person approved, with Disconnect. Agents connect themselves
- *  (agentapi.ts); there's nothing to create here. */
-function agentsCard(tokens: TokenRow[]): Html {
-  return html`<section class="settings-card" id="agents">
-  <h2 class="settings-h">Agents</h2>
-  ${tokens.length
-    ? html`<ul class="settings-rows">${tokens.map((t) => {
-        const expired = tokenExpires(t).getTime() < Date.now();
-        return html`<li class="settings-row">
-      <span class="settings-row-value"><strong>${t.name}</strong><br><span class="settings-hint">Connected ${shortDate(t.created_at)} ·
-        ${expired ? "expired" : t.last_used ? `last used ${shortDate(t.last_used)}` : "not used yet"}</span></span>
-      <form method="post" action="/account"><input type="hidden" name="action" value="token-revoke"><input type="hidden" name="token" value="${t.id}">
-        <button class="btn btn-sm btn-outline-dark" type="submit">Disconnect</button></form>
-    </li>`;
-      })}</ul>
-    <p class="settings-hint mt-2 mb-0">Agents can post and read original manuscripts as you, nothing else. One unused for ${TOKEN_IDLE_DAYS}
-    days disconnects itself. Disconnecting doesn’t remove what it posted; <a href="/contact?topic=manuscript">write to us</a> for that.</p>`
-    : html`<p class="settings-hint mb-0">No agents connected. To connect one, ask it to post a manuscript to Open Cryptology: it will
-    send you a link, and you approve it with one click.</p>`}
-</section>`;
-}
-
-function accountPage(env: Env, a: Actor, notice: Notice, status: number, tokens: TokenRow[]): Response {
+function accountPage(env: Env, a: Actor, notice: Notice, status = 200): Response {
   const u = a.user;
   const missing = PROVIDERS.filter((p) => !u.identities.some((i) => i.provider === p));
   const order = (i: Identity) => PROVIDERS.indexOf(i.provider);
@@ -209,8 +183,6 @@ ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert"
   </ul>
 </section>
 
-${agentsCard(tokens)}
-
 ${u.role === "maintainer" &&
 html`<section class="settings-card">
   <h2 class="settings-h">Maintainer</h2>
@@ -239,10 +211,6 @@ html`<section class="settings-card">
 </section>`,
     status,
   );
-}
-
-async function renderAccount(env: Env, a: Actor, notice: Notice, status = 200): Promise<Response> {
-  return accountPage(env, a, notice, status, await tokensOf(env, a.user.id));
 }
 
 /** /account/merge: the log-in method just connected belongs to another account; merge it in? */
@@ -290,13 +258,13 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
     return redirect303(`/account?saved=${saved}`, u ? [loginCookie(u)] : []);
   };
   if (action === "delete") {
-    if (form.get("confirm") !== "yes") return renderAccount(env, a, { err: "Tick the box to confirm." }, 422);
+    if (form.get("confirm") !== "yes") return accountPage(env, a, { err: "Tick the box to confirm." }, 422);
     await deleteAccount(env, a.user.id);
     return redirect303("/?account=deleted", clearCookies());
   }
   if (action === "merge" || action === "merge-cancel") {
     const m = await pendingMerge(env, req, a.user.id);
-    if (!m) return renderAccount(env, a, { err: "That merge expired. Connect the account again to start over." }, 410);
+    if (!m) return accountPage(env, a, { err: "That merge expired. Connect the account again to start over." }, 410);
     if (action === "merge-cancel") {
       await dropMerge(env, m.id);
       return redirect303("/account?saved=merge-cancelled", [clearMergeCookie]);
@@ -305,14 +273,10 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
     const u = await loadUser(env, a.user.id);
     return redirect303("/account?saved=merged", [clearMergeCookie, ...(u ? [loginCookie(u)] : [])]);
   }
-  if (action === "token-revoke") {
-    const ok = await revokeToken(env, a.user.id, form.get("token")?.toString() ?? "");
-    return ok ? redirect303("/account?saved=agent-disconnected#agents") : renderAccount(env, a, { err: "That agent was already disconnected." }, 404);
-  }
   if (action === "name") {
     const name = form.get("name")?.toString() ?? "";
     const problem = nameProblem(name);
-    if (problem) return renderAccount(env, a, { err: problem }, 400);
+    if (problem) return accountPage(env, a, { err: problem }, 400);
     await setCustomName(env, a.user.id, name);
     return withCookie("name");
   }
@@ -320,7 +284,7 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
     await setCustomName(env, a.user.id, null);
     return withCookie("name-reset");
   }
-  return renderAccount(env, a, { err: "Unknown action." }, 400);
+  return accountPage(env, a, { err: "Unknown action." }, 400);
 }
 
 export async function handleAccount(req: Request, env: Env, url: URL): Promise<Response> {
@@ -337,5 +301,5 @@ export async function handleAccount(req: Request, env: Env, url: URL): Promise<R
     const m = await pendingMerge(env, req, a.user.id);
     return m ? mergePage(env, a, m) : redirect303("/account");
   }
-  return renderAccount(env, a, { ok: SAVED[url.searchParams.get("saved") ?? ""] });
+  return accountPage(env, a, { ok: SAVED[url.searchParams.get("saved") ?? ""] });
 }
