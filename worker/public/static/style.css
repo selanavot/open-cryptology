@@ -535,7 +535,8 @@ ol.year-list .badge { margin-left: .35rem; }
 
 /* homepage: the letter, with a short list of where to go beside it (phones: below it) */
 .hm { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; padding: .5rem 1rem; }
-@media (min-width: 992px) { .hm { grid-template-columns: minmax(0, 1fr) 18rem; gap: 3rem; } }
+/* wide screens: letter and list stay side by side, centred, instead of drifting apart */
+@media (min-width: 992px) { .hm { grid-template-columns: minmax(0, 42rem) 18rem; justify-content: center; gap: 4rem; } }
 .hm-nav { align-self: start; border-top: 1px solid #eee7d6; }
 .hm-item { display: block; padding: .85rem 0; border-bottom: 1px solid #eee7d6; color: var(--text); text-decoration: none; }
 .hm-item:hover, .hm-item:visited { color: var(--text); }
