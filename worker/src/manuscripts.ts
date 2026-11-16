@@ -209,7 +209,7 @@ async function manuscriptFile(env: Env, req: Request, id: string): Promise<Respo
   const inm = req.headers.get("if-none-match");
   if (inm && inm.split(",").some((t) => t.trim().replace(/^W\//, "") === etag)) return new Response(null, { status: 304, headers });
   const obj = v.file_key ? await (req.method === "HEAD" ? env.PDFS.head(v.file_key) : env.PDFS.get(v.file_key)) : null;
-  if (!obj) return messagePage(env, 404, "File missing", html`<p>The file for original manuscript ${id} is missing. Please <a href="/#contact">tell us</a>.</p>`);
+  if (!obj) return messagePage(env, 404, "File missing", html`<p>The file for original manuscript ${id} is missing. Please <a href="/contact?topic=manuscript">tell us</a>.</p>`);
   headers.set("content-length", String(obj.size));
   return new Response("body" in obj ? (obj as R2ObjectBody).body : null, { headers });
 }
@@ -254,7 +254,7 @@ async function listPage(env: Env): Promise<Response> {
     cache: "public, max-age=120",
     body: html`<div class="ms-list-head">
   <h1 class="ms-title">Original manuscripts</h1>
-  <a class="btn btn-outline-dark" href="/submit">Submit an original manuscript</a>
+  <a class="btn hm-primary" href="/submit">Submit an original manuscript</a>
 </div>
 ${groups.length ? groups : html`<p class="text-muted mt-3">None yet.</p>`}`,
   });
@@ -455,7 +455,7 @@ function termsPage(env: Env): Response {
     access, or suspend anyone, at any time and for any reason. We'll usually say why.</li>
     <li><strong>Posts stay public otherwise.</strong> You can add versions or withdraw a manuscript, which adds a notice, but earlier versions
     stay readable, as on ePrint and arXiv. Don't post anything you couldn't leave public.</li>
-    <li><strong>Report problems</strong> through the <a href="/#contact">contact form</a>. We may share information when the law requires it.</li>
+    <li><strong>Report problems</strong> through the <a href="/contact">contact form</a>. We may share information when the law requires it.</li>
   </ul>
 
   <h2>Accounts and agents</h2>

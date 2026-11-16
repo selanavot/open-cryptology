@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "38";
+const ASSET_VER = "39";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -104,8 +104,9 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
       <ul class="nav-links">
         <li><a href="/manuscripts">Manuscripts</a></li>
         <li><a href="/eprint">ePrint papers</a></li>
-        <li><a class="nav-submit" href="/submit">Submit</a></li>
+        <li class="nav-submit-li"><a class="nav-submit" href="/submit">Submit</a></li>
       </ul>
+      <a class="nav-submit-out" href="/submit">Submit</a>
       ${(env.GITHUB_CLIENT_ID || env.GOOGLE_CLIENT_ID || env.ORCID_CLIENT_ID || env.AUTH_DEV_LOGIN === "1") && html`<a href="/account" class="nav-account">Log in</a>`}
       <details class="nav-search">
         <summary title="Search" aria-label="Search">${searchIcon()}</summary>
@@ -140,7 +141,7 @@ function footer(env: Env): Html {
   return html`<footer class="container site-footer">
   <nav aria-label="Footer">
     <a href="/llms.txt">For AI agents (llms.txt)</a> ·
-    <a href="/#contact">Contact</a> ·
+    <a href="/contact">Contact</a> ·
     <a href="${env.REPO_URL}">Source on GitHub</a> ·
     <a href="/support">Support me</a> ·
     <a href="/privacy">Privacy</a> ·

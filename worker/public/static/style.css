@@ -349,12 +349,11 @@ span.authorName { font-style: italic; }
 }
 .home-letter { max-width: 42rem; font-size: 1.05rem; line-height: 1.65; }
 .home-letter p { margin: 0 0 1rem; }
-.home-letter .contact-form { max-width: 32rem; margin-top: .5rem; }
+.contact-page { max-width: 36rem; }
+.contact-page .contact-form { margin-top: 1rem; }
 .home-side .eprintCardHeader { margin: 0; padding: .5rem; }
 .home-side .eprintCardHeader h3 { font-size: 1.25rem; }
 .home-side .eprintCardContent { padding: .5rem 0 0; }
-.contact-panel { margin-top: 1.5rem; border-top: 1px solid #e9ecef; padding-top: .75rem; }
-.contact-panel summary { cursor: pointer; font-weight: 600; }
 
 /* Papers missing a PDF (/missing and the homepage card): one tile per year, filled from the bottom in
    green up to the share of papers with an up-to-date PDF here (--cur), then yellow up to the share
@@ -535,15 +534,31 @@ ol.year-list .badge { margin-left: .35rem; }
 /* navbar: Submit as an outlined button */
 .nav-links a.nav-submit { border: 1.5px solid var(--nav-text); border-radius: .4rem; padding: .3rem .85rem; margin: .2rem 0 .2rem 1.5rem; font-weight: 600; }
 .nav-links a.nav-submit:hover { background: var(--nav-text); color: var(--nav); text-decoration: none; }
-@media (max-width: 991.98px) { .nav-links a.nav-submit { display: inline-block; margin: .35rem .75rem; } }
+@media (max-width: 991.98px) {
+  .nav-submit-out { order: 2; margin: 0 .25rem 0 0; border: 1.5px solid var(--nav-text); border-radius: .4rem; padding: .2rem .6rem;
+    font-weight: 600; font-size: .95rem; color: var(--nav-text); white-space: nowrap; }
+  .nav-submit-out:visited { color: var(--nav-text); }
+  .nav-links li.nav-submit-li { display: none; }
+}
+@media (min-width: 992px) { .nav-submit-out { display: none; } }
+@media (max-width: 575.98px) {
+  .site-name { font-size: 1.2rem; gap: .4rem; } .site-logo { width: 1.75rem; height: 1.75rem; }
+  .nav-burger { padding: .5rem .5rem .5rem 0; }
+  .nav-submit-out { padding: .15rem .45rem; font-size: .85rem; }
+  .nav-account { font-size: .9rem; padding: .5rem .15rem; }
+  .nav-search > summary { padding: .5rem .25rem .5rem .4rem; }
+}
+@media (max-width: 359.98px) { .site-name { font-size: 1.05rem; } .nav-submit-out { padding: .1rem .35rem; font-size: .8rem; } }
 
 /* homepage: the letter, with Submit and the latest manuscripts beside it (phones: Submit, letter, list) */
-.hm { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "cta" "letter" "latest"; gap: 1.25rem; padding: .5rem 1rem; }
+.hm { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "letter" "latest"; gap: 1.25rem; padding: .5rem 1rem; }
 @media (min-width: 992px) {
-  .hm { grid-template-columns: minmax(0, 1fr) 21rem; grid-template-areas: "letter cta" "letter latest"; grid-template-rows: auto 1fr; gap: 1rem 3rem; }
+  .hm { grid-template-columns: minmax(0, 1fr) 21rem; grid-template-areas: "letter latest"; gap: 1rem 3rem; }
 }
-.hm-cta { grid-area: cta; } .hm-letter { grid-area: letter; } .hm-latest { grid-area: latest; align-self: start; }
-.hm-submit { display: block; text-align: center; font-size: 1.05rem; }
+.hm-letter { grid-area: letter; } .hm-latest { grid-area: latest; align-self: start; }
+.hm-buttons { display: flex; flex-wrap: wrap; gap: .5rem; margin: -.25rem 0 1.25rem; }
+.ep-points { max-width: 46rem; padding-left: 1.2rem; margin: 0 0 .5rem; line-height: 1.6; }
+.ep-points li { margin: .25rem 0; }
 .hm-latest-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 .hm-latest-head .ms-day { margin-top: .25rem; }
 .ms-more { font-size: .9rem; white-space: nowrap; }

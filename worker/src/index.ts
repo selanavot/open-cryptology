@@ -1,7 +1,7 @@
 import { apiUpload } from "./apiupload";
 import { handleReview, isReviewPath } from "./review";
 import { notifyReview } from "./quarantine";
-import { handleContact } from "./contact";
+import { contactPage, handleContact } from "./contact";
 import { checkHarvestStaleness } from "./staleness";
 import { canonicalId, type Env } from "./db";
 import { html } from "./html";
@@ -96,7 +96,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === "/contact") {
     if (req.method === "POST") return handleContact(env, req, url);
     if (!isGet) return methodNotAllowed("GET, HEAD, POST");
-    return new Response(null, { status: 302, headers: { location: `/${url.search}#contact` } });
+    return contactPage(env, url);
   }
   if (!isGet) return methodNotAllowed("GET, HEAD");
 

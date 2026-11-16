@@ -1,4 +1,3 @@
-import { contactForm } from "./contact";
 import { homeData, parseAuthors, search, toFtsQuery, type Env, type ListItem, type SearchHit } from "./db";
 import { highlighted, html, stripMarks, type Html } from "./html";
 import { categoryBadge, hasTex, messagePage, page } from "./layout";
@@ -45,35 +44,30 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 
 // The letter is Sela's (drafted together on 2026-11-16); don't reword it without asking.
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const [{ gapsYear }, latest] = await Promise.all([missingCard(env, url.origin), latestManuscripts(env, 6)]);
+  const latest = await latestManuscripts(env, 6);
   const body = html`<div class="hm">
-  <div class="hm-cta">
-    <a class="btn hm-primary hm-submit" href="/submit">Submit an original manuscript</a>
-  </div>
   <article class="home-letter hm-letter">
     <p>Hello cryptographers!</p>
-    <p>Research is changing. AI agents now help with everything from literature review to finding
-    attacks, results come faster, and more of them come from new kinds of collaboration. The
-    traditional publishing model, ePrint included, wasn’t built for this: it is slow to post, it has
-    no way to say who or what did the work, and its papers are hard for agents to read.</p>
-    <p>Open Cryptology offers two things:</p>
-    <p><strong>Original manuscripts.</strong> <a href="/submit">Post a result</a> the day you have it:
-    an attack, a bound, a proof sketch, an open question. It is public right away at a permanent,
-    citable link, and the authors line says who did the work, people or models.</p>
-    <p><strong>Everything in one place, for you and your agents.</strong> All
-    <a href="/manuscripts">original manuscripts</a>, plus an unofficial, non-commercial
-    <a href="/eprint">mirror</a> of the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>,
-    searchable and readable by AI agents. New ePrint papers appear within days, and readers
-    <a href="/${gapsYear}">fill in the gaps</a> when a PDF is missing.</p>
+    <p>Research is changing, and so is the way we communicate it. We’d like a space for more open
+    discussion, with more freedom and flexibility than the strict formats we’re used to. Open
+    Cryptology does two things:</p>
+    <p><strong>1. Original manuscripts.</strong> Share anything the community might find useful,
+    published within moments: original research, an interesting open problem, an unverified idea your
+    agent had, or the approaches it spent tokens on that didn’t work. Each manuscript gets a permanent,
+    citable link, and authorship is flexible: humans, models, or the universe itself.</p>
+    <p class="hm-buttons"><a class="btn hm-primary" href="/submit">Submit a manuscript</a>
+    <a class="btn btn-outline-dark" href="/manuscripts">Browse manuscripts</a></p>
+    <p><strong>2. An ePrint mirror.</strong> Agents are more useful if they can access prior work.
+    However, the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a> currently blocks agents
+    from fetching the PDFs. We run an unofficial, non-commercial <a href="/eprint">mirror</a> to speed
+    up your workflows by giving agents the information they need.</p>
+    <p class="hm-buttons"><a class="btn btn-outline-dark" href="/eprint">Browse the ePrint mirror</a></p>
     <p><strong>What’s next.</strong> The vision is a one-stop place for everything known about each
     paper, kept up to date as cryptography moves on: discussion, links between papers and the
-    protocols they build on, and known attacks on each construction.</p>
-    <p>Something wrong or missing? <a href="#contact">Write to us</a> or
-    <a href="${env.ISSUES_URL}">open an issue</a>. Want to help? Get in touch!</p>
-    <details id="contact" class="contact-panel"${url.searchParams.has("paper") ? html` open` : ""}>
-      <summary>Write to us</summary>
-      ${contactForm(env, url)}
-    </details>
+    protocols they build on, and known attacks on each construction. Ideas welcome!</p>
+    <p>Something wrong or missing? Want to help?</p>
+    <p class="hm-buttons"><a class="btn btn-outline-dark" href="/contact">Get in touch</a>
+    <a class="btn btn-outline-dark" href="${env.ISSUES_URL}">Open an issue</a></p>
   </article>
   <section class="hm-latest" aria-labelledby="hm-latest-h">
     <div class="hm-latest-head"><h2 class="ms-day" id="hm-latest-h">Latest original manuscripts</h2>${latest.count ? html`<a class="ms-more" href="/manuscripts">All →</a>` : ""}</div>
@@ -101,8 +95,14 @@ export async function eprintPage(env: Env, url: URL): Promise<Response> {
   const body = html`<div class="ep-head">
   <h1 class="ms-title">ePrint papers</h1>
   <p class="ep-lede">An unofficial, non-commercial mirror of the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>,
-  readable by you and your AI agents. New papers appear within days of being accepted on ePrint; to post one,
-  <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual. Missing a PDF? <a href="/${gapsYear}">Fill in the gaps</a>.</p>
+  readable by you and your AI agents.</p>
+  <ul class="ep-points">
+    <li><strong>New papers</strong> appear here within days of being accepted on ePrint; to post one,
+    <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</li>
+    <li><strong>PDFs</strong> come from existing public copies, and readers <a href="/${gapsYear}">fill in the gaps</a>: if one is
+    missing, download it from ePrint and upload it anonymously here.</li>
+    <li><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the original. Please respect it.</li>
+  </ul>
 </div>
 <div class="ep-grid">
   <section>
