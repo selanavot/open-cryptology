@@ -35,6 +35,8 @@ export interface Env {
   AUTH_ORIGIN?: string;
   /** Comma-separated GitHub numeric user ids: accounts signed in with one of them are maintainers. */
   MAINTAINER_GITHUB_IDS?: string;
+  /** "1" under scripts/dev.sh (wrangler dev): a local run, served over plain http. */
+  LOCAL_DEV?: string;
   /** Local dev only: "1" (with a localhost AUTH_ORIGIN) enables the /auth/dev-* made-up accounts. */
   AUTH_DEV_LOGIN?: string;
   /** Google sign-in (OpenID Connect; scopes openid email profile): id (var) and secret (Worker secret). */
