@@ -121,7 +121,8 @@ citable id: the UTC date of first publication plus that day's number, e.g. 2026-
   manuscripts are CC BY 4.0; titles, author lists and abstracts are CC0.
 Logged-in people submit them at ${origin}/submit; an upload API for agents is coming.
 
-How to format a manuscript (Markdown) so it typesets well:
+How to format a manuscript (Markdown) so it typesets well (with examples: ${origin}/manuscripts/format;
+a starting file: ${origin}/manuscripts/template.md):
 - Start with "# Title", then an "## Abstract" section; both are filled in from the file.
 - "##" headings become numbered sections and the contents list; "###" are subsections.
 - Math: $...$ inline, $$...$$ for display (KaTeX).

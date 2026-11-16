@@ -150,6 +150,11 @@ check("out of the list", !(await (await new Client().req("/manuscripts")).text()
 
 console.log("\n# other pages");
 check("terms", /Acceptable use/.test(await (await new Client().req("/terms")).text()));
+const guide = await (await new Client().req("/manuscripts/format")).text();
+check("format guide, with live examples", guide.includes("How to format a manuscript") && guide.includes('<blockquote class="thm">') && guide.includes('<a href="/2019/256">'));
+const tpl = await new Client().req("/manuscripts/template.md");
+check("template", tpl.headers.get("content-type")?.startsWith("text/markdown") && /^# /.test(await tpl.text()), tpl.headers.get("content-type"));
+check("submit form links the guide", (await (await me.req("/submit")).text()).includes('href="/manuscripts/format"'));
 check("unknown id 404", (await new Client().req(`/${today}/9999`)).status === 404);
 const ep = await new Client().req("/2024/1");
 check("ePrint ids still work", ep.status === 301 && ep.headers.get("location") === "/2024/001", `${ep.status} ${ep.headers.get("location")}`);

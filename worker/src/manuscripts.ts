@@ -9,13 +9,14 @@ import { icons, messagePage, page } from "./layout";
 import { avatar, identityDetail, providerTag } from "./account";
 import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type User } from "./auth";
 import { extractMeta, renderInline, renderManuscript } from "./markdown";
+import { formatGuidePage, templateMd } from "./manuscript-guide";
 import { siteOrigin } from "./seo";
 
 export const MS_RE = /^\/(\d{4}-\d{2}-\d{2})\/(\d{1,4})(\.md)?\/?$/;
 const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
 
 export const isManuscriptPath = (path: string): boolean =>
-  MS_RE.test(path) || PROFILE_RE.test(path) || ["/manuscripts", "/submit", "/terms", "/manuscripts/remove"].includes(path);
+  MS_RE.test(path) || PROFILE_RE.test(path) || ["/manuscripts", "/submit", "/terms", "/manuscripts/remove", "/manuscripts/format", "/manuscripts/template.md"].includes(path);
 
 const MAX_MD = 200_000; // bytes
 const MAX_PER_DAY = 20; // new manuscripts per account per 24 hours
@@ -341,7 +342,7 @@ function submitPage(env: Env, f: Form, status = 200): Response {
       <strong class="sb-name">Drop a Markdown file here</strong>
       <span>or click to choose · .md, up to 200 KB</span>
     </label>
-    <p class="form-hint text-muted">It gets a typeset reading page, and its title and abstract fill in below. <a href="/llms.txt#manuscripts">How to format it</a></p>
+    <p class="form-hint text-muted">It gets a typeset reading page, and its title and abstract fill in below. <a href="/manuscripts/format" target="_blank">How to format it</a></p>
     <label class="form-label" for="sb-title">Title</label>
     <input class="form-control" id="sb-title" name="title" value="${f.title}" maxlength="300" required>
     <label class="form-label">Authors <span class="sb-sub">as they should be cited</span></label>
@@ -499,6 +500,8 @@ export async function handleManuscripts(req: Request, env: Env, url: URL): Promi
   if (!isGet) return messagePage(env, 405, "Method not allowed", html`<p>This page is read-only.</p>`, NO_STORE);
   if (path === "/manuscripts") return listPage(env);
   if (path === "/terms") return termsPage(env);
+  if (path === "/manuscripts/format") return formatGuidePage(env);
+  if (path === "/manuscripts/template.md") return templateMd();
   const pm = PROFILE_RE.exec(path);
   if (pm) return profilePage(env, pm[1]);
   const mm = MS_RE.exec(path)!;

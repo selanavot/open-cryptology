@@ -551,6 +551,22 @@ ol.year-list .badge { margin-left: .35rem; }
 .ms-license { white-space: normal; margin: .75rem 0; }
 
 /* terms */
+/* how to format a manuscript */
+.fmt { max-width: 60rem; margin: 0 auto; line-height: 1.6; }
+.fmt-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 .5rem; }
+.fmt-ex { padding-top: 1.4rem; margin-top: 1.4rem; border-top: 1px solid #eee; }
+.fmt-ex > h2 { font-size: 1.15rem; margin: 0 0 .3rem; }
+.fmt-note { color: var(--muted); margin: 0 0 .8rem; }
+.fmt-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.fmt-label { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 .3rem; }
+.fmt-src { margin: 0; padding: .8rem 1rem; background: #f7f7f7; border-radius: .35rem; font-size: .82rem; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+.fmt .fmt-out { padding: .3rem 1rem .5rem; border: 1px solid #eee; border-radius: .35rem; font-size: .95rem; line-height: 1.55; text-align: left; }
+.fmt .fmt-out > :first-child, .fmt .fmt-out .footnotes > h2 { margin-top: .5rem; }
+.fmt .fmt-out h2 { font-size: 1.15rem; } .fmt .fmt-out h3 { font-size: 1rem; }
+.fmt .fmt-out .rd-titleblock { padding-bottom: .3rem; } .fmt .fmt-out .rd-titleblock h1 { font-size: 1.3rem; margin: .4rem 0 0; }
+.fmt .fmt-out .rd-abstract { margin-top: .4rem; }
+@media (max-width: 760px) { .fmt-pair { grid-template-columns: minmax(0, 1fr); } }
 .tou { max-width: 44rem; margin: 0 auto; line-height: 1.6; }
 .tou h2 { font-size: 1.15rem; margin: 1.6rem 0 .5rem; }
 .tou li { margin: .4rem 0; }
