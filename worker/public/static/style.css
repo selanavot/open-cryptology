@@ -534,21 +534,7 @@ ol.year-list .badge { margin-left: .35rem; }
 /* navbar: Submit as an outlined button */
 .nav-links a.nav-submit { border: 1.5px solid var(--nav-text); border-radius: .4rem; padding: .3rem .85rem; margin: .2rem 0 .2rem 1.5rem; font-weight: 600; }
 .nav-links a.nav-submit:hover { background: var(--nav-text); color: var(--nav); text-decoration: none; }
-@media (max-width: 991.98px) {
-  .nav-submit-out { order: 2; margin: 0 .25rem 0 0; border: 1.5px solid var(--nav-text); border-radius: .4rem; padding: .2rem .6rem;
-    font-weight: 600; font-size: .95rem; color: var(--nav-text); white-space: nowrap; }
-  .nav-submit-out:visited { color: var(--nav-text); }
-  .nav-links li.nav-submit-li { display: none; }
-}
-@media (min-width: 992px) { .nav-submit-out { display: none; } }
-@media (max-width: 575.98px) {
-  .site-name { font-size: 1.1rem; gap: .35rem; } .site-logo { width: 1.6rem; height: 1.6rem; }
-  .nav-burger { padding: .5rem .4rem .5rem 0; } .nav-burger span { width: 24px; }
-  .nav-submit-out { padding: .15rem .45rem; font-size: .85rem; }
-  .nav-account { font-size: .9rem; padding: .5rem .15rem; }
-  .nav-search > summary { padding: .5rem .25rem .5rem .4rem; }
-}
-@media (max-width: 359.98px) { .nav-account { font-size: .8rem; padding: .5rem .1rem; } .site-name { font-size: .95rem; } .site-logo { width: 1.4rem; height: 1.4rem; } .nav-submit-out { padding: .1rem .35rem; font-size: .8rem; } }
+@media (max-width: 991.98px) { .nav-links a.nav-submit { display: inline-block; margin: .35rem .75rem; } }
 
 /* homepage: the letter, with Submit and the latest manuscripts beside it (phones: Submit, letter, list) */
 .hm { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "letter" "latest"; gap: 1.25rem; padding: .5rem 1rem; }
