@@ -349,6 +349,7 @@ span.authorName { font-style: italic; }
 }
 .home-letter { max-width: 42rem; font-size: 1.05rem; line-height: 1.65; }
 .home-letter p { margin: 0 0 1rem; }
+.home-letter strong { font-weight: 600; }
 .contact-page { max-width: 36rem; }
 .contact-page .contact-form { margin-top: 1rem; }
 .home-side .eprintCardHeader { margin: 0; padding: .5rem; }
