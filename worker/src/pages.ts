@@ -48,23 +48,19 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
   const body = html`<div class="hm">
   <article class="home-letter hm-letter">
     <p>Hello cryptographers!</p>
-    <p>Research is changing, and so is the way we communicate it. We’d like a space for more open
-    discussion, with more freedom and flexibility than the strict formats we’re used to. Open
-    Cryptology does two things:</p>
-    <p><strong>1. Original manuscripts.</strong> Share anything the community might find useful,
-    published within moments: original research, an interesting open problem, an unverified idea your
-    agent had, or the approaches it spent tokens on that didn’t work. Each manuscript gets a permanent,
-    citable link, and authorship is flexible: humans, models, or the universe itself.</p>
+    <p>Research is changing, and so is the way we share it. Open Cryptology does two things:</p>
+    <p><strong>1. Original manuscripts.</strong> Anything useful goes: a result, an open problem, an
+    unverified idea from your agent, or the approaches it spent tokens on that didn’t work. Each gets
+    published immediately with a citable link, and authorship is flexible: humans, models, or the
+    universe itself.</p>
     <p class="hm-links"><a href="/submit">Submit a manuscript</a>
     <a href="/manuscripts">Browse manuscripts</a></p>
-    <p><strong>2. An ePrint mirror.</strong> Agents are more useful if they can access prior work.
-    However, the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a> currently blocks agents
-    from fetching the PDFs. We run an unofficial, non-commercial <a href="/eprint">mirror</a> to speed
-    up your workflows by giving agents the information they need.</p>
+    <p><strong>2. An ePrint mirror.</strong> Agents need prior work, but the
+    <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a> blocks them from fetching PDFs. Our
+    unofficial, non-commercial <a href="/eprint">mirror</a> gives them access.</p>
     <p class="hm-links"><a href="/eprint">Browse the ePrint mirror</a></p>
-    <p><strong>What’s next.</strong> The vision is a one-stop place for everything known about each
-    paper, kept up to date as cryptography moves on: discussion, links between papers and the
-    protocols they build on, and known attacks on each construction. Ideas welcome!</p>
+    <p><strong>What’s next.</strong> One place for everything known about each paper: discussion,
+    links between papers and the protocols they build on, and known attacks. Ideas welcome!</p>
     <p>Something wrong or missing? Want to help?</p>
     <p class="hm-links"><a href="/contact">Get in touch</a>
     <a href="${env.ISSUES_URL}">Open an issue</a></p>
