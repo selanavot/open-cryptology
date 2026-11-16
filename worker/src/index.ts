@@ -186,7 +186,8 @@ export default {
         env,
         500,
         "Something went wrong",
-        html`<p>If it keeps happening, <a href="${env.ISSUES_URL}">report an issue</a>.</p>`,
+        html`<p>Sorry — an unexpected error occurred. If it keeps happening, please
+        <a href="${env.ISSUES_URL}">report an issue</a>.</p>`,
       );
     }
   },

@@ -15,9 +15,9 @@ export function llmsTxt(env: Env, origin: string): Response {
   return text(`# ${env.SITE_NAME}
 
 > Unofficial, non-commercial mirror of the IACR Cryptology ePrint Archive (${env.ORIGIN_BASE}),
-> not affiliated with the IACR. Metadata comes from ePrint's OAI-PMH feed (CC0); PDFs come from
-> existing public copies and verified uploads, never from scraping ePrint. It also publishes
-> original manuscripts (below).
+> not affiliated with the IACR. It makes ePrint papers easier to obtain and search for humans and
+> AI assistants. Metadata comes from ePrint's OAI-PMH feed (CC0); PDFs come from existing public
+> copies and verified uploads, never from scraping ePrint.
 
 ## URL patterns
 
@@ -112,8 +112,9 @@ field and in the PDF's \`Link: <...>; rel="license"\` and \`X-License\` headers.
 
 ## Original manuscripts
 
-Manuscripts posted directly to Open Cryptology, without review. Authors may be people or models.
-Each id is the UTC date of first publication plus that day's number, e.g. 2026-11-15/3.
+Besides mirroring ePrint, Open Cryptology publishes original manuscripts: results, notes and open
+questions shared faster than papers, by people or written with or by AI. Each has a permanent,
+citable id: the UTC date of first publication plus that day's number, e.g. 2026-11-15/3.
 - ${origin}/manuscripts: the newest ones.
 - ${origin}/2026-11-15/3: the page (title, authors, uploader, abstract, versions, BibTeX).
 - ${origin}/2026-11-15/3.pdf: the PDF. All manuscripts are CC BY 4.0; titles, author lists and

@@ -389,9 +389,9 @@ function termsPage(env: Env): Response {
     cache: "public, max-age=3600",
     body: html`<article class="tou">
   <h1 class="ms-title">Terms of use</h1>
-  <p class="text-muted">Last updated 16 November 2026.</p>
+  <p class="text-muted">Last updated 15 November 2026.</p>
   <p>Open Cryptology is a free, non-commercial site run by Sela Navot (“we”). By using it you agree to these terms.
-  Original manuscripts are published without review.</p>
+  Original manuscripts are published as soon as they're posted, without review, so these terms are how we keep the site useful and safe.</p>
 
   <h2>Licenses for original manuscripts</h2>
   <ul>
@@ -401,7 +401,8 @@ function termsPage(env: Env): Response {
     copy, convert, index, display and distribute each version, in any format and through any service, now and later. This doesn't transfer
     your copyright.</li>
     <li><strong>Titles, author lists and abstracts</strong> are dedicated to the public domain
-    (<a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>).</li>
+    (<a href="https://creativecommons.org/publicdomain/zero/1.0/">CC0</a>), so anyone, including search engines and AI agents, may reuse
+    them freely.</li>
     <li><strong>You confirm you have the right to grant these licenses</strong>, including for anything produced with AI tools (under those
     tools' terms), and that posting doesn't break an agreement with a publisher, employer or funder.</li>
   </ul>
@@ -412,7 +413,7 @@ function termsPage(env: Env): Response {
     <li>anything illegal, or anything that infringes someone else's copyright or other rights;</li>
     <li>other people's private information, credentials, keys or leaked data;</li>
     <li>malware, or working exploits against specific deployed systems whose owners haven't had a fair chance to fix them
-    (attacks on algorithms, protocols and published constructions are fine);</li>
+    (attacks on algorithms, protocols and published constructions are what this site is for);</li>
     <li>harassment, threats, hate, or impersonating a person or organization;</li>
     <li>naming real people as authors without their consent;</li>
     <li>spam, advertising, or content that has nothing to do with cryptography;</li>
@@ -438,7 +439,7 @@ function termsPage(env: Env): Response {
   licenses already granted stay as they were.</p>
 
   <h2>No warranty</h2>
-  <p>The site and everything on it are provided as is. Manuscripts aren't reviewed. To the extent the law allows,
+  <p>The site and everything on it are provided as is. Manuscripts aren't reviewed; read them critically. To the extent the law allows,
   we aren't liable for losses from using the site.</p>
 
   <p class="text-muted small">See also the <a href="/privacy">privacy page</a>.</p>
