@@ -548,7 +548,7 @@ ol.year-list .badge { margin-left: .35rem; }
   .nav-account { font-size: .9rem; padding: .5rem .15rem; }
   .nav-search > summary { padding: .5rem .25rem .5rem .4rem; }
 }
-@media (max-width: 359.98px) { .site-name { font-size: .95rem; } .site-logo { width: 1.4rem; height: 1.4rem; } .nav-submit-out { padding: .1rem .35rem; font-size: .8rem; } }
+@media (max-width: 359.98px) { .nav-account { font-size: .8rem; padding: .5rem .1rem; } .site-name { font-size: .95rem; } .site-logo { width: 1.4rem; height: 1.4rem; } .nav-submit-out { padding: .1rem .35rem; font-size: .8rem; } }
 
 /* homepage: the letter, with Submit and the latest manuscripts beside it (phones: Submit, letter, list) */
 .hm { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "letter" "latest"; gap: 1.25rem; padding: .5rem 1rem; }
