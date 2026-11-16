@@ -74,7 +74,7 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
   <nav class="hm-nav" aria-label="Open Cryptology">
     <a class="hm-item" href="/manuscripts">
       <span class="hm-item-title">Original manuscripts</span>
-      <span class="hm-item-sub">Citable results, open problems and ideas</span>
+      <span class="hm-item-sub">Open to anyone, free to read, citable</span>
     </a>
     <a class="hm-item" href="/eprint">
       <span class="hm-item-title">ePrint mirror</span>
