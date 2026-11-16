@@ -225,7 +225,8 @@ CREATE TABLE IF NOT EXISTS agent_connect (
   created_at    TEXT NOT NULL,
   expires_at    TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'pending', -- pending | approved | denied | claimed
-  user_id       TEXT                         -- who approved or denied it
+  user_id       TEXT,                        -- who approved or denied it
+  token_id      TEXT                         -- the token handed out (replaced if the agent asks again)
 );
 CREATE INDEX IF NOT EXISTS agent_connect_ip ON agent_connect(ip_hash, created_at);
 

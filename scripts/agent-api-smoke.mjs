@@ -107,10 +107,12 @@ check("cross-site approve refused", r.status === 403);
 r = await me.approve(d.user_code, "approve");
 check("approve: connected", r.status === 200 && /Connected/.test(await r.text()));
 c = await collect(d.device_code);
-const tok = c.j.access_token;
-check("agent collects its token", c.s === 200 && /^oct_/.test(tok ?? "") && c.j.token_type === "Bearer" && c.j.user?.displayName === `agent${RUN}`, JSON.stringify(c.j).slice(0, 120));
+const lost = c.j.access_token;
+check("agent collects its token", c.s === 200 && /^oct_/.test(lost ?? "") && c.j.token_type === "Bearer" && c.j.user?.displayName === `agent${RUN}`, JSON.stringify(c.j).slice(0, 120));
 c = await collect(d.device_code);
-check("only once: then expired_token", c.s === 400 && c.j.error === "expired_token");
+const tok = c.j.access_token;
+check("lost it? the same device_code gives a new token", c.s === 200 && /^oct_/.test(tok ?? "") && tok !== lost);
+check("and the lost one stops working", (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${lost}` } })).status === 401);
 check("the link is used up", (await me.req(linkPath)).status === 410);
 d = await startConnect("Declined agent");
 await me.approve(d.user_code, "deny");
@@ -118,7 +120,7 @@ check("declined: access_denied", (await collect(d.device_code)).j.error === "acc
 check("unknown code: 410", (await me.req("/connect?code=BBBB-CCCC")).status === 410);
 check("unknown device_code: expired_token", (await collect("nope")).j.error === "expired_token");
 const acct = await (await me.req("/account")).text();
-check("account page lists the agent, with no way to make keys", acct.includes("Claude Code test") && !acct.includes(tok) && !/token-new|Create token/.test(acct));
+check("account page lists the agent once, with no way to make keys", (acct.match(/Claude Code test/g) ?? []).length === 1 && !acct.includes(tok) && !/token-new|Create token/.test(acct));
 
 console.log("\n# /api/me");
 r = await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tok}` } });

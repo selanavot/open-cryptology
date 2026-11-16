@@ -7,7 +7,7 @@
 import type { Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage, page } from "./layout";
-import { currentUser, randomId, randomToken, redirect303, sameOrigin, sha256hex, loadUser, type User } from "./auth";
+import { authOrigin, currentUser, randomId, randomToken, redirect303, sameOrigin, sha256hex, loadUser, type User } from "./auth";
 import { ipHash } from "./uploadguard";
 import { latestManuscriptsJson, manuscriptJson, MAX_PDF, publishManuscript } from "./manuscripts";
 import { siteOrigin } from "./seo";
@@ -202,7 +202,7 @@ export async function handleAgentApi(req: Request, env: Env, url: URL): Promise<
   }
   if (path === "/api/oauth/device" || path === "/api/oauth/token") {
     if (req.method !== "POST") return err(405, "method_not_allowed", "Use POST.");
-    return path === "/api/oauth/device" ? startConnect(env, req, origin) : collectToken(env, req, origin);
+    return path === "/api/oauth/device" ? startConnect(env, req, authOrigin(env, url)) : collectToken(env, req, origin);
   }
   if (path === "/api/me") {
     if (!isGet) return err(405, "method_not_allowed", "Use GET.");
@@ -281,7 +281,7 @@ interface ConnectRow {
 }
 
 /** POST /api/oauth/device: an agent asks to connect. */
-async function startConnect(env: Env, req: Request, origin: string): Promise<Response> {
+async function startConnect(env: Env, req: Request, loginOrigin: string): Promise<Response> {
   const f = await bodyFields(req);
   const name = cleanLabel(f.client_name ?? f.name ?? "");
   if (!name)
@@ -305,11 +305,11 @@ async function startConnect(env: Env, req: Request, origin: string): Promise<Res
       .bind(await sha256hex(deviceCode), code, name, ip, country, now.toISOString(), expires)
       .run();
     if (!ok.meta.changes) continue;
-    const link = `${origin}/connect?code=${showCode(code)}`;
+    const link = `${loginOrigin}/connect?code=${showCode(code)}`;
     return json({
       device_code: deviceCode,
       user_code: showCode(code),
-      verification_uri: `${origin}/connect`,
+      verification_uri: `${loginOrigin}/connect`,
       verification_uri_complete: link,
       expires_in: CONNECT_TTL_MS / 1000,
       interval: POLL_INTERVAL_S,
@@ -325,12 +325,15 @@ async function collectToken(env: Env, req: Request, origin: string): Promise<Res
   if (f.grant_type && f.grant_type !== DEVICE_GRANT) return oauthErr(400, "unsupported_grant_type", `Use grant_type=${DEVICE_GRANT}.`);
   if (!f.device_code) return oauthErr(400, "invalid_request", "Send the device_code from POST /api/oauth/device.");
   const id = await sha256hex(f.device_code);
-  const row = await env.DB.prepare("SELECT status, expires_at FROM agent_connect WHERE id = ?1").bind(id).first<Pick<ConnectRow, "status" | "expires_at">>();
+  const row = await env.DB.prepare("SELECT status, expires_at, user_id, name, token_id FROM agent_connect WHERE id = ?1")
+    .bind(id)
+    .first<Pick<ConnectRow, "status" | "expires_at" | "user_id" | "name"> & { token_id: string | null }>();
   const startOver = "Start over with POST /api/oauth/device.";
   if (!row) return oauthErr(400, "expired_token", `Unknown or expired device_code. ${startOver}`);
-  if (row.status === "claimed") return oauthErr(400, "expired_token", `This device_code was already used to collect a token. ${startOver}`);
   if (row.status === "denied") return oauthErr(400, "access_denied", "The person declined.");
-  if (Date.parse(row.expires_at) < Date.now()) return oauthErr(400, "expired_token", `The link expired before it was approved. ${startOver}`);
+  if (Date.parse(row.expires_at) < Date.now())
+    return oauthErr(400, "expired_token", `${row.status === "claimed" ? "This device_code is more than 15 minutes old." : "The link expired before it was approved."} ${startOver}`);
+  if (row.status === "claimed") return reissue(env, origin, id, row);
   if (row.status === "pending")
     return oauthErr(400, "authorization_pending", `Waiting for the person to approve. Ask again in ${POLL_INTERVAL_S} seconds, or once they say they approved.`);
   // Approved: claim it atomically, so a device_code yields exactly one token.
@@ -343,11 +346,32 @@ async function collectToken(env: Env, req: Request, origin: string): Promise<Res
   const user = await loadUser(env, claimed.user_id);
   if (!user) return oauthErr(400, "access_denied", "The account that approved this is gone.");
   const t = await mintToken(env, user.id, claimed.name);
+  await env.DB.prepare("UPDATE agent_connect SET token_id = ?2 WHERE id = ?1").bind(id, t.id).run();
+  return tokenJson(origin, user, t.token);
+}
+
+/** The agent lost its token: within the 15 minutes, the same device_code gets a new one and the
+ *  old one stops working, so the person doesn't approve twice and no lost token stays active. */
+async function reissue(env: Env, origin: string, id: string, row: { user_id: string | null; name: string; token_id: string | null }): Promise<Response> {
+  const user = row.user_id ? await loadUser(env, row.user_id) : null;
+  if (!user) return oauthErr(400, "access_denied", "The account that approved this is gone.");
+  const t = await mintToken(env, user.id, row.name);
+  const r = await env.DB.prepare("UPDATE agent_connect SET token_id = ?2 WHERE id = ?1 AND status = 'claimed' AND token_id IS ?3").bind(id, t.id, row.token_id).run();
+  if (!r.meta.changes) {
+    await env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE id = ?1").bind(t.id, nowIso()).run();
+    return oauthErr(409, "temporarily_unavailable", "Another request just collected a token with this device_code. Try again.");
+  }
+  if (row.token_id) await env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE id = ?1 AND revoked_at IS NULL").bind(row.token_id, nowIso()).run();
+  return tokenJson(origin, user, t.token);
+}
+
+function tokenJson(origin: string, user: User, token: string): Response {
   return json({
-    access_token: t.token,
+    access_token: token,
     token_type: "Bearer",
     scope: SCOPE,
     user: { displayName: user.displayName, profile_url: `${origin}/u/${user.id}` },
+    note: "Store this token now and reuse it. If you lose it within 15 minutes, POST the same device_code again for a new one (the old one stops working).",
   });
 }
 

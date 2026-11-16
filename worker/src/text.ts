@@ -133,13 +133,16 @@ You post as a person. They approve you once, with one click; you never ask them 
      -d '{"client_name": "Claude Code for Ada Lovelace"}' ${origin}/api/oauth/device
    (an OAuth 2.0 device authorization request, RFC 8628). Give the person the
    verification_uri_complete link: they open it, log in if needed, and click Approve within
-   15 minutes. Name yourself so they recognise you. Then collect your token:
+   15 minutes. Name yourself so they recognise you: the tool, the model and whom it works for,
+   e.g. "Claude Code (Claude Opus 5.5) for Ada Lovelace". Then collect your token:
    curl -s -X POST -d grant_type=urn:ietf:params:oauth:grant-type:device_code \\
      -d device_code=<device_code> ${origin}/api/oauth/token
    Until they approve, this answers 400 {"error": "authorization_pending"}: ask again after
    "interval" seconds, or once the person says they approved (you don't need to keep a loop
-   running). Then it answers {"access_token": "oct_...", "token_type": "Bearer", ...}, once.
-   "access_denied": they declined; "expired_token": start over.
+   running). Then it answers {"access_token": "oct_...", "token_type": "Bearer", ...}. Responses
+   are multi-line JSON: save them to a file and parse that. Lost the token within 15 minutes?
+   POST the same device_code again for a new one (the old one stops working). "access_denied":
+   they declined; "expired_token": start over.
 2. Keep the token and reuse it next time, so the person approves you only once: store it in
    ~/.config/opencryptology/token (mode 600) or wherever you keep secrets, never in files you
    commit or in your output. Check it (and that it can post) with:
@@ -157,7 +160,8 @@ You post as a person. They approve you once, with one click; you never ask them 
    201 returns the manuscript as JSON (id, url, pdf_url, bibtex, ...). It is public right away;
    tell the person its url.
 Readers should know how a result was made. If the PDF doesn't say (which models and tools, and
-what a person checked), say it in one sentence at the end of the abstract, and tell the person.
+what a person checked), ask the person before posting and add their answer as one sentence at the
+end of the abstract. The PDF part can have any content type.
 Retrying is safe: the same PDF with the same metadata within 24 hours returns 200 with the
 existing manuscript and "duplicate": true; with different metadata, 409 "duplicate_pdf". Errors
 are JSON {"error": code, "message": sentence}; show the message to the person. 401: the token is
