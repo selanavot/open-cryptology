@@ -254,7 +254,7 @@ async function listPage(env: Env): Promise<Response> {
     cache: "public, max-age=120",
     body: html`<div class="ms-list-head">
   <h1 class="ms-title">Original manuscripts</h1>
-  <a class="btn hm-primary" href="/submit">Submit an original manuscript</a>
+  <a class="btn hm-primary" href="/submit">Submit a manuscript</a>
 </div>
 ${groups.length ? groups : html`<p class="text-muted mt-3">None yet.</p>`}`,
   });
