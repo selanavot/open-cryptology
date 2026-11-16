@@ -257,13 +257,11 @@
   setupManuscriptForm();
 })();
 
-// Open the contact panel when arriving via #contact or clicking a #contact link.
+// Old links to the homepage's contact panel (/#contact, /?paper=2024/123#contact): the form
+// is its own page now.
 (function () {
   function openContact() {
-    if (location.hash === "#contact") {
-      var d = document.getElementById("contact");
-      if (d && d.tagName === "DETAILS") d.open = true;
-    }
+    if (location.hash === "#contact" && !document.getElementById("contact")) location.replace("/contact" + location.search);
   }
   window.addEventListener("hashchange", openContact);
   openContact();

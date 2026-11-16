@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "37";
+const ASSET_VER = "48";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -102,15 +102,16 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
       <label for="nav-toggle" class="nav-burger" aria-hidden="true"><span></span><span></span><span></span></label>
       <a class="site-name" href="/"><img class="site-logo" src="/static/logo.svg?v=${ASSET_VER}" alt="" width="40" height="40">${site}</a>
       <ul class="nav-links">
-        <li><a href="/search">Papers</a></li>
-        <li><a href="${env.REPO_URL}">GitHub</a></li>
+        <li><a href="/manuscripts">Manuscripts</a></li>
+        <li><a href="/eprint">ePrint papers</a></li>
+        <li><a href="/submit">Submit</a></li>
       </ul>
       ${(env.GITHUB_CLIENT_ID || env.GOOGLE_CLIENT_ID || env.ORCID_CLIENT_ID || env.AUTH_DEV_LOGIN === "1") && html`<a href="/account" class="nav-account">Log in</a>`}
       <details class="nav-search">
         <summary title="Search" aria-label="Search">${searchIcon()}</summary>
         <form class="nav-search-dd" action="/search" method="get" role="search">
           <div class="input-group">
-            <input type="search" name="q" value="${o.query ?? ""}" class="form-control" placeholder="Search papers, or go to 2024/123" aria-label="Search papers" autocomplete="off">
+            <input type="search" name="q" value="${o.query ?? ""}" class="form-control" placeholder="Search manuscripts and ePrint papers, or go to 2024/123" aria-label="Search manuscripts and ePrint papers" autocomplete="off">
             <button class="btn btn-secondary" type="submit">Search</button>
           </div>
         </form>
@@ -139,16 +140,16 @@ function footer(env: Env): Html {
   return html`<footer class="container site-footer">
   <nav aria-label="Footer">
     <a href="/llms.txt">For AI agents (llms.txt)</a> ·
-    <a href="/#contact">Contact</a> ·
+    <a href="/contact">Contact</a> ·
     <a href="${env.REPO_URL}">Source on GitHub</a> ·
     <a href="/support">Support me</a> ·
     <a href="/privacy">Privacy</a> ·
     <a href="/terms">Terms</a> ·
     <a href="${env.ISSUES_URL}">Report an issue</a>
   </nav>
-  <p>${env.SITE_NAME} is an unofficial, non-commercial mirror of the
-  <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a> and is not affiliated with the IACR.
-  Papers remain under their authors’ licenses; please cite the original ePrint entry.</p>
+  <p>${env.SITE_NAME} is not affiliated with the IACR. Its ePrint papers are an unofficial, non-commercial
+  mirror of the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>; they remain under their authors’
+  licenses, so please cite the original ePrint entry.</p>
 </footer>`;
 }
 

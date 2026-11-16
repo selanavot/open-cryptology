@@ -1,9 +1,9 @@
-import { contactForm } from "./contact";
 import { homeData, parseAuthors, search, toFtsQuery, type Env, type ListItem, type SearchHit } from "./db";
 import { highlighted, html, stripMarks, type Html } from "./html";
 import { categoryBadge, hasTex, messagePage, page } from "./layout";
 import { missingCard } from "./years";
 import { ogImage, siteOrigin } from "./seo";
+import { latestManuscripts, searchManuscripts } from "./manuscripts";
 
 export const day = (iso: string | null | undefined): string => (iso ? iso.slice(0, 10) : "");
 export const fmtInt = (n: number): string => n.toLocaleString("en-US");
@@ -42,50 +42,72 @@ function resultItem(p: ListItem, hit?: SearchHit): Html {
 
 // ---------------------------------------------------------------------------- home
 
+// The letter is Sela's (drafted together on 2026-11-16); don't reword it without asking.
 export async function homePage(env: Env, url: URL): Promise<Response> {
-  const missing = await missingCard(env, url.origin);
-  const body = html`<div class="home-layout">
-  <form method="get" action="/search" role="search" class="home-search">
-    <div class="input-group">
-      <input type="text" name="q" class="form-control" placeholder="Search, or go to 2024/123" aria-label="Search titles, authors and abstracts, or enter a paper ID">
-      <button class="btn btn-outline-dark" type="submit">Search</button>
-    </div>
-  </form>
-  <article class="home-letter">
+  const latest = await latestManuscripts(env, 6);
+  const body = html`<div class="hm">
+  <article class="home-letter hm-letter">
     <p>Hello cryptographers!</p>
-    <p>This is an unofficial, non-commercial mirror of the
-    <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>. AI agents have become useful for
-    research, from literature review to smarter search, but only if they can access prior work.
-    ePrint’s access control currently blocks them from fetching the PDFs. This mirror is meant to
-    speed up your research workflow by giving agents access to the information they need.</p>
-    <p><strong>New papers</strong> appear here within days of being accepted on ePrint. We don’t
-    take submissions; <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</p>
-    <p><strong>PDFs</strong> come from existing public copies, and readers <a href="/${missing.gapsYear}">fill in the gaps</a>: if one is
-    missing, download it from ePrint and upload it anonymously here.</p>
-    <p><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the
-    original. Please respect it.</p>
-    <p><strong>What’s next.</strong> The vision is a one-stop place for everything known about each
-    paper, kept up to date as cryptography moves on: discussion, links between papers and the
-    protocols they build on, and known attacks on each construction.</p>
-    <p>Something wrong or missing? <a href="#contact">Write to us</a> or
-    <a href="${env.ISSUES_URL}">open an issue</a>. Want to help? Get in touch!</p>
-    <details id="contact" class="contact-panel"${url.searchParams.has("paper") ? html` open` : ""}>
-      <summary>Write to us</summary>
-      ${contactForm(env, url)}
-    </details>
+    <p>Research is changing, and so is the way we share it. Open Cryptology does two things:</p>
+    <p><strong>1. Original manuscripts.</strong> Anything useful goes: a result, an open problem, an
+    unverified idea from your agent, or the approaches it spent tokens on that didn’t work. Each gets
+    published immediately with a citable link, and authorship is flexible: humans, models, or the
+    universe itself.</p>
+    <p class="hm-links"><a href="/submit">Submit a manuscript</a>
+    <a href="/manuscripts">Browse manuscripts</a></p>
+    <p><strong>2. An ePrint mirror.</strong> Agents need prior work, but the
+    <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a> blocks them from fetching PDFs. Our
+    unofficial, non-commercial <a href="/eprint">mirror</a> gives them access.</p>
+    <p class="hm-links"><a href="/eprint">Browse the ePrint mirror</a></p>
+    <p><strong>What’s next.</strong> One place for everything known about each paper: discussion,
+    links between papers and the protocols they build on, and known attacks. Ideas welcome!</p>
+    <p>Something wrong or missing? Want to help?</p>
+    <p class="hm-links"><a href="/contact">Get in touch</a>
+    <a href="${env.ISSUES_URL}">Open an issue</a></p>
   </article>
-  <aside class="home-side">
-    ${missing.card}
-  </aside>
+  <section class="hm-latest" aria-labelledby="hm-latest-h">
+    <div class="hm-latest-head"><h2 class="ms-day" id="hm-latest-h">Latest original manuscripts</h2>${latest.count ? html`<a class="ms-more" href="/manuscripts">All →</a>` : ""}</div>
+    ${latest.rows ?? html`<p class="text-muted small">None yet. <a href="/submit">Be the first.</a></p>`}
+  </section>
 </div>`;
   return page(env, {
     title: env.SITE_NAME,
     description:
-      "An unofficial mirror of the Cryptology ePrint Archive, with original manuscripts.",
+      "Original manuscripts in cryptography, published the day you post them, and an unofficial mirror of the Cryptology ePrint Archive: readable by people and AI agents.",
     body,
     canonical: `${siteOrigin(env, url)}/`,
     ogImage: ogImage(siteOrigin(env, url)),
-    katex: missing.tex,
+    katex: true,
+    cache: "public, max-age=120",
+  });
+}
+
+// ---------------------------------------------------------------------------- ePrint papers
+
+/** /eprint: what the mirror is, the newest ePrint papers, and the papers-by-year card. Paper pages
+ *  keep their URLs (/2024/123). */
+export async function eprintPage(env: Env, url: URL): Promise<Response> {
+  const { card, gapsYear } = await missingCard(env, url.origin);
+  const body = html`<h1 class="ms-title">ePrint papers</h1>
+<div class="ep-layout">
+<div class="home-side ep-main">${card}</div>
+<aside class="ep-text">
+  <p>An unofficial, non-commercial mirror of the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>,
+  readable by you and your AI agents.</p>
+  <ul class="ep-points">
+    <li><strong>New papers</strong> appear here within days of being accepted on ePrint; to post one,
+    <a href="${env.ORIGIN_BASE}/submit" rel="noopener">submit to ePrint</a> as usual.</li>
+    <li><strong>PDFs</strong> come from existing public copies, and readers <a href="/${gapsYear}">fill in the gaps</a>: if one is
+    missing, download it from ePrint and upload it anonymously here.</li>
+    <li><strong>Licenses.</strong> Every paper keeps its authors’ license and links back to the original. Please respect it.</li>
+  </ul>
+</aside>
+</div>`;
+  return page(env, {
+    title: "ePrint papers",
+    description: "An unofficial, non-commercial mirror of the Cryptology ePrint Archive: every paper, readable by people and AI agents.",
+    body,
+    canonical: `${siteOrigin(env, url)}/eprint`,
     cache: "public, max-age=300",
   });
 }
@@ -132,7 +154,10 @@ export async function searchPage(env: Env, url: URL): Promise<Response> {
   sp.page = Math.min(sp.page, MAX_PAGE);
   const id = idFromQuery(sp.q);
   if (id) return Response.redirect(new URL(`/${id}`, url).toString(), 302);
-  const { fts, total, hits, error } = await runSearch(env, sp);
+  const [{ fts, total, hits, error }, ms] = await Promise.all([
+    runSearch(env, sp),
+    sp.page === 1 && toFtsQuery(sp.q) ? searchManuscripts(env, sp.q, 10) : Promise.resolve({ rows: null, count: 0 }),
+  ]);
   // With no query, the results column lists the most recent papers ("Papers" in the navbar).
   const recent = fts ? [] : (await homeData(env, PER_PAGE)).latest;
   const pages = Math.min(MAX_PAGE, Math.ceil(total / PER_PAGE));
@@ -166,10 +191,11 @@ export async function searchPage(env: Env, url: URL): Promise<Response> {
   </div>
   <div class="search-results-col">
     ${!fts
-      ? html`<h4 class="results-h">Recent papers</h4>
+      ? html`<h4 class="results-h">Recent ePrint papers</h4>
       <div class="results">${recent.map((p) => resultItem(p))}</div>`
-      : html`<div class="results-bar">
-        <h4 class="results-h">${error ? error : html`${fmtInt(total)} result${total === 1 ? "" : "s"} sorted by ${sp.sort === "new" ? "date" : "relevance"}`}</h4>
+      : html`${ms.rows && html`<section class="search-ms"><h4 class="results-h">Original manuscripts</h4>${ms.rows}</section>`}
+      <div class="results-bar">
+        <h4 class="results-h">${error ? error : html`${fmtInt(total)} ePrint paper${total === 1 ? "" : "s"} sorted by ${sp.sort === "new" ? "date" : "relevance"}`}</h4>
         <small class="ms-auto">${pages > 1 ? html`Page ${sp.page} of ${pages} · ` : ""}Sort:
           ${sp.sort === "relevance" ? html`<strong>relevance</strong>` : html`<a href="${link(1, "relevance")}">relevance</a>`} ·
           ${sp.sort === "new" ? html`<strong>newest</strong>` : html`<a href="${link(1, "new")}">newest</a>`}
@@ -188,7 +214,7 @@ export async function searchPage(env: Env, url: URL): Promise<Response> {
     body,
     query: sp.q,
     noindex: true,
-    katex: fts ? hasTex(...hits.map((h) => stripMarks(h.title_hl ?? ""))) : hasTex(...recent.map((p) => p.title)),
+    katex: !!ms.rows || (fts ? hasTex(...hits.map((h) => stripMarks(h.title_hl ?? ""))) : hasTex(...recent.map((p) => p.title))),
     cache: "public, max-age=60",
   });
 }

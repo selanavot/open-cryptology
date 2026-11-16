@@ -83,7 +83,7 @@ export async function paperPage(
 <p class="mt-4 mb-2"><strong>BibTeX</strong>
   <button type="button" class="ms-2 btn btn-sm btn-outline-dark" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy to clipboard</span></button></p>
 <pre id="bibtex">${bibtex(p, env.ORIGIN_BASE)}</pre>
-<p class="small mb-0"><a href="/?paper=${p.id}#contact">Report a problem with this paper</a></p>`;
+<p class="small mb-0"><a href="/contact?paper=${p.id}">Report a problem with this paper</a></p>`;
 
   const origin = siteOrigin(env, url);
   const description = `${withdrawn ? "Withdrawn. " : ""}${(p.abstract ?? "").replace(/\s+/g, " ")}`.slice(0, 200);
