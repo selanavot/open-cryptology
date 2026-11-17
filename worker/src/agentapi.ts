@@ -113,7 +113,7 @@ async function readMetadata(form: FormData): Promise<Metadata | string> {
   }
   return {
     title: field("title"),
-    authors: form.getAll("author").filter((a): a is string => typeof a === "string"),
+    authors: [...form.getAll("authors"), ...form.getAll("author")].filter((a): a is string => typeof a === "string"),
     abstract: field("abstract"),
     license: field("license"),
   };
