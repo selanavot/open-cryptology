@@ -9,9 +9,9 @@ import type { Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage, page } from "./layout";
 import { authOrigin, currentUser, randomId, randomToken, redirect303, sameOrigin, sha256hex, loadUser, type User } from "./auth";
-import { ipHash } from "./uploadguard";
 import { latestManuscriptsJson, manuscriptJson, MAX_PDF, publishManuscript } from "./manuscripts";
 import { siteOrigin } from "./seo";
+import { avatar } from "./account";
 
 const TOKEN_PREFIX = "oct_";
 const SCOPE = "manuscripts";
@@ -42,11 +42,11 @@ interface TokenRow {
 }
 
 /** A new token for `userId`; returns the secret (handed to the agent once), its id and expiry. */
-async function mintToken(env: Env, userId: string): Promise<{ id: string; token: string; expires: string }> {
+async function mintToken(env: Env, userId: string, keepExpiry?: string): Promise<{ id: string; token: string; expires: string }> {
   const token = TOKEN_PREFIX + randomToken(32);
   const id = randomId(16);
   const now = new Date();
-  const expires = new Date(now.getTime() + TOKEN_TTL_HOURS * 3600_000).toISOString();
+  const expires = keepExpiry ?? new Date(now.getTime() + TOKEN_TTL_HOURS * 3600_000).toISOString();
   await env.DB.prepare("INSERT INTO api_tokens (id, hash, user_id, scopes, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
     .bind(id, await sha256hex(token), userId, SCOPE, now.toISOString(), expires)
     .run();
@@ -71,10 +71,13 @@ export async function tokenActor(env: Env, req: Request, origin: string): Promis
   return { user, token: t };
 }
 
-/** Maintainers: disconnect the agent that posted a manuscript (if one did). */
-export async function revokeTokenOfManuscript(env: Env, manuscriptId: string): Promise<boolean> {
+/** Maintainers: if an agent posted this manuscript, disconnect all of the uploader's agents (every
+ *  live token of that account; their device codes can't mint new ones either, see reissue). */
+export async function revokeAgentsOfManuscript(env: Env, manuscriptId: string): Promise<boolean> {
   const r = await env.DB.prepare(
-    "UPDATE api_tokens SET revoked_at = ?2 WHERE revoked_at IS NULL AND id = (SELECT token_id FROM manuscript_tokens WHERE manuscript_id = ?1)",
+    `UPDATE api_tokens SET revoked_at = ?2 WHERE revoked_at IS NULL
+       AND user_id = (SELECT uploader_id FROM manuscripts WHERE id = ?1)
+       AND EXISTS (SELECT 1 FROM manuscript_tokens WHERE manuscript_id = ?1)`,
   )
     .bind(manuscriptId, nowIso())
     .run();
@@ -165,6 +168,16 @@ export const isAgentApiPath = (path: string, req: Request): boolean =>
   (path === "/api/me" && hasBearer(req));
 
 export async function handleAgentApi(req: Request, env: Env, url: URL): Promise<Response> {
+  try {
+    return await routeAgentApi(req, env, url);
+  } catch (e) {
+    if (url.pathname === "/connect") throw e; // a page: the site's usual error page
+    console.error("agent API", url.pathname, e);
+    return err(500, "server_error", "Something went wrong on our side. Try again in a minute; if it keeps happening, tell the person.");
+  }
+}
+
+async function routeAgentApi(req: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname;
   const origin = siteOrigin(env, url);
   const isGet = req.method === "GET" || req.method === "HEAD";
@@ -175,7 +188,10 @@ export async function handleAgentApi(req: Request, env: Env, url: URL): Promise<
   }
   if (path === "/api/oauth/device" || path === "/api/oauth/token") {
     if (req.method !== "POST") return err(405, "method_not_allowed", "Use POST.");
-    return path === "/api/oauth/device" ? startConnect(env, req, authOrigin(env, url)) : collectToken(env, req, origin);
+    const net = await networkHash(env, req);
+    const limited = await env.CONNECT_LIMITER?.limit({ key: `${path}|${net}` });
+    if (limited && !limited.success) return oauthErr(path === "/api/oauth/device" ? 429 : 400, "slow_down", "Too many requests from your network. Wait a minute, then try again.");
+    return path === "/api/oauth/device" ? startConnect(env, req, net, authOrigin(env, url)) : collectToken(env, req, origin);
   }
   if (path === "/api/me") {
     if (!isGet) return err(405, "method_not_allowed", "Use GET.");
@@ -209,8 +225,9 @@ export async function handleAgentApi(req: Request, env: Env, url: URL): Promise<
 
 const CONNECT_TTL_MS = 15 * 60_000;
 const POLL_INTERVAL_S = 5;
-/** Requests still waiting for approval, per IP. */
-const OPEN_CONNECTS_PER_IP = 10;
+/** Requests still waiting for approval, per network and on the whole site. */
+const OPEN_CONNECTS_PER_NETWORK = 10;
+const OPEN_CONNECTS_SITE = 1000;
 const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 /** No vowels (no accidental words) and no 0/1/O/I look-alikes. */
 const CODE_ALPHABET = "BCDFGHJKLMNPQRSTVWXZ23456789";
@@ -226,6 +243,18 @@ function newUserCode(): string {
 }
 const showCode = (c: string) => `${c.slice(0, 4)}-${c.slice(4)}`;
 const normCode = (s: string | null) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+
+/** The client's network: its IPv4 address, or the /64 of an IPv6 one (one host often holds a whole /64). */
+function network(req: Request): string {
+  const ip = (req.headers.get("cf-connecting-ip") ?? "unknown").toLowerCase();
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...Array<string>(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+const networkHash = async (env: Env, req: Request) => (await sha256hex(`${env.TURNSTILE_SECRET ?? "local-dev"}|${network(req)}`)).slice(0, 32);
 
 /** OAuth-style error: {error, error_description}, plus `message` like the rest of this API. */
 const oauthErr = (status: number, error: string, description: string) =>
@@ -260,15 +289,19 @@ interface ConnectRow {
 }
 
 /** POST /api/oauth/device: an agent asks to connect. */
-async function startConnect(env: Env, req: Request, loginOrigin: string): Promise<Response> {
-  const ip = await ipHash(env, req);
+async function startConnect(env: Env, req: Request, ip: string, loginOrigin: string): Promise<Response> {
   const now = new Date();
-  const [, open] = await env.DB.batch([
+  const recent = new Date(now.getTime() - CONNECT_TTL_MS).toISOString();
+  const [, mine, all] = await env.DB.batch([
     env.DB.prepare("DELETE FROM agent_connect WHERE created_at < ?1").bind(new Date(now.getTime() - DAY_MS).toISOString()),
-    env.DB.prepare("SELECT count(*) AS n FROM agent_connect WHERE ip_hash = ?1 AND status = 'pending' AND expires_at > ?2").bind(ip, now.toISOString()),
+    env.DB.prepare("SELECT count(*) AS n FROM agent_connect WHERE ip_hash = ?1 AND created_at > ?2 AND status = 'pending'").bind(ip, recent),
+    env.DB.prepare("SELECT count(*) AS n FROM agent_connect WHERE created_at > ?1 AND status = 'pending'").bind(recent),
   ]);
-  if (((open.results[0] as { n: number })?.n ?? 0) >= OPEN_CONNECTS_PER_IP)
+  const count = (r: D1Result) => (r.results[0] as { n: number } | undefined)?.n ?? 0;
+  if (count(mine) >= OPEN_CONNECTS_PER_NETWORK)
     return oauthErr(429, "slow_down", "Too many connect requests from here are waiting for approval. Use a link you already have, or try again in 15 minutes.");
+  if (count(all) >= OPEN_CONNECTS_SITE)
+    return oauthErr(503, "temporarily_unavailable", "Too many connect requests are waiting right now. Try again in a few minutes.");
   const deviceCode = randomToken(32);
   const country = (req as Request & { cf?: { country?: string } }).cf?.country ?? null;
   const expires = new Date(now.getTime() + CONNECT_TTL_MS).toISOString();
@@ -288,7 +321,7 @@ async function startConnect(env: Env, req: Request, loginOrigin: string): Promis
       verification_uri_complete: link,
       expires_in: CONNECT_TTL_MS / 1000,
       interval: POLL_INTERVAL_S,
-      message: `Ask the person to open ${link} and click Approve (it expires in 15 minutes). Then POST /api/oauth/token with grant_type=${DEVICE_GRANT} and this device_code.`,
+      message: `Ask the person to open ${link}, check that it shows the code ${showCode(code)}, and click Approve (it expires in 15 minutes). Then POST /api/oauth/token with grant_type=${DEVICE_GRANT} and this device_code.`,
     });
   }
   return oauthErr(503, "temporarily_unavailable", "Please try again.");
@@ -306,22 +339,31 @@ async function collectToken(env: Env, req: Request, origin: string): Promise<Res
   const startOver = "Start over with POST /api/oauth/device.";
   if (!row) return oauthErr(400, "expired_token", `Unknown or expired device_code. ${startOver}`);
   if (row.status === "denied") return oauthErr(400, "access_denied", "The person declined.");
-  if (Date.parse(row.expires_at) < Date.now())
-    return oauthErr(400, "expired_token", `${row.status === "claimed" ? "This device_code is more than 15 minutes old." : "The link expired before it was approved."} ${startOver}`);
+  if (Date.parse(row.expires_at) < Date.now()) {
+    const why = {
+      pending: "The link expired before it was approved.",
+      approved: "It was approved more than 15 minutes ago and never collected.",
+      claimed: "A lost token can be collected again only within 15 minutes of approval.",
+    }[row.status];
+    return oauthErr(400, "expired_token", `${why} ${startOver}`);
+  }
   if (row.status === "claimed") return reissue(env, origin, id, row);
   if (row.status === "pending")
     return oauthErr(400, "authorization_pending", `Waiting for the person to approve. Ask again in ${POLL_INTERVAL_S} seconds, or once they say they approved.`);
-  // Approved: claim it atomically, so a device_code yields exactly one token.
-  const claimed = await env.DB.prepare(
-    "UPDATE agent_connect SET status = 'claimed' WHERE id = ?1 AND status = 'approved' AND expires_at > ?2 RETURNING user_id",
-  )
-    .bind(id, nowIso())
-    .first<{ user_id: string }>();
-  if (!claimed) return oauthErr(400, "expired_token", `This device_code can't be used any more. ${startOver}`);
-  const user = await loadUser(env, claimed.user_id);
+  // Approved: mint the token, then claim the request with it in one statement, so a device_code
+  // yields one token and a later re-collect always finds (and revokes) the token it replaces.
+  const user = row.user_id ? await loadUser(env, row.user_id) : null;
   if (!user) return oauthErr(400, "access_denied", "The account that approved this is gone.");
   const t = await mintToken(env, user.id);
-  await env.DB.prepare("UPDATE agent_connect SET token_id = ?2 WHERE id = ?1").bind(id, t.id).run();
+  const claimed = await env.DB.prepare(
+    "UPDATE agent_connect SET status = 'claimed', token_id = ?3 WHERE id = ?1 AND status = 'approved' AND user_id = ?4 AND expires_at > ?2",
+  )
+    .bind(id, nowIso(), t.id, user.id)
+    .run();
+  if (!claimed.meta.changes) {
+    await revokeToken(env, t.id);
+    return oauthErr(409, "temporarily_unavailable", "Another request just collected a token with this device_code. Try again.");
+  }
   return tokenJson(origin, user, t);
 }
 
@@ -330,15 +372,24 @@ async function collectToken(env: Env, req: Request, origin: string): Promise<Res
 async function reissue(env: Env, origin: string, id: string, row: { user_id: string | null; token_id: string | null }): Promise<Response> {
   const user = row.user_id ? await loadUser(env, row.user_id) : null;
   if (!user) return oauthErr(400, "access_denied", "The account that approved this is gone.");
-  const t = await mintToken(env, user.id);
+  // The token being replaced is the live one (a re-collect swaps it in before revoking the old);
+  // if it was revoked, a maintainer or the account cut this connection off.
+  const current = row.token_id
+    ? await env.DB.prepare("SELECT revoked_at, expires_at FROM api_tokens WHERE id = ?1").bind(row.token_id).first<{ revoked_at: string | null; expires_at: string }>()
+    : null;
+  if (!current || current.revoked_at) return oauthErr(400, "access_denied", "This connection was cut off.");
+  const t = await mintToken(env, user.id, current.expires_at);
   const r = await env.DB.prepare("UPDATE agent_connect SET token_id = ?2 WHERE id = ?1 AND status = 'claimed' AND token_id IS ?3").bind(id, t.id, row.token_id).run();
   if (!r.meta.changes) {
-    await env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE id = ?1").bind(t.id, nowIso()).run();
+    await revokeToken(env, t.id);
     return oauthErr(409, "temporarily_unavailable", "Another request just collected a token with this device_code. Try again.");
   }
-  if (row.token_id) await env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE id = ?1 AND revoked_at IS NULL").bind(row.token_id, nowIso()).run();
+  await revokeToken(env, row.token_id!);
   return tokenJson(origin, user, t);
 }
+
+const revokeToken = (env: Env, id: string) =>
+  env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE id = ?1 AND revoked_at IS NULL").bind(id, nowIso()).run();
 
 function tokenJson(origin: string, user: User, t: { token: string; expires: string }): Response {
   return json({
@@ -348,7 +399,7 @@ function tokenJson(origin: string, user: User, t: { token: string; expires: stri
     expires_at: t.expires,
     scope: SCOPE,
     user: { displayName: user.displayName, profile_url: `${origin}/u/${user.id}` },
-    note: `Store this token and reuse it for ${TOKEN_TTL_HOURS} hours; then connect again. If you lose it within 15 minutes, POST the same device_code again for a new one (the old one stops working).`,
+    note: `Store this token and reuse it until expires_at; then connect again. Tell the person which account you're connected as (user.displayName). If you lose the token within 15 minutes of approval, POST the same device_code again for a new one (the old one stops working).`,
   });
 }
 
@@ -358,16 +409,41 @@ const agoText = (iso: string) => {
 };
 function countryName(cc: string | null): string | null {
   if (!cc || cc === "XX" || cc === "T1") return null;
+  let name = cc;
   try {
-    return new Intl.DisplayNames(["en"], { type: "region" }).of(cc) ?? cc;
+    name = new Intl.DisplayNames(["en"], { type: "region" }).of(cc) ?? cc;
   } catch {
-    return cc;
+    /* keep the code */
   }
+  return name;
 }
 
+/** /connect pages: a small centred card, like the log-in page. */
 function connectPage(env: Env, title: string, body: Html, status = 200): Response {
-  return page(env, { title, status, cache: "no-store", noindex: true, body: html`<div class="settings"><section class="settings-card">${body}</section></div>` });
+  return page(env, {
+    title,
+    status,
+    cache: "no-store",
+    noindex: true,
+    body: html`<div class="settings"><section class="settings-card settings-login connect-card">${body}</section></div>`,
+  });
 }
+
+const done = (env: Env, title: string, heading: string, status = 200) =>
+  connectPage(env, title, html`<h1 class="settings-title">${heading}</h1><p class="settings-hint">You can close this tab.</p>`, status);
+
+/** /connect without a code: for agents that show the verification_uri and the code separately. */
+const codeForm = (env: Env, typed: string) =>
+  connectPage(
+    env,
+    "Connect an agent",
+    html`<h1 class="settings-title">Connect an agent</h1>
+  <form method="get" action="/connect" class="connect-buttons">
+    <input class="form-control connect-input${typed ? " is-invalid" : ""}" name="code" value="${typed}" placeholder="WXYZ-2345" aria-label="The code your agent gave you" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" required autofocus>
+    <button class="btn hm-primary" type="submit">Continue</button>
+  </form>`,
+    typed ? 400 : 200,
+  );
 
 /** GET /connect?code=...: the approve page (log in first). POST /connect: approve or deny. */
 async function connectRoute(env: Env, req: Request, url: URL): Promise<Response> {
@@ -376,45 +452,43 @@ async function connectRoute(env: Env, req: Request, url: URL): Promise<Response>
   const form = isPost ? await req.formData().catch(() => null) : null;
   const code = normCode(isPost ? (form?.get("code")?.toString() ?? "") : url.searchParams.get("code"));
   const a = await currentUser(env, req);
-  if (!a) return redirect303(`/account?next=${encodeURIComponent(`/connect?code=${showCode(code)}`)}`);
+  if (!a) return redirect303(`/account?next=${encodeURIComponent(code ? `/connect?code=${showCode(code)}` : "/connect")}`);
   const gone = () =>
-    connectPage(env, "Link expired", html`<h1 class="settings-title">This link expired</h1>
-  <p>It was already used, or it’s more than 15 minutes old. Ask your agent to start again.</p>`, 410);
+    connectPage(env, "Link expired", html`<h1 class="settings-title">This link expired</h1><p class="settings-hint">Ask your agent for a new one.</p>`, 410);
+  if (!isPost && code.length !== 8) return codeForm(env, (url.searchParams.get("code") ?? "").slice(0, 12));
   if (code.length !== 8) return gone();
   const row = await env.DB.prepare("SELECT * FROM agent_connect WHERE user_code = ?1").bind(code).first<ConnectRow>();
   if (!row || Date.parse(row.expires_at) < Date.now() || row.status === "claimed" || row.status === "denied") return gone();
 
   if (isPost) {
     const decision = form?.get("decision") === "approve" ? "approved" : "denied";
-    const r = await env.DB.prepare("UPDATE agent_connect SET status = ?2, user_id = ?3 WHERE id = ?1 AND status = 'pending' AND expires_at > ?4")
-      .bind(row.id, decision, a.user.id, nowIso())
+    // Approving gives the agent 15 minutes from now to collect its token, however long the
+    // person took (it may wait to be told rather than poll).
+    const now = Date.now();
+    const r = await env.DB.prepare(
+      `UPDATE agent_connect SET status = ?2, user_id = ?3,
+         expires_at = CASE WHEN ?2 = 'approved' AND expires_at < ?5 THEN ?5 ELSE expires_at END
+       WHERE id = ?1 AND status = 'pending' AND expires_at > ?4`,
+    )
+      .bind(row.id, decision, a.user.id, new Date(now).toISOString(), new Date(now + CONNECT_TTL_MS).toISOString())
       .run();
     if (!r.meta.changes) return gone();
-    return decision === "approved"
-      ? connectPage(env, "Agent connected", html`<h1 class="settings-title">Connected</h1>
-  <p>The agent can post original manuscripts as you for the next ${TOKEN_TTL_HOURS} hours. You can close this tab; your agent will carry on.</p>`)
-      : connectPage(env, "Declined", html`<h1 class="settings-title">Declined</h1><p>The agent won’t get access.</p>`);
+    return decision === "approved" ? done(env, "Agent connected", "Connected") : done(env, "Declined", "Declined");
   }
-  if (row.status === "approved")
-    return connectPage(env, "Already approved", html`<h1 class="settings-title">Already approved</h1><p>The agent is connected. You can close this tab.</p>`);
+  if (row.status === "approved") return done(env, "Already approved", "Already approved");
   const where = countryName(row.country);
   return connectPage(
     env,
     "Connect an agent?",
     html`<h1 class="settings-title">Connect an agent?</h1>
-  <p>An agent wants to post original manuscripts as <strong>${a.user.displayName}</strong>.</p>
-  <p class="settings-hint">Asked ${agoText(row.created_at)}${where ? ` from ${where}` : ""}. Code ${showCode(row.user_code)}.</p>
-  <ul class="connect-points">
-    <li>It can post original manuscripts as you, published right away under CC BY 4.0 and the <a href="/terms">terms</a>, and read them.</li>
-    <li>It can’t change your account or remove anything.</li>
-    <li>Its access ends after ${TOKEN_TTL_HOURS} hours.</li>
-  </ul>
-  <p class="settings-hint">Only approve an agent you just asked to post something.</p>
-  <div class="settings-actions">
-    <form method="post" action="/connect"><input type="hidden" name="code" value="${showCode(row.user_code)}"><input type="hidden" name="decision" value="approve">
-      <button class="btn hm-primary" type="submit">Approve</button></form>
-    <form method="post" action="/connect"><input type="hidden" name="code" value="${showCode(row.user_code)}"><input type="hidden" name="decision" value="deny">
-      <button class="btn btn-outline-dark" type="submit">Deny</button></form>
-  </div>`,
+  <div class="connect-who">${avatar(a.user, "avatar-xs")}<span>${a.user.displayName}</span></div>
+  <div class="connect-code">${showCode(row.user_code)}</div>
+  <p class="connect-from">${where ? `${where} · ` : ""}${agoText(row.created_at)}</p>
+  <form method="post" action="/connect" class="connect-buttons">
+    <input type="hidden" name="code" value="${showCode(row.user_code)}">
+    <button class="btn hm-primary" type="submit" name="decision" value="approve">Approve</button>
+    <button class="btn btn-outline-dark" type="submit" name="decision" value="deny">Deny</button>
+  </form>
+  <p class="settings-fine">It can post manuscripts as you, under <a href="/terms">CC BY 4.0</a>, for ${TOKEN_TTL_HOURS} hours.</p>`,
   );
 }

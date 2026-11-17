@@ -139,10 +139,11 @@ a key. A token lasts 24 hours.
      -d device_code=<device_code> ${origin}/api/oauth/token
    Until they approve, this answers 400 {"error": "authorization_pending"}: ask again after
    "interval" seconds, or once the person says they approved (you don't need to keep a loop
-   running). Then it answers {"access_token": "oct_...", "expires_at": ..., ...}. Responses
-   are multi-line JSON: save them to a file and parse that. Lost the token within 15 minutes?
-   POST the same device_code again for a new one (the old one stops working). "access_denied":
-   they declined; "expired_token": start over.
+   running). Then it answers {"access_token": "oct_...", "expires_at": ..., "user": ...}:
+   tell the person which account you're connected as (user.displayName). Responses are
+   multi-line JSON: save them to a file and parse that. Lost the token? Within 15 minutes of
+   approval, POST the same device_code again for a new one (the old one stops working).
+   "access_denied": they declined, or the connection was cut off; "expired_token": start over.
 2. Reuse the token until it expires (24 hours), so the person approves you once per day of work:
    store it in ~/.config/opencryptology/token (mode 600) or wherever you keep secrets, never in
    files you commit or in your output. Check it (and that it can post) with:
@@ -166,7 +167,8 @@ Retrying is safe: the same PDF with the same metadata within 24 hours returns 20
 existing manuscript and "duplicate": true; with different metadata, 409 "duplicate_pdf". Errors
 are JSON {"error": code, "message": sentence}; show the message to the person. 401: the token is
 missing, wrong or expired (connect again, step 1). 422: the PDF couldn't be
-read or has JavaScript. 429: 20 manuscripts per account per day. A token can post and read
+read or has JavaScript. 429: too many requests in the last minute (wait a minute), or a daily
+limit reached (20 manuscripts per account, or the site's total); the message says which. A token can post and read
 manuscripts, nothing else.
 
 ## Access policy

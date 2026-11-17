@@ -227,6 +227,10 @@ CREATE TABLE IF NOT EXISTS agent_connect (
   token_id      TEXT                         -- the token handed out (replaced if the agent asks again)
 );
 CREATE INDEX IF NOT EXISTS agent_connect_ip ON agent_connect(ip_hash, created_at);
+CREATE INDEX IF NOT EXISTS agent_connect_created ON agent_connect(created_at);
+-- Posting checks the site's daily total and finds the version it just stored by its file.
+CREATE INDEX IF NOT EXISTS manuscript_versions_created ON manuscript_versions(created_at);
+CREATE INDEX IF NOT EXISTS manuscript_versions_file ON manuscript_versions(file_key);
 
 -- Which token (if any) posted each manuscript: for moderation only, never shown.
 CREATE TABLE IF NOT EXISTS manuscript_tokens (

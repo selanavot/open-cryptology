@@ -22,6 +22,8 @@ export interface Env {
   UPLOAD_LIMITER?: RateLimit;
   /** Rate limit for the agent upload API (POST /api/upload/YYYY/NNNN). */
   API_UPLOAD_LIMITER?: RateLimit;
+  /** Agent connect and token requests, per network (agentapi.ts). */
+  CONNECT_LIMITER?: RateLimit;
   /** Cloudflare Web Analytics beacon token (public; cookieless page-view analytics for browsers). */
   CF_BEACON_TOKEN?: string;
   /** Public origin (https://...), for links in emails sent from the cron (review reminders). */

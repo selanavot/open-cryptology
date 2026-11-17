@@ -11,7 +11,7 @@ import { avatar, identityDetail, providerTag } from "./account";
 import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type User } from "./auth";
 import { siteOrigin } from "./seo";
 import { inspectPdf } from "./verify";
-import { revokeTokenOfManuscript } from "./agentapi";
+import { revokeAgentsOfManuscript } from "./agentapi";
 
 export const MS_RE = /^\/(\d{4}-\d{2}-\d{2})\/(\d{1,4})(\.pdf)?\/?$/;
 const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
@@ -544,12 +544,12 @@ async function removePost(env: Env, req: Request): Promise<Response> {
   ]);
   const ok = (r[0].meta.changes ?? 0) > 0;
   if (ok && files.results.length) await env.PDFS.delete(files.results.map((x) => x.file_key));
-  const revoked = form.get("revoke") === "yes" && (await revokeTokenOfManuscript(env, id));
+  const revoked = form.get("revoke") === "yes" && (await revokeAgentsOfManuscript(env, id));
   return messagePage(
     env,
     ok ? 200 : 404,
     ok ? "Removed" : "Not found",
-    ok ? html`<p>Original manuscript ${id} was removed.${revoked ? " The agent that posted it was disconnected." : ""}</p>` : html`<p>No original manuscript ${id} to remove.</p>`,
+    ok ? html`<p>Original manuscript ${id} was removed.${revoked ? " The uploader’s agents were disconnected." : ""}</p>` : html`<p>No original manuscript ${id} to remove.</p>`,
     NO_STORE,
   );
 }
