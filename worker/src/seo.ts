@@ -3,7 +3,7 @@
 //   - paperHead: Google Scholar citation_* tags and a link to the paper's JSON.
 //   - /sitemap.xml: the homepage, the year pages and every paper page.
 //   (The year pages, /YYYY, are in years.ts.)
-// Attribution to ePrint is for people and lives on the page itself (link, BibTeX, footer).
+// Attribution to ePrint is for people and lives on the page itself (link, BibTeX).
 import { parseAuthors, type Env, type Paper } from "./db";
 import { html, type Html } from "./html";
 import { day } from "./pages";

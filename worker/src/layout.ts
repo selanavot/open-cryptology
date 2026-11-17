@@ -149,9 +149,6 @@ function footer(env: Env): Html {
     <a href="/terms">Terms</a> ·
     <a href="${env.ISSUES_URL}">Report an issue</a>
   </nav>
-  <p>${env.SITE_NAME} is not affiliated with the IACR. Its ePrint papers are an unofficial, non-commercial
-  mirror of the <a href="${env.ORIGIN_BASE}">Cryptology ePrint Archive</a>; they remain under their authors’
-  licenses, so please cite the original ePrint entry.</p>
 </footer>`;
 }
 

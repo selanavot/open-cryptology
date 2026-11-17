@@ -192,8 +192,6 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
 @media (max-width: 575.98px) { .eprintContent { margin-top: 0; border-radius: 0; } }
 
 .site-footer { margin-top: 1.5rem; margin-bottom: 2rem; padding-top: .75rem; padding-bottom: .75rem; font-size: .8rem; text-align: center; background: rgba(254, 254, 254, .9); border-radius: .3rem; }
-.site-footer nav { margin-bottom: .25rem; }
-.site-footer p { margin: 0; }
 @media (max-width: 575.98px) { .site-footer { margin: 0; border-radius: 0; border-top: 1px solid #eee; } }
 
 /* ---------- buttons */
