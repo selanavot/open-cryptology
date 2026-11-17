@@ -1,0 +1,60 @@
+# Continuous deploy of the site: every commit on main whose Checks pass goes live, through the
+# same scripts/deploy.sh as a deploy by hand (commit tags, race guard, health check + rollback).
+# It stops for schema changes: apply db/schema.sql's new statements to production D1, then run
+# this workflow by hand with "schema applied" ticked.
+# A failed run is the alert (GitHub emails whoever merged the commit).
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [Checks]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      schema_applied:
+        description: "db/schema.sql's new statements already ran on production D1"
+        type: boolean
+        default: false
+
+# One deploy at a time; a newer commit waiting replaces an older one still waiting.
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The token is an environment secret; only main may use this environment.
+    environment:
+      name: production
+      url: https://opencryptology.org
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0 # deploy.sh compares the live version's commit tag with HEAD
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+        working-directory: worker
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: f1a5c2273555ad714cc5911124e671a7
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error title=Missing secret::Set CLOUDFLARE_DEPLOY_TOKEN in the production environment (Settings > Environments > production)."
+            exit 1
+          fi
+          bash scripts/deploy.sh --ci ${{ inputs.schema_applied && '--schema-applied' || '' }}
