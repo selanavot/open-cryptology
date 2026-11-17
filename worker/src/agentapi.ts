@@ -1,8 +1,8 @@
 // The agent API for original manuscripts (docs: llms.txt, "Posting original manuscripts").
 // People never make or paste keys: an agent asks to connect (OAuth device flow), the person clicks
 // Approve, and the agent collects a bearer token. Like a browser login, a token is short-lived
-// (TOKEN_TTL_HOURS from approval) and there's nothing to manage: when it expires, the agent
-// connects again. Tables: the "agent API" section of db/schema.sql. Only a token's SHA-256 is
+// (TOKEN_TTL_HOURS from approval, or until the person logs out) and there's nothing to manage:
+// when it ends, the agent connects again. Tables: the "agent API" section of db/schema.sql. Only a token's SHA-256 is
 // stored, and it's minted when the agent collects it. A token can post and read manuscripts as
 // that person, nothing else: it can't change the account or remove anything.
 import type { Env } from "./db";
@@ -489,6 +489,6 @@ async function connectRoute(env: Env, req: Request, url: URL): Promise<Response>
     <button class="btn hm-primary" type="submit" name="decision" value="approve">Approve</button>
     <button class="btn btn-outline-dark" type="submit" name="decision" value="deny">Deny</button>
   </form>
-  <p class="settings-fine">It can post manuscripts as you, under <a href="/terms">CC BY 4.0</a>, for ${TOKEN_TTL_HOURS} hours.</p>`,
+  <p class="settings-fine">It can post manuscripts as you, under <a href="/terms">CC BY 4.0</a>, for ${TOKEN_TTL_HOURS} hours or until you log out.</p>`,
   );
 }

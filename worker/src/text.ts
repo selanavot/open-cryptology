@@ -166,7 +166,7 @@ end of the abstract. The PDF part can have any content type.
 Retrying is safe: the same PDF with the same metadata within 24 hours returns 200 with the
 existing manuscript and "duplicate": true; with different metadata, 409 "duplicate_pdf". Errors
 are JSON {"error": code, "message": sentence}; show the message to the person. 401: the token is
-missing, wrong or expired (connect again, step 1). 422: the PDF couldn't be
+missing, wrong or expired, or the person logged out (connect again, step 1). 422: the PDF couldn't be
 read or has JavaScript. 429: too many requests in the last minute (wait a minute), or a daily
 limit reached (20 manuscripts per account, or the site's total); the message says which. A token can post and read
 manuscripts, nothing else.

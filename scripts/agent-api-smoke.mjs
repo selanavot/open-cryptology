@@ -98,7 +98,7 @@ const linkPath = new URL(d.verification_uri_complete).pathname + new URL(d.verif
 let r = await new Client().req(linkPath);
 check("approve link, logged out: sent to log in and back", r.status === 303 && r.headers.get("location") === `/account?next=${encodeURIComponent(`/connect?code=${d.user_code}`)}`, r.headers.get("location"));
 let t = await (await me.req(linkPath)).text();
-check("approve page: as whom, the code, for how long", t.includes("Connect an agent?") && t.includes(`agent${RUN}`) && t.includes(d.user_code) && /for 24 hours/.test(t));
+check("approve page: as whom, the code, for how long", t.includes("Connect an agent?") && t.includes(`agent${RUN}`) && t.includes(d.user_code) && /for 24 hours or until you log out/.test(t));
 check("approve page has no key to copy", !/oct_/.test(t));
 r = await me.req("/connect", { method: "POST", body: new URLSearchParams({ code: d.user_code, decision: "approve" }), origin: "https://evil.example" });
 check("cross-site approve refused", r.status === 403);
@@ -222,6 +222,19 @@ r = await m.req("/manuscripts/remove", { method: "POST", body: new URLSearchPara
 check("maintainer cut-off: every token of that account stops working", r.status === 200 && (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tokCut1}` } })).status === 401 && (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tokCut2}` } })).status === 401);
 c = await collect(d1.device_code);
 check("and its device code can't collect a new token", c.s === 400 && c.j.error === "access_denied", JSON.stringify(c.j));
+
+console.log("\n# logging out disconnects the account's agents");
+const lo = new Client();
+await lo.login(`agentlo${RUN}`, 1800000 + (RUN % 1e5));
+const tokLo = await lo.newToken();
+const dLo = await startConnect();
+await lo.approve(dLo.user_code, "approve"); // approved, not collected yet
+const other2 = await other.newToken();
+r = await lo.req("/auth/logout", { method: "POST", body: new URLSearchParams({ next: "/" }) });
+check("log out", r.status === 303);
+check("its agent's token stops working", (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tokLo}` } })).status === 401);
+check("an approval not yet collected is withdrawn", (await collect(dLo.device_code)).j.error === "access_denied");
+check("other accounts' agents keep working", (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${other2}` } })).status === 200);
 
 console.log("\n# deleting the account revokes its tokens");
 const del = new Client();
