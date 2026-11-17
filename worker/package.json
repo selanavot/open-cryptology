@@ -6,7 +6,7 @@
     "dev": "bash ../scripts/dev.sh",
     "deploy": "bash ../scripts/deploy.sh",
     "db:init": "wrangler d1 execute DB --local --file ../db/schema.sql",
-    "typecheck": "bash ../scripts/worker-deps.sh && tsc --noEmit && tsc --noEmit -p ../versions-worker",
+    "typecheck": "bash ../scripts/worker-deps.sh && tsc --noEmit",
     "test": "node test/run.mjs"
   },
   "devDependencies": {

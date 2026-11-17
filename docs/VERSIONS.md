@@ -56,49 +56,23 @@ CDX digests), `size`, `source` (`github-mirror` | `wayback` | `upload`), `source
 - Routes: `/YYYY/NNNN/versions/<stamp>.pdf` (headers `X-Captured-At`, `X-Withdrawn` if
   applicable); the paper page lists versions newest first; the API has `versions: [...]`.
 
-### How the backfill works (no PDFs on the laptop)
+### The backfill (November 2026, finished)
 
-`pipeline/discover_versions.py`, stages (state in `data/versions/`, all resumable):
+Older revisions were copied once from public copies, without PDFs passing through a laptop:
+`pipeline/discover_versions.py` listed every Wayback capture of `eprint.iacr.org/YYYY/NNNN.pdf`
+(CDX) and the GitHub-mirror snapshot of each paper, dropped digests we already held, and had a
+temporary helper Worker (`versions-worker/`) fetch each remaining copy inside Cloudflare, check it
+was a complete PDF (`worker/src/pdfcheck.ts`; many 2019-2025 Wayback captures are cut off at
+1 MiB), hash it and store it in R2. Version rows were then inserted, and `papers.pdf_key` moved to
+the newest version. `pipeline/repair_truncated.py` replaced truncated copies stored before the
+check existed.
 
-1. `list`: Wayback CDX listing of `eprint.iacr.org/` with the pagination API (~170 pages, one
-   client, >= 5 s apart, cached per page in `data/cache/discover/`), filtered server-side to
-   `/YYYY/NNNN.pdf` URLs with `fl=original,timestamp,length,mimetype,statuscode,digest`.
-2. `existing`: the helper Worker hashes every PDF already in R2 at the legacy key (sha256 + sha1)
-   and records it as a version (source/url/date from `papers.pdf_*`). Also fills
-   `papers.pdf_sha256` where NULL.
-3. `plan`: per paper, the distinct digests of 200 `application/pdf` captures, minus those we
-   hold; plus the GitHub-mirror snapshot (from `sources`) unless GitHub is already a version.
-4. `copy`: the helper Worker fetches each planned copy inside Cloudflare, checks that it is a
-   complete PDF (`worker/src/pdfcheck.ts`: `%PDF-` header, `startxref` + `%%EOF` at the end, a
-   page count from pdf.js, and not exactly 1 MiB), hashes it, and stores it unless its sha256 is
-   already held for that paper. Many 2019-2025 Wayback captures were cut off at 1 MiB when they
-   were crawled (the archived payload itself is short, so its CDX digest matches the short bytes);
-   these are rejected as `not a PDF (incomplete: ...)`. GitHub items run in
-   parallel batches; Wayback items with 2 fetchers, each >= 2 s apart. On 429/5xx, or when IA
-   refuses the helper (521/522, dropped connections), all fetchers pause 2-5 min and the item is
-   retried; items still failing are left for a later run (never recorded as permanent).
-5. `apply`: inserts version rows for stored copies and moves `papers.pdf_key` to the newest
-   version where it is newer than the current one (or none was set, e.g. withdrawn papers).
-   Versions of exactly 1 MiB are never chosen. Truncated copies stored before the check existed
-   are cleaned up by `pipeline/repair_truncated.py`.
+Result (2026-11-17): 13,489 older copies stored (11.2 GB); 40,344 versions for 28,582 papers,
+8,963 of them with two or more. About 540 captures were rejected as incomplete or unreadable, and
+639 were left uncopied: 609 from one 2008 Wayback crawl that the Archive would not serve to
+Cloudflare (it serves them elsewhere), and 30 others that kept failing. Their list is in the
+gitignored `data/versions/` of the run.
 
-```sh
-# temporary helper Worker (own shared key, kept in data/versions/.versions-key)
-scripts/deploy.sh -c versions-worker/wrangler.jsonc
-cd worker
-python3 -c "import secrets;print(secrets.token_urlsafe(32))" > ../data/versions/.versions-key
-npx --no-install wrangler secret put VERSIONS_KEY --name open-cryptology-versions < ../data/versions/.versions-key
-cd ..
-python3 -I pipeline/discover_versions.py list
-python3 -I pipeline/discover_versions.py existing
-python3 -I pipeline/discover_versions.py plan
-python3 -I pipeline/discover_versions.py copy        # long: hours; applies what it stored every 15 min
-python3 -I pipeline/discover_versions.py apply       # incremental (only copies not yet applied)
-# a copy started without checkpoints: re-apply every 15 min until it exits
-#   python3 -I pipeline/discover_versions.py apply --watch 15 --until-pid <copy pid>
-python3 -I pipeline/discover_versions.py stats
-cd worker && npx --no-install wrangler delete --name open-cryptology-versions
-```
-
-Re-running later only copies what's new (the plan drops digests already held and keys already
-copied). Accepted uploads get `source='upload'` version rows too.
+The helper Worker was deleted afterwards, and the scripts and helper were removed from the repo;
+they are in git history (`git show b3f5337:pipeline/discover_versions.py`). New
+revisions come in as uploads, which get `source='upload'` version rows.
