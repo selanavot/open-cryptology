@@ -53,7 +53,7 @@ export function privacyPage(env: Env): Response {
   <p>You can delete your account on its <a href="/account">account page</a>. That removes your sign-ins
   and sessions right away. What you posted stays, credited to “deleted user”.</p>
 
-  <p>Questions: use the <a href="/#contact">contact form</a>.</p>
+  <p>Questions: use the <a href="/contact">contact form</a>.</p>
   <p class="text-muted small">Last updated 14 November 2026.</p>
 </section>`,
   });

@@ -118,6 +118,8 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
 .nav-burger span { display: block; width: 28px; height: 2px; margin: 5px 0; background: var(--nav-text); }
 .nav-toggle:focus-visible + .nav-burger { outline: 2px solid var(--nav-text); outline-offset: 2px; }
 
+/* "Log in" sits in the top bar on wide screens and in the ☰ menu on phones (a signed-in avatar stays in the bar) */
+.nav-links .nav-login { display: none; }
 .nav-account { margin-left: 1.5rem; padding: .5rem 0; font-size: 1.1rem; color: var(--nav-text); white-space: nowrap; }
 .nav-account:visited { color: var(--nav-text); }
 .nav-account:hover { color: var(--nav-hover); text-decoration: underline; text-underline-offset: 4px; }
@@ -149,6 +151,8 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
   .site-name { order: 1; flex: 1; text-align: center; justify-content: center; }
   .site-logo { width: 2.1rem; height: 2.1rem; }
   .nav-account { order: 2; margin-left: 0; padding: .5rem .25rem; font-size: 1rem; }
+  .nav-account:not(.has-avatar) { display: none; }
+  .nav-links .nav-login { display: block; }
   .nav-search { order: 3; margin-left: 0; }
   .nav-links {
     order: 4; display: none; flex-basis: 100%; flex-direction: column;
@@ -156,7 +160,13 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
   }
   .nav-links a { padding: .5rem .75rem; }
   .nav-toggle:checked ~ .nav-links { display: flex; }
-  .nav-search-dd { right: 0; width: 100%; }
+  /* phones and tablets: search opens as a yellow panel under the bar, like the menu, with a full-size field */
+  .nav-search-dd {
+    right: 0; width: 100%; padding: .25rem .75rem .9rem; background: var(--nav);
+    border: 0; border-radius: 0; box-shadow: 0 2px 4px rgba(0, 0, 0, .12);
+  }
+  .nav-search-dd .form-control { background-color: #fff; font-size: 1.1rem; padding: .7rem .9rem; border-radius: .5rem 0 0 .5rem; }
+  .nav-search-dd .btn { font-size: 1.05rem; padding: .7rem 1.1rem; border-radius: 0 .5rem .5rem 0; }
 }
 @media (max-width: 767.98px) { .site-name { font-size: 1.4rem; } }
 @media (max-width: 359.98px) { .site-name { font-size: 1.15rem; gap: .4rem; } .site-logo { width: 1.6rem; height: 1.6rem; } }
@@ -182,8 +192,6 @@ a.btn:hover, a.btn:visited:hover { color: #fefefe; }
 @media (max-width: 575.98px) { .eprintContent { margin-top: 0; border-radius: 0; } }
 
 .site-footer { margin-top: 1.5rem; margin-bottom: 2rem; padding-top: .75rem; padding-bottom: .75rem; font-size: .8rem; text-align: center; background: rgba(254, 254, 254, .9); border-radius: .3rem; }
-.site-footer nav { margin-bottom: .25rem; }
-.site-footer p { margin: 0; }
 @media (max-width: 575.98px) { .site-footer { margin: 0; border-radius: 0; border-top: 1px solid #eee; } }
 
 /* ---------- buttons */
@@ -280,6 +288,28 @@ div.eprintCard p { margin-top: .5rem; margin-bottom: .5rem; }
 .search-help { padding: .5rem; margin-top: 1rem; color: #495057; }
 .search-help ul { padding-left: 1.2rem; margin: 0; }
 .search-results-col { min-height: 60vh; }
+.search-help > summary { list-style: none; cursor: default; margin-bottom: .25rem; }
+.search-help > summary::-webkit-details-marker { display: none; }
+/* phones and tablets: a compact form (query; sort + button on one row), 16px fields so iPhones
+   don't zoom in, and the tips behind a tap */
+@media (max-width: 991.98px) {
+  .search-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; align-items: center; }
+  .search-form label[for="anything"], .search-form #anything { grid-column: 1 / -1; }
+  .search-form label[for="anything"] { margin: 0; }
+  .search-form label[for="sort"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .search-form > div { margin: 0 !important; }
+  .search-form .form-control, .search-form .form-select { font-size: 1rem; padding-top: .45rem; padding-bottom: .45rem; }
+  .search-form .btn { font-size: 1rem; padding: .45rem 1rem; }
+  .search-help { margin-top: 0; }
+  .search-help > summary { cursor: pointer; }
+  .search-help > summary::after { content: " \25B8"; color: var(--muted); }
+  .search-help[open] > summary::after { content: " \25BE"; }
+}
+/* phones: thousands of tiny squares can't be tapped; the year page lists every paper below anyway */
+@media (max-width: 575.98px) {
+  .year-page .paper-grid, .year-page .grid-legend, .year-page .grid-hint,
+  .home-grid .paper-grid, .home-grid .grid-legend { display: none; }
+}
 .results-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1rem; margin: 1rem 0 0 1.5rem; }
 .results-bar .results-h { margin: 0; }
 .search-results-col > .results-h { margin: 1rem 0 0 1.5rem; }
@@ -313,6 +343,11 @@ span.authorName { font-style: italic; }
 .paper-abstract { white-space: pre-wrap; overflow-wrap: break-word; }
 .paper-abstract .katex-display { margin: .4em 0; overflow-x: auto; overflow-y: hidden; white-space: normal; }
 .paper-meta { margin-top: 1.5rem; overflow-wrap: anywhere; }
+/* phones: the metadata column sits below the abstract, so repeat the PDF and BibTeX links under the authors */
+.paper-quick { display: none; }
+@media (max-width: 767.98px) {
+  .paper-quick { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; margin: .9rem 0 0; }
+}
 @media (min-width: 768px) { .paper-meta { margin-top: 0; } }
 #metadata dt { margin-top: 1rem; }
 #metadata dt + dd { margin-top: .75rem; }
@@ -349,12 +384,12 @@ span.authorName { font-style: italic; }
 }
 .home-letter { max-width: 42rem; font-size: 1.05rem; line-height: 1.65; }
 .home-letter p { margin: 0 0 1rem; }
-.home-letter .contact-form { max-width: 32rem; margin-top: .5rem; }
+.home-letter strong { font-weight: 600; }
+.contact-page { max-width: 36rem; }
+.contact-page .contact-form { margin-top: 1rem; }
 .home-side .eprintCardHeader { margin: 0; padding: .5rem; }
 .home-side .eprintCardHeader h3 { font-size: 1.25rem; }
 .home-side .eprintCardContent { padding: .5rem 0 0; }
-.contact-panel { margin-top: 1.5rem; border-top: 1px solid #e9ecef; padding-top: .75rem; }
-.contact-panel summary { cursor: pointer; font-weight: 600; }
 
 /* Papers missing a PDF (/missing and the homepage card): one tile per year, filled from the bottom in
    green up to the share of papers with an up-to-date PDF here (--cur), then yellow up to the share
@@ -531,6 +566,44 @@ ol.year-list .badge { margin-left: .35rem; }
 .ms-idents .provider-tag { font-weight: 600; font-size: .9rem; }
 .hm-primary { background: var(--text); color: #fff; padding: .55rem 1.1rem; }
 .hm-primary:hover { background: #000; color: #fff; }
+
+
+/* homepage: the letter, with a short list of where to go beside it (phones: below it) */
+.hm { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; padding: .5rem 1rem; }
+/* wide screens: letter and list stay side by side, centred, instead of drifting apart */
+@media (min-width: 992px) { .hm { grid-template-columns: minmax(0, 42rem) 18rem; justify-content: center; gap: 4rem; } }
+.hm-nav { align-self: start; border-top: 1px solid #eee7d6; }
+.hm-item { display: block; padding: .85rem 0; border-bottom: 1px solid #eee7d6; color: var(--text); text-decoration: none; }
+.hm-item:hover, .hm-item:visited { color: var(--text); }
+.hm-item-title { display: block; font-weight: 600; }
+.hm-item-title::after { content: " \2192"; color: var(--muted); }
+.hm-item:hover .hm-item-title { text-decoration: underline; text-underline-offset: 3px; }
+.hm-item-sub { display: block; color: var(--muted); font-size: .9rem; margin-top: .1rem; }
+.hm-bars { margin: .6rem 0 0; }
+.hm-bars svg { display: block; width: 100%; height: 40px; fill: #e0b94a; }
+.hm-bars figcaption { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); margin-top: .2rem; }
+
+
+.hm-latest-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.hm-latest-head .ms-day { margin-top: .25rem; }
+.ms-more { font-size: .9rem; white-space: nowrap; }
+
+/* /eprint: the papers-by-year grid in the middle, what the mirror is in a sidebar (phones: below) */
+.ep-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+@media (min-width: 992px) {
+  .ep-layout { grid-template-columns: minmax(0, 1fr) 19rem; gap: 3rem; }
+  .ep-layout .ep-main { grid-column: 1; grid-row: 1; } .ep-layout .ep-text { grid-column: 2; grid-row: 1; align-self: start; }
+}
+.ep-main .eprintCardHeader { margin-top: .75rem; }
+.ep-text { font-size: .95rem; line-height: 1.6; }
+@media (min-width: 992px) { .ep-text { border-left: 1px solid #eee; padding-left: 1.5rem; margin-top: .75rem; } }
+.ep-text p { margin: 0 0 .5rem; }
+.ep-points { padding-left: 1.1rem; margin: 0; }
+.ep-points li { margin: .4rem 0; }
+
+/* search: matching manuscripts above the ePrint results */
+.search-ms { margin: 0 0 1.5rem; }
+@media (min-width: 992px) { .search-ms { margin-left: 1.5rem; } }
 
 /* submit */
 .sb { max-width: 40rem; margin: 0 auto; }

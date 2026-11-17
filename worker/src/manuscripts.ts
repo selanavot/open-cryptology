@@ -278,7 +278,7 @@ async function manuscriptFile(env: Env, req: Request, id: string): Promise<Respo
   const inm = req.headers.get("if-none-match");
   if (inm && inm.split(",").some((t) => t.trim().replace(/^W\//, "") === etag)) return new Response(null, { status: 304, headers });
   const obj = v.file_key ? await (req.method === "HEAD" ? env.PDFS.head(v.file_key) : env.PDFS.get(v.file_key)) : null;
-  if (!obj) return messagePage(env, 404, "File missing", html`<p>The file for original manuscript ${id} is missing. Please <a href="/#contact">tell us</a>.</p>`);
+  if (!obj) return messagePage(env, 404, "File missing", html`<p>The file for original manuscript ${id} is missing. Please <a href="/contact?topic=manuscript">tell us</a>.</p>`);
   headers.set("content-length", String(obj.size));
   return new Response("body" in obj ? (obj as R2ObjectBody).body : null, { headers });
 }
@@ -323,10 +323,33 @@ async function listPage(env: Env): Promise<Response> {
     cache: "public, max-age=120",
     body: html`<div class="ms-list-head">
   <h1 class="ms-title">Original manuscripts</h1>
-  <a class="btn btn-outline-dark" href="/submit">Submit an original manuscript</a>
+  <a class="btn hm-primary" href="/submit">Submit a manuscript</a>
 </div>
 ${groups.length ? groups : html`<p class="text-muted mt-3">None yet.</p>`}`,
   });
+}
+
+/** The newest manuscripts as list rows (homepage). */
+export async function latestManuscripts(env: Env, limit: number): Promise<{ rows: Html | null; count: number }> {
+  const r = await env.DB.prepare(`${LIST_SQL} ORDER BY m.created_at DESC LIMIT ?1`).bind(limit).all<Row>();
+  return { rows: r.results.length ? await rowsHtml(env, r.results) : null, count: r.results.length };
+}
+
+/** Manuscripts whose title, authors or abstract contain every word of `q` (search page). There are
+ *  few enough manuscripts that a scan is fine; ePrint papers use the full-text index instead. */
+export async function searchManuscripts(env: Env, q: string, limit: number): Promise<{ rows: Html | null; count: number }> {
+  const words = q
+    .toLowerCase()
+    .replace(/\b(author|title|abstract):/g, " ")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 1)
+    .slice(0, 8);
+  if (!words.length) return { rows: null, count: 0 };
+  const where = words.map((_, i) => `AND lower(v.title || ' ' || v.authors || ' ' || v.abstract) LIKE ?${i + 1}`).join(" ");
+  const r = await env.DB.prepare(`${LIST_SQL} ${where} ORDER BY m.created_at DESC LIMIT ${Math.floor(limit)}`)
+    .bind(...words.map((w) => `%${w}%`))
+    .all<Row>();
+  return { rows: r.results.length ? await rowsHtml(env, r.results) : null, count: r.results.length };
 }
 
 /** A person's public profile: their log-in methods and the manuscripts they uploaded. */
@@ -579,7 +602,7 @@ function termsPage(env: Env): Response {
     access, or suspend anyone, at any time and for any reason. We'll usually say why.</li>
     <li><strong>Posts stay public otherwise.</strong> You can add versions or withdraw a manuscript, which adds a notice, but earlier versions
     stay readable, as on ePrint and arXiv. Don't post anything you couldn't leave public.</li>
-    <li><strong>Report problems</strong> through the <a href="/#contact">contact form</a>. We may share information when the law requires it.</li>
+    <li><strong>Report problems</strong> through the <a href="/contact">contact form</a>. We may share information when the law requires it.</li>
   </ul>
 
   <h2>Accounts and agents</h2>

@@ -1,7 +1,7 @@
 import { turnstileOk, turnstileWidget } from "./turnstile";
 import { type Env } from "./db";
 import { html, type Html } from "./html";
-import { messagePage } from "./layout";
+import { messagePage, page } from "./layout";
 
 // Contact form → email to the maintainer via Cloudflare Email Routing (send_email binding).
 // The destination address lives in the CONTACT_TO secret (never in git) and must be a verified
@@ -10,7 +10,9 @@ import { messagePage } from "./layout";
 
 const TOPICS: Record<string, string> = {
   paper: "Problem with a paper (wrong/outdated PDF, metadata)",
+  manuscript: "An original manuscript (report or question)",
   takedown: "Takedown / author request",
+  help: "I'd like to help",
   bug: "Bug or feature request",
   other: "Something else",
 };
@@ -22,7 +24,23 @@ function contactConfigured(env: Env): boolean {
   return Boolean(env.MAILER && env.CONTACT_TO && env.CONTACT_FROM);
 }
 
-/** Contact form, rendered as a panel on the home page (posts to /contact). */
+/** /contact: the contact form, with a GitHub issue as the alternative. ?paper=2024/123 and
+ *  ?topic=help preselect the form. */
+export function contactPage(env: Env, url: URL): Response {
+  return page(env, {
+    title: "Get in touch",
+    description: "Write to Open Cryptology: problems with a paper or manuscript, takedown requests, ideas, or offers to help.",
+    cache: "public, max-age=300",
+    body: html`<div class="contact-page">
+  <h1 class="ms-title">Get in touch</h1>
+  <p>Something wrong or missing, an idea, or want to help? Write to us here, or
+  <a href="${env.ISSUES_URL}">open an issue</a> on GitHub.</p>
+  ${contactForm(env, url)}
+</div>`,
+  });
+}
+
+/** The contact form (posts to /contact). */
 export function contactForm(env: Env, url: URL): Html {
   const paper = url.searchParams.get("paper") ?? "";
   const topic = url.searchParams.get("topic") ?? (paper ? "paper" : "other");

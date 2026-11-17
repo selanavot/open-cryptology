@@ -57,9 +57,32 @@
   }
 
   // Navbar search dropdown (<details>): focus the box on open; close on outside click / Escape.
+  // Phones: the ☰ menu (a CSS checkbox) closes on a tap outside it, or on Escape.
+  function setupNavMenu() {
+    var t = document.getElementById("nav-toggle");
+    var links = document.querySelector(".nav-links");
+    var burger = document.querySelector(".nav-burger");
+    if (!t || !links) return;
+    document.addEventListener("click", function (ev) {
+      if (t.checked && ev.target !== t && !links.contains(ev.target) && !(burger && burger.contains(ev.target))) t.checked = false;
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && t.checked) t.checked = false;
+    });
+  }
+
+  // Search page: on narrow screens the tips start folded, so results come first.
+  function foldSearchTips() {
+    var t = document.querySelector("details.search-help");
+    if (t && window.matchMedia && window.matchMedia("(max-width: 991.98px)").matches) t.open = false;
+  }
+
   function setupNavSearch() {
     var d = document.querySelector(".nav-search");
     if (!d) return;
+    // The full hint doesn't fit a phone-width field; keep the part that teaches the 2024/123 shortcut.
+    var field = d.querySelector("input");
+    if (field && window.matchMedia && window.matchMedia("(max-width: 575.98px)").matches) field.placeholder = "Search, or go to 2024/123";
     d.addEventListener("toggle", function () {
       if (d.open) {
         var i = d.querySelector("input");
@@ -163,6 +186,7 @@
   function setupAccountLink() {
     var a = document.querySelector(".nav-account");
     if (!a) return;
+    var menu = document.querySelector(".nav-login");
     var m = document.cookie.match(/(?:^|;\s*)oc_login=([^;]+)/);
     var info = null;
     try { info = m && JSON.parse(decodeURIComponent(m[1])); } catch (e) { /* ignore a malformed cookie */ }
@@ -172,8 +196,10 @@
       a.title = info.n;
       a.setAttribute("aria-label", "Your account (" + info.n + ")");
       a.appendChild(avatarEl(info.n, info.a));
+      if (menu) menu.remove();
     } else if (location.pathname !== "/account") {
       a.href = "/account?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+      if (menu) menu.firstElementChild.href = a.href;
     }
   }
 
@@ -254,16 +280,16 @@
   setupCopy();
   setupUpload();
   setupNavSearch();
+  foldSearchTips();
+  setupNavMenu();
   setupManuscriptForm();
 })();
 
-// Open the contact panel when arriving via #contact or clicking a #contact link.
+// Old links to the homepage's contact panel (/#contact, /?paper=2024/123#contact): the form
+// is its own page now.
 (function () {
   function openContact() {
-    if (location.hash === "#contact") {
-      var d = document.getElementById("contact");
-      if (d && d.tagName === "DETAILS") d.open = true;
-    }
+    if (location.hash === "#contact" && !document.getElementById("contact")) location.replace("/contact" + location.search);
   }
   window.addEventListener("hashchange", openContact);
   openContact();

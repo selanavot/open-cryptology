@@ -97,7 +97,7 @@ function statOf(year: number, cells: Cell[]): YearStat {
   return s;
 }
 
-async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
+export async function yearStats(env: Env, origin: string): Promise<YearStat[]> {
   return cached(origin, YEARS_KEY, 300, async () => {
     const r = await env.DB.prepare(
       `SELECT year, count(*) AS total, sum(pdf_key IS NOT NULL) AS have,
@@ -278,7 +278,7 @@ export async function yearPage(env: Env, url: URL, year: number): Promise<Respon
   <h3 class="mb-3">Papers from ${year}</h3>
   ${yearTiles(years, year)}
   <h5 class="mt-4">${papersWord(sel.total)}${missing ? html` · ${fmtInt(missing)} missing` : ""}${sel.outdated ? html` · ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
-  ${!!(missing || sel.outdated) && html`<p class="small mb-2">Click a grey or yellow square to upload, or see <a href="/missing?year=${year}">the list</a>.</p>`}
+  ${!!(missing || sel.outdated) && html`<p class="small mb-2 grid-hint">Click a grey or yellow square to upload, or see <a href="/missing?year=${year}">the list</a>.</p>`}
   ${paperGrid(year, rows)}
   ${legend(rows)}
   <h5 class="mt-4">All ${papersWord(listed.length)}, newest first</h5>

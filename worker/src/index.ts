@@ -1,7 +1,7 @@
 import { apiUpload } from "./apiupload";
 import { handleReview, isReviewPath } from "./review";
 import { notifyReview } from "./quarantine";
-import { handleContact } from "./contact";
+import { contactPage, handleContact } from "./contact";
 import { checkHarvestStaleness } from "./staleness";
 import { canonicalId, type Env } from "./db";
 import { html } from "./html";
@@ -9,7 +9,7 @@ import { messagePage } from "./layout";
 import { apiPaper, handleUpload, paperPage, servePdf } from "./paper";
 import { gridFragment, yearPage } from "./years";
 import { apiMissing, missingPage } from "./missing";
-import { apiSearch, homePage, json, notFound, searchPage } from "./pages";
+import { apiSearch, eprintPage, homePage, json, notFound, searchPage } from "./pages";
 import { supportPage } from "./support";
 import { privacyPage } from "./privacy";
 import { llmsTxt, robotsTxt } from "./text";
@@ -98,7 +98,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (path === "/contact") {
     if (req.method === "POST") return handleContact(env, req, url);
     if (!isGet) return methodNotAllowed("GET, HEAD, POST");
-    return new Response(null, { status: 302, headers: { location: `/${url.search}#contact` } });
+    return contactPage(env, url);
   }
   if (!isGet) return methodNotAllowed("GET, HEAD");
 
@@ -122,6 +122,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return homePage(env, url);
     case "/search":
       return searchPage(env, url);
+    case "/eprint":
+      return eprintPage(env, url);
     case "/api/search":
       return apiSearch(env, url);
     case "/missing":

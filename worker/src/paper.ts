@@ -47,6 +47,7 @@ export async function paperPage(
     </div>`}
     <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${title}</a></h3>
     ${authors.map((a, i) => html`<div class="author"><span class="authorName">${a}</span>${affs[i] && html`<span class="affiliation">, ${affs[i]}</span>`}</div>`)}
+    <p class="paper-quick">${pdfHref ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF${withdrawn ? " (withdrawn)" : ""}</a>` : ""}<a href="#bibtex">BibTeX</a><a href="${orig}" rel="noopener">ePrint ↗</a></p>
     ${pdfHref && !outdated ? uploadNotice(url.searchParams.get("upload")) : ""}
     ${(!pdfHref || outdated) && uploadForm(env, p, orig, uploadNotice(url.searchParams.get("upload")))}
     <h5 class="mt-3">Abstract</h5>
@@ -83,7 +84,7 @@ export async function paperPage(
 <p class="mt-4 mb-2"><strong>BibTeX</strong>
   <button type="button" class="ms-2 btn btn-sm btn-outline-dark" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy to clipboard</span></button></p>
 <pre id="bibtex">${bibtex(p, env.ORIGIN_BASE)}</pre>
-<p class="small mb-0"><a href="/?paper=${p.id}#contact">Report a problem with this paper</a></p>`;
+<p class="small mb-0"><a href="/contact?paper=${p.id}">Report a problem with this paper</a></p>`;
 
   const origin = siteOrigin(env, url);
   const description = `${withdrawn ? "Withdrawn. " : ""}${(p.abstract ?? "").replace(/\s+/g, " ")}`.slice(0, 200);
