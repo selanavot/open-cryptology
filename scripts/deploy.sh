@@ -5,14 +5,20 @@
 #   scripts/deploy.sh -c versions-worker/wrangler.jsonc
 #   scripts/deploy.sh --force                          # skip the "live is newer" check
 #   scripts/deploy.sh --dry-run                        # run the checks and build, don't upload
+#   scripts/deploy.sh --ci [--schema-applied]          # continuous deploy (.github/workflows/deploy.yml)
 #
 # It deploys only when:
 #   - this checkout's HEAD is exactly origin/main (just fetched), with no local changes;
 #   - the live version is older than HEAD. Each deploy is tagged with its commit, so a
 #     checkout that deploys a stale main finds a newer commit live and stops instead of
 #     replacing it. A live version without a tag (deployed by hand) only warns.
+#   - with --ci: db/schema.sql is unchanged since the live commit, unless --schema-applied says
+#     the new statements already ran on production D1. (By hand it only reminds you.)
 # After deploying it checks again: if a deploy of an older commit landed right after ours
 # (two deploys racing), it puts ours back; anything else that replaced ours, it reports.
+# Then, for the site, it loads a few pages; if any returns a server error it puts the
+# previous version back.
+# With --ci, a HEAD that main has already moved past exits quietly: the newer commit deploys.
 set -euo pipefail
 
 die() { printf '\ndeploy: %s\n' "$*" >&2; exit 1; }
@@ -20,12 +26,16 @@ die() { printf '\ndeploy: %s\n' "$*" >&2; exit 1; }
 config=worker/wrangler.jsonc
 force=0
 dry=0
+ci=0
+schema_applied=0
 while [ $# -gt 0 ]; do
   case $1 in
     -c | --config) config=$2; shift 2 ;;
     --force) force=1; shift ;;
     --dry-run) dry=1; shift ;;
-    -h | --help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --ci) ci=1; shift ;;
+    --schema-applied) schema_applied=1; shift ;;
+    -h | --help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1 (see --help)" ;;
   esac
 done
@@ -44,6 +54,10 @@ git fetch -q origin main
 head=$(git rev-parse HEAD)
 main=$(git rev-parse origin/main)
 short=$(git rev-parse --short=12 HEAD)
+if [ "$ci" = 1 ] && [ "$head" != "$main" ] && git merge-base --is-ancestor "$head" "$main"; then
+  echo "deploy: $short is behind origin/main ($(git rev-parse --short=12 origin/main)); the newer commit's run deploys it."
+  exit 0
+fi
 [ "$head" = "$main" ] ||
   die "HEAD is $short, not origin/main ($(git rev-parse --short=12 origin/main)).
 Deploy only the latest main: git checkout main && git pull --ff-only (in a worktree: git checkout --detach origin/main)."
@@ -82,6 +96,18 @@ else
   echo "deploy: live is $live_tag, older than $short"
 fi
 
+# Schema changes go to production D1 by hand (db/schema.sql), before the code that needs them.
+if [ -n "$live_tag" ] && git cat-file -e "$live_tag^{commit}" 2>/dev/null &&
+  ! git diff --quiet "$live_tag" HEAD -- db/schema.sql; then
+  if [ "$ci" = 1 ] && [ "$schema_applied" = 0 ]; then
+    die "db/schema.sql changed since the live version ($live_tag):
+$(git diff --stat "$live_tag" HEAD -- db/schema.sql)
+Apply the new statements to production D1 (wrangler d1 execute open-cryptology --remote ...), then
+run the Deploy workflow by hand with 'schema applied' ticked, or run scripts/deploy.sh."
+  fi
+  echo "deploy: note: db/schema.sql changed since $live_tag; production D1 needs the new statements first."
+fi
+
 # 3. Type-check the site before shipping it.
 if [ "$config" = "$root/worker/wrangler.jsonc" ]; then
   (cd worker && npm run -s typecheck) || die "typecheck failed"
@@ -100,11 +126,33 @@ ours=$(sed -n 's/.*Current Version ID: *\([0-9a-f-]*\).*/\1/p' "$out" | tail -1)
 rm -f "$out"
 [ -n "$ours" ] || die "could not find the new version ID in Wrangler's output"
 
+# 6 (defined first). The site must still serve pages; a server error puts the previous version
+# back. Only 5xx (or no answer) counts: a bot challenge (403) from Cloudflare isn't the Worker failing.
+healthy_or_rollback() {
+  local site page code tries bad=""
+  site=$(sed -n 's/.*"SITE_URL": *"\(https\{0,1\}:[^"]*\)".*/\1/p' "$config" | head -1)
+  [ -n "$site" ] || return 0 # not the site (versions Worker)
+  for page in / /eprint /2024/001; do
+    for tries in 1 2 3; do
+      code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' -A 'Mozilla/5.0 (compatible; open-cryptology-deploy-check)' "$site$page" || true)
+      case $code in 5* | 000 | "") sleep 5 ;; *) break ;; esac
+    done
+    echo "deploy: $site$page -> $code"
+    case $code in 5* | 000 | "") bad="$bad $page ($code)" ;; esac
+  done
+  [ -z "$bad" ] && return 0
+  [ -n "$live" ] || die "the site fails after deploying $short:$bad; there is no previous version to put back"
+  echo "deploy: the site fails after deploying $short:$bad; putting the previous version $live back" >&2
+  wr versions deploy "$live@100" --yes --message "rollback: $short failed the health check:$bad"
+  die "rolled back to $live (${live_tag:-untagged}); $short failed the health check:$bad"
+}
+
 # 5. Did another deploy replace ours? Put ours back only if theirs is an older commit.
 sleep 15
 now=$(live_version || true)
 if [ "$now" = "$ours" ]; then
   echo "deploy: live is $ours ($short)"
+  healthy_or_rollback
   exit 0
 fi
 now_tag=$([ -n "$now" ] && version_tag "$now" || true)
@@ -120,3 +168,4 @@ fi
 echo "deploy: version $now ($now_tag, older) replaced ours right after; putting $short back" >&2
 wr versions deploy "$ours@100" --yes --message "$msg (restored: replaced by ${now_tag:-an untagged deploy})"
 echo "deploy: live is $ours ($short)"
+healthy_or_rollback
