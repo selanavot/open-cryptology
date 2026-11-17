@@ -2,7 +2,8 @@
 
 - **Never push to `main`.** `main` is branch-protected (PR required, admins included). Work on a
   branch, open a PR with `gh pr create`, and squash-merge it (`gh pr merge --squash --delete-branch`).
-  Squash is the only merge method enabled.
+  Squash is the only merge method enabled. The `Checks` workflow (typecheck, `npm --prefix worker test`,
+  a dry-run build of both Workers) must pass first; run the first two locally before pushing.
 - **Deploy only with `scripts/deploy.sh`** (`-c versions-worker/wrangler.jsonc` for another Worker),
   after the PR is merged, never with `wrangler deploy` by hand. It refuses unless HEAD is exactly
   `origin/main` with no local changes and the live version is an older commit, tags each version
