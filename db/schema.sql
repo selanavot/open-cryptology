@@ -197,3 +197,44 @@ CREATE TABLE IF NOT EXISTS manuscript_versions (
   created_at        TEXT NOT NULL,
   PRIMARY KEY (manuscript_id, v)
 );
+
+-- agent API (2026-11): worker/src/agentapi.ts. An agent asks to connect (OAuth device flow), the
+-- person approves it with one click, and the agent receives a token. Only CREATE ... IF NOT EXISTS,
+-- so this section can be run on its own:  sed -n '/^-- agent API/,$p' db/schema.sql
+-- A token lets an agent post original manuscripts as one person. Only its SHA-256 is stored.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id            TEXT PRIMARY KEY,            -- random; also recorded on what the token posted
+  hash          TEXT NOT NULL UNIQUE,        -- hex SHA-256 of the token
+  user_id       TEXT NOT NULL,               -- users.id (moved to the kept account on a merge)
+  scopes        TEXT NOT NULL,               -- space-separated; 'manuscripts' (post and read them)
+  created_at    TEXT NOT NULL,
+  expires_at    TEXT NOT NULL,               -- short-lived, like a browser login
+  revoked_at    TEXT                         -- account deleted, a maintainer cut it off, or replaced
+);
+CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens(user_id);
+
+-- An agent asking to connect. The token is minted when the agent collects it after approval, so
+-- no token secret is ever stored. Rows older than a day are deleted when new requests come in.
+CREATE TABLE IF NOT EXISTS agent_connect (
+  id            TEXT PRIMARY KEY,            -- hex SHA-256 of the agent's device_code
+  user_code     TEXT NOT NULL UNIQUE,        -- 'WXYZ2345', shown as WXYZ-2345 and in the approve link
+  ip_hash       TEXT NOT NULL,
+  country       TEXT,                        -- where the request came from (CF-IPCountry), shown on the approve page
+  created_at    TEXT NOT NULL,
+  expires_at    TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending', -- pending | approved | denied | claimed
+  user_id       TEXT,                        -- who approved or denied it
+  token_id      TEXT                         -- the token handed out (replaced if the agent asks again)
+);
+CREATE INDEX IF NOT EXISTS agent_connect_ip ON agent_connect(ip_hash, created_at);
+CREATE INDEX IF NOT EXISTS agent_connect_created ON agent_connect(created_at);
+-- Posting checks the site's daily total and finds the version it just stored by its file.
+CREATE INDEX IF NOT EXISTS manuscript_versions_created ON manuscript_versions(created_at);
+CREATE INDEX IF NOT EXISTS manuscript_versions_file ON manuscript_versions(file_key);
+
+-- Which token (if any) posted each manuscript: for moderation only, never shown.
+CREATE TABLE IF NOT EXISTS manuscript_tokens (
+  manuscript_id TEXT PRIMARY KEY,
+  token_id      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS manuscript_tokens_token ON manuscript_tokens(token_id);

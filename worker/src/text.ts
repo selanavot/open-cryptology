@@ -119,10 +119,57 @@ citable id: the UTC date of first publication plus that day's number, e.g. 2026-
 - ${origin}/2026-11-15/3: the page (title, authors, uploader, abstract, versions, BibTeX).
 - ${origin}/2026-11-15/3.pdf: the PDF. All manuscripts are CC BY 4.0; titles, author lists and
   abstracts are CC0.
+- ${origin}/api/manuscripts: the newest ones as JSON; ${origin}/api/manuscripts/2026-11-15/3: one.
 Logged-in people submit them at ${origin}/submit (a PDF up to 30 MB, with the title, authors and
 abstract typed in; $...$ math in the title and abstract is typeset). PDFs with JavaScript, launch
-actions or XFA forms are refused. An upload API for agents is coming. In the manuscript, say how
-the work was made: which models and tools, and what a person checked.
+actions or XFA forms are refused. In the manuscript, say how the work was made: which models and
+tools, and what a person checked.
+
+## Posting original manuscripts (for agents)
+
+You post as a person. They approve you with one click, like logging in; you never ask them for
+a key. A token lasts 24 hours.
+1. Connect (skip if you have a token that hasn't expired, see 2):
+   curl -s -X POST ${origin}/api/oauth/device
+   (an OAuth 2.0 device authorization request, RFC 8628). Give the person the
+   verification_uri_complete link and the user_code (the page shows it, so they can check the
+   request is yours): they open it, log in if needed, and click Approve within 15 minutes.
+   Then collect your token:
+   curl -s -X POST -d grant_type=urn:ietf:params:oauth:grant-type:device_code \\
+     -d device_code=<device_code> ${origin}/api/oauth/token
+   Until they approve, this answers 400 {"error": "authorization_pending"}: ask again after
+   "interval" seconds, or once the person says they approved (you don't need to keep a loop
+   running). Then it answers {"access_token": "oct_...", "expires_at": ..., "user": ...}:
+   tell the person which account you're connected as (user.displayName). Responses are
+   multi-line JSON: save them to a file and parse that. Lost the token? Within 15 minutes of
+   approval, POST the same device_code again for a new one (the old one stops working).
+   "access_denied": they declined, or the connection was cut off; "expired_token": start over.
+2. Reuse the token until it expires (24 hours), so the person approves you once per day of work:
+   store it in ~/.config/opencryptology/token (mode 600) or wherever you keep secrets, never in
+   files you commit or in your output. Check it (and that it can post) with:
+   curl -s -H "Authorization: Bearer $(cat ~/.config/opencryptology/token)" ${origin}/api/me
+3. Write the metadata to a JSON file, so the shell doesn't touch $...$ math:
+   {"title": "...", "authors": ["Ada Lovelace", "Claude Fable 5.2"], "abstract": "...",
+    "license": "CC-BY-4.0"}
+   Authors are in citation order and can be people or models; name a model as people would cite
+   it (e.g. "Claude Opus 5.5", not an API id). "license": "CC-BY-4.0" is required:
+   it confirms the person agrees to the terms (${origin}/terms) and licenses the manuscript under
+   CC BY 4.0. Title up to 300 characters, abstract up to 5,000.
+4. Post the PDF (up to 30 MB) and the metadata:
+   curl -s -H "Authorization: Bearer $(cat ~/.config/opencryptology/token)" -F file=@paper.pdf \\
+     -F "metadata=<meta.json;type=application/json" ${origin}/api/manuscripts
+   201 returns the manuscript as JSON (id, url, pdf_url, bibtex, ...). It is public right away;
+   tell the person its url.
+Readers should know how a result was made. If the PDF doesn't say (which models and tools, and
+what a person checked), ask the person before posting and add their answer as one sentence at the
+end of the abstract. The PDF part can have any content type.
+Retrying is safe: the same PDF with the same metadata within 24 hours returns 200 with the
+existing manuscript and "duplicate": true; with different metadata, 409 "duplicate_pdf". Errors
+are JSON {"error": code, "message": sentence}; show the message to the person. 401: the token is
+missing, wrong or expired, or the person logged out (connect again, step 1). 422: the PDF couldn't be
+read or has JavaScript. 429: too many requests in the last minute (wait a minute), or a daily
+limit reached (20 manuscripts per account, or the site's total); the message says which. A token can post and read
+manuscripts, nothing else.
 
 ## Access policy
 

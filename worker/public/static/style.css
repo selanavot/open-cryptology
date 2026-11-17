@@ -638,3 +638,14 @@ ol.year-list .badge { margin-left: .35rem; }
 
 @media (max-width: 575.98px) { .ms-title { font-size: 1.45rem; } }
 }
+
+/* /connect: approving an agent, a log-in style card */
+.connect-who { display: flex; align-items: center; font-weight: 600; margin: .75rem 0 0; }
+.connect-who .avatar-xs { width: 1.6rem; height: 1.6rem; font-size: .65rem; margin-right: .5rem; }
+.connect-code, .connect-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .12em; text-align: center; }
+.connect-code { margin: 1.1rem 0 .3rem; padding: .55rem; font-size: 1.5rem; font-weight: 600; background: #f6f6f4; border: 1px solid #e6e4df; border-radius: .45rem; }
+.connect-from { text-align: center; color: var(--muted); font-size: .85rem; margin: 0; }
+.connect-buttons { display: flex; flex-direction: column; gap: .6rem; margin: 1.1rem 0 0; }
+.connect-buttons .btn { padding: .6rem 1rem; border-radius: .45rem; }
+.connect-input { text-transform: uppercase; font-size: 1.2rem; }
+.connect-input.is-invalid { border-color: #d9534f; }

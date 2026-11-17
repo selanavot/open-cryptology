@@ -473,7 +473,17 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     if (req.method !== "POST") return authMessage(env, 405, "Use the sign-out button", "Signing out needs the button on the account page.");
     if (!sameOrigin(req, env)) return authMessage(env, 403, "Rejected", "Cross-site requests aren't accepted.");
     const tok = cookies(req).get(SESSION_COOKIE);
-    if (tok) await env.DB.prepare("DELETE FROM sessions WHERE id = ?1").bind(await sha256hex(tok)).run();
+    if (tok) {
+      // Logging out also disconnects the account's agents (agentapi.ts): live tokens stop working
+      // and approvals they haven't collected yet are withdrawn.
+      const sid = await sha256hex(tok);
+      const who = "(SELECT user_id FROM sessions WHERE id = ?1)";
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE api_tokens SET revoked_at = ?2 WHERE revoked_at IS NULL AND user_id = ${who}`).bind(sid, new Date().toISOString()),
+        env.DB.prepare(`UPDATE agent_connect SET status = 'denied' WHERE status = 'approved' AND user_id = ${who}`).bind(sid),
+        env.DB.prepare("DELETE FROM sessions WHERE id = ?1").bind(sid),
+      ]);
+    }
     const form = await req.formData().catch(() => null);
     return redirect303(safeNext(form?.get("next")?.toString()), clearCookies());
   }
@@ -722,6 +732,7 @@ export async function mergeAccounts(env: Env, keepId: string, goneId: string, of
     env.DB.prepare("UPDATE users SET custom_name = COALESCE(custom_name, (SELECT custom_name FROM users WHERE id = ?2)) WHERE id = ?1").bind(keepId, goneId),
     env.DB.prepare("UPDATE identities SET user_id = ?1 WHERE user_id = ?2").bind(keepId, goneId),
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(goneId),
+    env.DB.prepare("UPDATE api_tokens SET user_id = ?1 WHERE user_id = ?2").bind(keepId, goneId),
     env.DB.prepare("UPDATE users SET merged_into = ?1 WHERE merged_into = ?2").bind(keepId, goneId),
     env.DB.prepare("UPDATE users SET custom_name = NULL, deleted_at = ?3, merged_into = ?1 WHERE id = ?2 AND deleted_at IS NULL").bind(keepId, goneId, nowIso()),
     env.DB.prepare("DELETE FROM pending_merges WHERE id = ?1 OR other_user_id = ?2 OR user_id = ?2").bind(offerId, goneId),
@@ -737,6 +748,7 @@ export async function dropMerge(env: Env, offerId: string): Promise<void> {
 export async function deleteAccount(env: Env, userId: string): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
+    env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL").bind(userId, nowIso()),
     env.DB.prepare("DELETE FROM identities WHERE user_id = ?1").bind(userId),
     env.DB.prepare("UPDATE users SET custom_name = NULL, deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL").bind(userId, nowIso()),
   ]);
