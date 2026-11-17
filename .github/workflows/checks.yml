@@ -1,0 +1,42 @@
+# Checks on every pull request (required to merge into main) and on main itself.
+# Needs no secrets: the Wrangler step builds the bundles without uploading anything.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - name: Typecheck (site and versions Workers)
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Build both Workers (wrangler deploy --dry-run)
+        run: |
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/site" -c wrangler.jsonc
+          npx --no-install wrangler deploy --dry-run --outdir "$RUNNER_TEMP/versions" -c ../versions-worker/wrangler.jsonc
+      - name: Pipeline scripts compile
+        working-directory: pipeline
+        run: python3 -m py_compile *.py

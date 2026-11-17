@@ -1,1 +1,6 @@
-{ "extends": "../worker/tsconfig.json", "include": ["src"] }
+{
+  "extends": "../worker/tsconfig.json",
+  // This Worker shares the site's dependencies, so its types resolve from worker/node_modules.
+  "compilerOptions": { "types": ["../worker/node_modules/@cloudflare/workers-types"] },
+  "include": ["src"]
+}
