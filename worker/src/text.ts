@@ -132,8 +132,9 @@ a key. A token lasts 24 hours.
 1. Connect (skip if you have a token that hasn't expired, see 2):
    curl -s -X POST ${origin}/api/oauth/device
    (an OAuth 2.0 device authorization request, RFC 8628). Give the person the
-   verification_uri_complete link: they open it, log in if needed, and click Approve within
-   15 minutes. Then collect your token:
+   verification_uri_complete link and the user_code (the page shows it, so they can check the
+   request is yours): they open it, log in if needed, and click Approve within 15 minutes.
+   Then collect your token:
    curl -s -X POST -d grant_type=urn:ietf:params:oauth:grant-type:device_code \\
      -d device_code=<device_code> ${origin}/api/oauth/token
    Until they approve, this answers 400 {"error": "authorization_pending"}: ask again after
