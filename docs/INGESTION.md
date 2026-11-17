@@ -37,9 +37,9 @@ The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
 
 - **Public copies:** R2 was filled from existing public copies (the community GitHub mirror
   `arturo-kong/IACR-eprint-mirror` and Wayback Machine `id_` captures, as listed in `sources` by
-  `pipeline/discover_sources.py`) by a temporary helper Worker that streams source -> R2 inside
-  Cloudflare. `pipeline/discover_versions.py` with `versions-worker/` does this now and can be
-  re-run occasionally to pick up new public copies (`docs/VERSIONS.md`).
+  `pipeline/discover_sources.py`) by temporary helper Workers that copied source -> R2 inside
+  Cloudflare. That backfill is finished and its helper retired (`docs/VERSIONS.md`); new revisions
+  now come in as uploads.
 - **Uploads:** anyone can upload a PDF for a paper that lacks an up-to-date copy (web form, or
   the agent API `POST /api/upload/YYYY/NNNN`). A file whose first two pages show the title and an
   author's name (`worker/src/match.ts`, measured with `pipeline/verify_bench.mjs`) goes live at

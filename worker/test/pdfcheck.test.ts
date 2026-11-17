@@ -1,5 +1,5 @@
-// PDF checks used on every upload (uploadguard.ts, verify.ts) and by the copy helper
-// (versions-worker/), run against the real pdf.js from unpdf. Run: npm --prefix worker test
+// PDF checks used on every upload (uploadguard.ts, verify.ts), run against the real pdf.js
+// from unpdf. Run: npm --prefix worker test
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { completePdf, pdfIntegrity, TRUNCATED_CAPTURE_SIZE } from "../src/pdfcheck";

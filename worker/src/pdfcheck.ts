@@ -1,5 +1,4 @@
-// Is this a complete PDF? Shared by the upload path (uploadguard.ts, verify.ts) and the copy
-// helper (versions-worker/), which imports this file by relative path.
+// Is this a complete PDF? Used by the upload path (uploadguard.ts, verify.ts).
 //
 // Why: some Wayback Machine captures of ePrint PDFs were cut off at crawl time at exactly 1 MiB
 // (1,048,576 bytes; the archived payload itself is short, its CDX digest matches the short

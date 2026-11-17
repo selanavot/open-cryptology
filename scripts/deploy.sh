@@ -2,7 +2,6 @@
 # Deploy a Worker from this repo, safely when several checkouts may deploy at once.
 #
 #   scripts/deploy.sh                                  # the site (worker/wrangler.jsonc)
-#   scripts/deploy.sh -c versions-worker/wrangler.jsonc
 #   scripts/deploy.sh --force                          # skip the "live is newer" check
 #   scripts/deploy.sh --dry-run                        # run the checks and build, don't upload
 #   scripts/deploy.sh --ci [--schema-applied]          # continuous deploy (.github/workflows/deploy.yml)
@@ -131,7 +130,7 @@ rm -f "$out"
 healthy_or_rollback() {
   local site page code tries bad=""
   site=$(sed -n 's/.*"SITE_URL": *"\(https\{0,1\}:[^"]*\)".*/\1/p' "$config" | head -1)
-  [ -n "$site" ] || return 0 # not the site (versions Worker)
+  [ -n "$site" ] || return 0 # a Worker without SITE_URL
   for page in / /eprint /2024/001; do
     for tries in 1 2 3; do
       code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' -A 'Mozilla/5.0 (compatible; open-cryptology-deploy-check)' "$site$page" || true)
