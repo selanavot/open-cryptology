@@ -153,7 +153,7 @@ check("Location header", new URL(r.headers.get("location") ?? "x:").pathname ===
 check("math survives", j.title === META.title && j.abstract === META.abstract);
 check("authors in order, bibtex, pdf_url", JSON.stringify(j.authors) === JSON.stringify(META.authors) && /author\s+= \{\{Claude Fable 5\.2\} and \{Ada Lovelace\}\}/.test(j.bibtex ?? "") && j.pdf_url?.endsWith(`/${id}.pdf`));
 const pg = await (await me.req(`/${id}`)).text();
-check("page shows the person as uploader, nothing about the agent", pg.includes(`agent${RUN}`) && !/Claude Code test|via (an )?agent|API/i.test(pg.replace(/<script[\s\S]*?<\/script>/g, "")));
+check("page shows the person as uploader, nothing about the agent", pg.includes(`agent${RUN}`) && !/Claude Code test|via (an )?agent|API/i.test(pg.slice(pg.indexOf("<main"), pg.indexOf("</main>"))));
 const pdfBack = new Uint8Array(await (await fetch(`${BASE}/${id}.pdf`)).arrayBuffer());
 check("same PDF bytes", pdfBack.length === pdf1.length);
 

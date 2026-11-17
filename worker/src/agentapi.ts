@@ -215,7 +215,15 @@ const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 /** No vowels (no accidental words) and no 0/1/O/I look-alikes. */
 const CODE_ALPHABET = "BCDFGHJKLMNPQRSTVWXZ23456789";
 
-const newUserCode = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+/** 8 letters, uniform over the alphabet: bytes past the last whole multiple of its length are skipped. */
+function newUserCode(): string {
+  const n = CODE_ALPHABET.length, cut = 256 - (256 % n);
+  let code = "";
+  while (code.length < 8) {
+    for (const b of crypto.getRandomValues(new Uint8Array(16))) if (b < cut && code.length < 8) code += CODE_ALPHABET[b % n];
+  }
+  return code;
+}
 const showCode = (c: string) => `${c.slice(0, 4)}-${c.slice(4)}`;
 const normCode = (s: string | null) => (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
 
