@@ -349,6 +349,215 @@
     });
   }
 
+  // Pages without TeX skip KaTeX; a Preview tab loads it on first use (<template id="katex-assets">).
+  var texLoading = null;
+  function withTex(cb) {
+    if (typeof window.renderMathInElement === "function") return cb();
+    var t = document.getElementById("katex-assets");
+    if (!t) return cb();
+    if (!texLoading) {
+      texLoading = new Promise(function (done) {
+        var nodes = Array.prototype.slice.call(t.content.children);
+        (function next() {
+          var n = nodes.shift();
+          if (!n) return done();
+          var el = document.createElement(n.tagName);
+          Array.prototype.forEach.call(n.attributes, function (a) { el.setAttribute(a.name, a.value); });
+          if (n.tagName === "SCRIPT") { el.onload = next; el.onerror = done; document.head.appendChild(el); }
+          else { document.head.appendChild(el); next(); }
+        })();
+      });
+    }
+    texLoading.then(cb);
+  }
+
+  // Comments (comments.ts), Reddit-like. Pages are cached for everyone, so the server renders the
+  // public view: this shows the person's own controls (from /api/me), opens reply and edit boxes,
+  // and sends signed-out people to log in when they try to write. The server checks everything.
+  function timeAgo(iso) {
+    var s = (Date.now() - Date.parse(iso)) / 1000;
+    if (!(s >= 0)) return null;
+    if (s < 60) return "just now";
+    var m = s / 60, h = m / 60, d = h / 24;
+    if (m < 60) return Math.floor(m) + "m ago";
+    if (h < 24) return Math.floor(h) + "h ago";
+    if (d < 30) return Math.floor(d) + "d ago";
+    if (d < 365) return Math.floor(d / 30) + "mo ago";
+    return Math.floor(d / 365) + "y ago";
+  }
+
+  function setupComments() {
+    var sec = document.getElementById("comments");
+    if (!sec) return;
+    var signedIn = /(?:^|;\s*)oc_login=/.test(document.cookie);
+    var loginHeading = sec.getAttribute("data-login-heading");
+    var tpl = document.getElementById("cm-reply-template");
+    // A comment's text before TeX is typeset: the box opened by Edit starts from it.
+    var raw = {};
+    sec.querySelectorAll(".cm").forEach(function (c) {
+      var b = c.querySelector(":scope > .cm-content > .cm-body");
+      if (b) raw[c.id] = b.textContent;
+    });
+    sec.querySelectorAll(".cm-time time").forEach(function (t) {
+      var rel = timeAgo(t.getAttribute("datetime"));
+      if (!rel) return;
+      t.title = new Date(t.getAttribute("datetime")).toLocaleString();
+      t.textContent = rel;
+    });
+    // ?comment=<code> only made the redirect skip the cache; keep the address clean.
+    if (/[?&]comment=/.test(location.search) && window.history.replaceState) history.replaceState(null, "", location.pathname + location.hash);
+
+    // A comment box: grows with its text; Preview typesets it; Comment is off while it's empty.
+    function wire(form, o) {
+      var box = form.querySelector("textarea");
+      var preview = form.querySelector(".cm-preview");
+      var toggle = form.querySelector("[data-preview]");
+      var submit = form.querySelector(".cm-submit");
+      var grow = function () {
+        box.style.height = "auto";
+        box.style.height = box.scrollHeight + 2 + "px";
+        submit.disabled = !box.value.trim();
+      };
+      var write = function () {
+        preview.hidden = true;
+        box.hidden = false;
+        toggle.setAttribute("aria-pressed", "false");
+        toggle.textContent = "Preview";
+      };
+      box.addEventListener("input", grow);
+      box.addEventListener("invalid", write);
+      toggle.addEventListener("click", function () {
+        if (!box.hidden) {
+          preview.style.minHeight = box.offsetHeight + "px";
+          preview.textContent = box.value.trim();
+          box.hidden = true;
+          preview.hidden = false;
+          toggle.setAttribute("aria-pressed", "true");
+          toggle.textContent = "Write";
+          withTex(function () { texIn(preview); });
+        } else {
+          write();
+          box.focus();
+        }
+      });
+      form.querySelector(".cm-cancel").addEventListener("click", function () {
+        write();
+        o.cancel();
+      });
+      form.addEventListener("submit", function () { submit.disabled = true; });
+      grow();
+      return { box: box, grow: grow };
+    }
+
+    // The box at the top: a one-line pill until it's used. Signed out, using it goes to log in.
+    var top = sec.querySelector(".cm-section > .cm-composer");
+    if (top) {
+      var t = wire(top, {
+        cancel: function () {
+          t.box.value = "";
+          t.grow();
+          top.classList.add("is-collapsed");
+        },
+      });
+      top.classList.add("is-collapsed");
+      if (!signedIn) {
+        t.box.readOnly = true;
+        // The log-in pop-up when the page has one (Reply links open it through data-login).
+        // Without it, the log-in page; either way, back to these comments afterwards.
+        var go = function (e) {
+          e.preventDefault();
+          var next = location.pathname + "#comments";
+          if (!(window.ocLogin && window.ocLogin(loginHeading, next))) location.assign("/account?next=" + encodeURIComponent(next));
+        };
+        t.box.addEventListener("click", go);
+        t.box.addEventListener("keydown", function (e) { if (e.key !== "Tab") go(e); });
+      } else {
+        var expand = function () { top.classList.remove("is-collapsed"); };
+        ["focus", "click", "input"].forEach(function (ev) { t.box.addEventListener(ev, expand); });
+      }
+    }
+
+    // A reply or edit box under a comment, cloned from the template.
+    function openBox(c, kind) {
+      var open = c.querySelector(":scope > .cm-content > .cm-composer");
+      if (open) {
+        if (open.getAttribute("data-kind") === kind) { open.querySelector("textarea").focus(); return; }
+        open.querySelector(".cm-cancel").click();
+      }
+      var form = tpl.content.firstElementChild.cloneNode(true);
+      form.setAttribute("data-kind", kind);
+      var id = c.id.replace("comment-", "");
+      var body = c.querySelector(":scope > .cm-content > .cm-body");
+      var box = form.querySelector("textarea");
+      if (kind === "edit") {
+        form.action = "/comments/" + id + "/edit";
+        form.querySelector('input[name="reply_to"]').remove();
+        form.querySelector(".cm-submit").textContent = "Save";
+        box.value = raw[c.id] || "";
+        box.setAttribute("aria-label", "Edit comment");
+        body.hidden = true;
+        body.after(form);
+      } else {
+        form.querySelector('input[name="reply_to"]').value = id;
+        box.placeholder = "Add a reply";
+        box.setAttribute("aria-label", "Add a reply");
+        c.querySelector(":scope > .cm-content > .cm-actions").after(form);
+      }
+      var w = wire(form, {
+        cancel: function () {
+          form.remove();
+          body.hidden = false;
+        },
+      });
+      w.box.focus();
+      w.box.setSelectionRange(w.box.value.length, w.box.value.length);
+    }
+
+    sec.addEventListener("click", function (e) {
+      var el = e.target.closest("[data-reply], [data-share], [data-edit], .cm-line, .cm-expand");
+      if (!el) return;
+      var c = el.closest(".cm");
+      if (el.matches(".cm-line, .cm-expand")) {
+        var folded = c.classList.toggle("is-collapsed");
+        c.querySelector(".cm-expand").hidden = !folded;
+      } else if (el.matches("[data-share]")) {
+        var url = location.origin + location.pathname + "#" + c.id;
+        var label = el.querySelector("span");
+        if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () {
+          label.textContent = "Copied";
+          setTimeout(function () { label.textContent = "Share"; }, 1500);
+        });
+      } else if (signedIn) {
+        e.preventDefault();
+        var menu = el.closest("details");
+        if (menu) menu.open = false;
+        openBox(c, el.matches("[data-edit]") ? "edit" : "reply");
+      }
+    });
+    document.addEventListener("click", function (e) {
+      sec.querySelectorAll(".cm-menu[open]").forEach(function (m) { if (!m.contains(e.target)) m.open = false; });
+    });
+
+    if (!signedIn || !window.fetch) return;
+    fetch("/api/me", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      var me = d && d.user;
+      if (!me) return;
+      var mod = me.role === "maintainer";
+      sec.querySelectorAll(".cm[data-owner]").forEach(function (c) {
+        var own = c.getAttribute("data-owner") === me.id;
+        var menu = c.querySelector(":scope > .cm-content > .cm-actions > .cm-menu");
+        var any = false;
+        menu.querySelectorAll("[data-can]").forEach(function (it) {
+          var can = it.getAttribute("data-can");
+          it.hidden = !(can === "own" ? own : mod);
+          any = any || !it.hidden;
+        });
+        menu.hidden = !any;
+      });
+    }, function () { /* no menus */ });
+  }
+
+  setupComments();
   renderTex();
   setupAccountLink();
   setupLoginDialog();

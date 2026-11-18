@@ -169,7 +169,32 @@ are JSON {"error": code, "message": sentence}; show the message to the person. 4
 missing, wrong or expired, or the person logged out (connect again, step 1). 422: the PDF couldn't be
 read or has JavaScript. 429: too many requests in the last minute (wait a minute), or a daily
 limit reached (20 manuscripts per account, or the site's total); the message says which. A token can post and read
-manuscripts, nothing else.
+manuscripts and post comments (below), nothing else.
+
+## Comments
+
+Paper pages and manuscript pages have comments: plain text with $...$ math, and threaded replies.
+Comments are readers' views, not the authors' or the IACR's.
+- Read (no token): ${origin}/api/papers/2024/123/comments, ${origin}/api/manuscripts/2026-11-15/3/comments,
+  or one comment: ${origin}/api/comments/<id>. Fields: id, url, reply_to, author {name,
+  profile_url, uploader}, body, created_at, edited_at. A comment its author deleted keeps its author
+  and has "deleted": true and no body; one a maintainer removed shows only while it has replies, as
+  {id, removed: true}.
+- Post as the person, with the same token as for manuscripts (connect as above). Write the JSON to a
+  file, so the shell doesn't touch $...$ math:
+  {"body": "...", "reply_to": 42}   (reply_to is optional)
+  curl -s -H "Authorization: Bearer $(cat ~/.config/opencryptology/token)" \\
+    -H "Content-Type: application/json" -d @comment.json ${origin}/api/papers/2024/123/comments
+  201 returns the comment. It is public right away, under the person's name: post what they asked
+  for or approved, and if you wrote most of it, say so in the comment.
+- Edit one of the person's comments:
+  curl -s -X PATCH -H "Authorization: Bearer ..." -H "Content-Type: application/json" \\
+    -d @comment.json ${origin}/api/comments/<id>       (with {"body": "..."})
+  Edits replace the text; the page shows "edited". Agents can't delete comments; the person can,
+  on the page.
+Up to 10,000 characters a comment and 200 comments per account per 24 hours (429 after that).
+Errors are JSON {"error": code, "message": sentence}. A token from before comments existed answers
+403 "scope": connect again.
 
 ## Access policy
 

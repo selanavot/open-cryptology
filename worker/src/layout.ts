@@ -9,7 +9,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "67";
+const ASSET_VER = "72";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -43,6 +43,8 @@ export interface PageOpts {
   status?: number;
   cache?: string; // Cache-Control
   katex?: boolean;
+  /** Pages with a Preview tab: when `katex` is off, app.js loads KaTeX on the first preview. */
+  texPreview?: boolean;
   /** Link shown in the "unofficial mirror" strip; defaults to the ePrint homepage. */
   original?: string;
   originalLabel?: string;
@@ -91,6 +93,10 @@ ${o.katex &&
 html`<link rel="stylesheet" href="${KATEX}/katex.min.css" integrity="${KATEX_SRI.css}" crossorigin="anonymous" referrerpolicy="no-referrer">
 <script defer src="${KATEX}/katex.min.js" integrity="${KATEX_SRI.js}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script defer src="${KATEX}/contrib/auto-render.min.js" integrity="${KATEX_SRI.autoRender}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>`}
+${!o.katex && o.texPreview &&
+html`<template id="katex-assets"><link rel="stylesheet" href="${KATEX}/katex.min.css" integrity="${KATEX_SRI.css}" crossorigin="anonymous" referrerpolicy="no-referrer">
+<script src="${KATEX}/katex.min.js" integrity="${KATEX_SRI.js}" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="${KATEX}/contrib/auto-render.min.js" integrity="${KATEX_SRI.autoRender}" crossorigin="anonymous" referrerpolicy="no-referrer"></script></template>`}
 <script defer src="/static/app.js?v=${ASSET_VER}"></script>
 ${/^[0-9a-f]{32}$/.test(env.CF_BEACON_TOKEN ?? "") && raw(`<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "${env.CF_BEACON_TOKEN}"}'></script>`)}
 ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}

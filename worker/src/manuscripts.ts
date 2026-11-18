@@ -12,6 +12,7 @@ import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type
 import { siteOrigin } from "./seo";
 import { inspectPdf } from "./verify";
 import { revokeAgentsOfManuscript } from "./agentapi";
+import { commentsSection, loadThread } from "./comments";
 
 export const MS_RE = /^\/(\d{4}-\d{2}-\d{2})\/(\d{1,4})(\.pdf)?\/?$/;
 const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
@@ -207,6 +208,7 @@ async function manuscriptPage(env: Env, url: URL, id: string): Promise<Response>
   const origin = siteOrigin(env, url);
   const authors = authorsOf(v);
   const fileHref = `/${m.id}.pdf`;
+  const thread = await loadThread(env, m.id);
   const head = html`<meta name="citation_title" content="${v.title}">
 ${authors.map((a) => html`<meta name="citation_author" content="${a}">`)}
 <meta name="citation_publication_date" content="${m.day.replace(/-/g, "/")}">
@@ -235,7 +237,8 @@ ${authors.map((a) => html`<meta name="citation_author" content="${a}">`)}
       <dd>${metaList(versions.map((x) => html`v${x.v} <small class="text-muted">${dateLong(x.created_at)}</small>`))}</dd>
     </dl>
   </div>
-</div>`;
+</div>
+${commentsSection(thread, url)}`;
   return page(env, {
     title: `${m.id}: ${v.title}`,
     description: v.abstract.replace(/\s+/g, " ").slice(0, 200),
@@ -244,7 +247,7 @@ ${authors.map((a) => html`<meta name="citation_author" content="${a}">`)}
     katex: true,
     canonical: `${origin}/${m.id}`,
     ogType: "article",
-    cache: "public, max-age=120",
+    cache: url.searchParams.has("comment") ? "no-store" : "public, max-age=120",
     headers: { link: `<${LICENSE_URL}>; rel="license"` },
   });
 }
