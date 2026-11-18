@@ -8,6 +8,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.robotparser
 from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -41,25 +42,39 @@ def fetch(path, limit):
     return data
 
 
-def observe(pid):
+def mirror_policy():
+    body = fetch("/robots.txt", 512 * 1024).decode("utf-8-sig")
+    if not any(line.lower().lstrip().startswith("user-agent:") for line in body.splitlines()):
+        raise ValueError("unrecognized robots.txt")
+    policy = urllib.robotparser.RobotFileParser()
+    policy.parse(body.splitlines())
+    return policy
+
+
+def observe(pid, policy):
+    def permitted_fetch(path, limit):
+        if not policy.can_fetch(USER_AGENT, MIRROR + path):
+            raise PermissionError(f"mirror robots.txt disallows {path}")
+        return fetch(path, limit)
+
     # The version list identifies the publisher's latest revision even before OAI catches up.
     prefix = "/archive/" + pid + "/"
     index = Links()
-    index.feed(fetch("/archive/versions/" + pid, 1024 * 1024).decode())
+    index.feed(permitted_fetch("/archive/versions/" + pid, 1024 * 1024).decode())
     stamps = [h[len(prefix):] for h in index.hrefs
               if re.fullmatch(re.escape(prefix) + r"[0-9]{8}:[0-9]{6}", h)]
     if not stamps:
         raise ValueError("no dated revisions")
     date = datetime.datetime.strptime(max(stamps), "%Y%m%d:%H%M%S")
     time.sleep(3)
-    page = fetch(prefix + date.strftime("%Y%m%d:%H%M%S"), 1024 * 1024)
+    page = permitted_fetch(prefix + date.strftime("%Y%m%d:%H%M%S"), 1024 * 1024)
     links = Links()
     links.feed(page.decode())
     files = {h for h in links.hrefs if re.fullmatch(re.escape(prefix) + r"[0-9]+\.pdf", h)}
     if len(files) != 1:
         raise ValueError("no unambiguous archived PDF")
     time.sleep(3)
-    data = fetch(files.pop(), LIMIT)
+    data = permitted_fetch(files.pop(), LIMIT)
     if not data.startswith(b"%PDF-"):
         raise ValueError("archive did not return a PDF")
     return date.strftime("%Y-%m-%dT%H:%M:%SZ"), hashlib.sha256(data).hexdigest()
@@ -110,11 +125,19 @@ def main():
             WHERE u.status='candidate' AND p.withdrawn=0 AND p.updated IS NOT NULL
             AND (c.checked_at IS NULL OR c.checked_at < datetime('now','-8 hours'))
             ORDER BY coalesce(c.checked_at,''),p.id LIMIT 10""")
+        if rows:
+            try:
+                policy = mirror_policy()
+                if not policy.can_fetch(USER_AGENT, MIRROR + "/archive/versions/" + rows[0]["id"]):
+                    raise PermissionError("mirror robots.txt disallows the revision index")
+            except (ValueError, OSError) as err:
+                print(f"Mirror checks deferred: {err}", file=sys.stderr)
+                rows = []
         for row in rows:
             pid, revision = row["id"], row["updated"]
             db.query("INSERT OR REPLACE INTO revision_checks VALUES(?,CURRENT_TIMESTAMP)", [pid])
             try:
-                revision, sha = observe(pid)
+                revision, sha = observe(pid, policy)
             except (ValueError, OSError) as err:
                 print(f"Revision check deferred for {pid}: {err}", file=sys.stderr)
                 if isinstance(err, urllib.error.HTTPError) and err.code in (403, 429):

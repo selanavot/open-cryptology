@@ -87,7 +87,7 @@ Use the paper page’s “Submit an updated PDF” or POST the original PDF (up 
 `/api/upload/YYYY/NNN?update=1`. An eligible replacement returns 202
 `awaiting_revision`. The candidate is keyed by paper and SHA. Readers continue to get
 the previous default. A scheduled job checks queued papers against the Asia mirror’s
-revision-specific archive. A block defers the check. Multiple candidates share a paper check.
+revision-specific archive only when its robots.txt permits each requested URL. The current disallow rule for /archive/ defers these checks and leaves candidates pending for manual attestation. An unavailable or unreadable policy also defers the check. Multiple candidates share a paper check.
 When trusted bytes match a stored SHA, the verifier records the revision and reuses the
 file. The default can advance ahead of OAI only when the archive lists that revision as latest. A newer known revision prevents rollback.
 
