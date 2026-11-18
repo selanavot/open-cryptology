@@ -38,3 +38,5 @@ jobs:
       - name: Pipeline scripts compile
         working-directory: pipeline
         run: python3 -m py_compile *.py
+      - name: Revision reconciliation regression
+        run: python3 ../pipeline/test_verified_revisions.py

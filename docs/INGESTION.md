@@ -80,3 +80,17 @@ The cron does **not** fetch PDFs, and nothing fetches PDFs from eprint.iacr.org.
   license from OAI `dc:rights`.
 - We never trigger Save Page Now or anything else that would make a third party fetch ePrint
   PDFs on our behalf.
+
+### Submitting a revision before the next harvest
+
+Use the paper page’s “Submit an updated PDF” or POST the original PDF (up to 30 MB) to
+`/api/upload/YYYY/NNN?update=1`. An eligible replacement returns 202
+`awaiting_revision`. The candidate is keyed by paper and SHA. Readers continue to get
+the previous default. A scheduled job checks queued papers against the Asia mirror’s
+revision-specific archive. A block defers the check. Multiple candidates share a paper check.
+When trusted bytes match a stored SHA, the verifier records the revision and reuses the
+file. The default can advance ahead of OAI only when the archive lists that revision as latest. A newer known revision prevents rollback.
+
+If the archive is unavailable, a maintainer who has independently verified a revision’s exact
+PDF can run `python3 -I pipeline/verify_revisions.py --attest PAPER UTC_REVISION SHA256`
+with the harvest's D1 credentials. This also supports historical or metadata-only revisions.

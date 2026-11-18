@@ -1,3 +1,4 @@
+import { saveCandidate } from "./revisionCandidate";
 import { pendingDuplicate, queueForReview } from "./quarantine";
 import { activeContentScan, ipHash, overLimit, scanPdf } from "./uploadguard";
 import { verifyPdf } from "./verify";
@@ -48,6 +49,7 @@ export async function paperPage(
     <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${title}</a></h3>
     ${authors.map((a, i) => html`<div class="author"><span class="authorName">${a}</span>${affs[i] && html`<span class="affiliation">, ${affs[i]}</span>`}</div>`)}
     ${pdfHref && !outdated ? uploadNotice(url.searchParams.get("upload")) : ""}
+    ${pdfHref && !outdated && !withdrawn && html`<details><summary>Submit an updated PDF</summary>${uploadForm(env, p, orig, "")}</details>`}
     ${(!pdfHref || outdated) && uploadForm(env, p, orig, uploadNotice(url.searchParams.get("upload")))}
     <h5 class="mt-3">Abstract</h5>
     <p class="paper-abstract tex">${p.abstract || "No abstract available."}</p>
@@ -102,6 +104,7 @@ function licenseBadge(lic: LicenseInfo): Html {
 // After an upload we redirect (303) back to the paper page with ?upload=<code>, so there's no
 // separate result page, Back works, and the page shows the new PDF straight away.
 const UPLOAD_NOTICES: Record<string, { ok: boolean; text: string }> = {
+  candidate: { ok: true, text: "Saved for revision verification. No need to upload again." },
   live: { ok: true, text: "Thank you! The PDF is now live." },
   review: { ok: true, text: "Thank you! It will appear after review." },
   have: { ok: true, text: "We already have that exact file." },
@@ -140,6 +143,7 @@ function uploadRedirect(url: URL, id: string, code: keyof typeof UPLOAD_NOTICES)
 async function knownSha(env: Env, url: URL, p: Paper, sha: string): Promise<"have" | "have_flagged" | "confirmed" | "older" | null> {
   const k = await knownCopy(env, p, sha);
   if (k === "current") {
+    if (p.pdf_maybe_stale && !p.withdrawn) return null;
     if (!(await confirmCurrent(env, p))) return p.pdf_maybe_stale ? "have_flagged" : "have";
     await coverageChanged(url.origin, p.id);
     return "confirmed";
@@ -148,12 +152,14 @@ async function knownSha(env: Env, url: URL, p: Paper, sha: string): Promise<"hav
 }
 
 function uploadForm(env: Env, p: Paper, orig: string, notice: Html | "" = ""): Html {
-  return html`<form id="upload" action="/${p.id}/upload" method="post" enctype="multipart/form-data" class="upload-form upload-cta">
+  return html`<form id="upload" action="/${p.id}/upload?update=1" method="post" enctype="multipart/form-data" class="upload-form upload-cta">
   ${notice}
   ${p.withdrawn
     ? html`<p class="upload-cta-head"><strong>We don’t have this PDF yet.</strong></p>
   <p>Download the latest from <a href="${versionsUrl(env.ORIGIN_BASE, p.id)}" target="_blank" rel="noopener">ePrint’s version list ↗</a>
   and upload it here.</p>`
+    : p.pdf_key && !p.pdf_maybe_stale
+    ? html`<p>Submit the original PDF from the new ePrint revision.</p>`
     : p.pdf_key && eprintSize(p) != null
     ? html`<p class="upload-cta-head"><strong>ePrint has a newer PDF${p.updated ? html` (<time datetime="${p.updated}">${day(p.updated)}</time>)` : ""}.</strong></p>
   <p><a href="${orig}" target="_blank" rel="noopener">Download it from ePrint ↗</a> and upload it here.</p>`
@@ -411,7 +417,7 @@ export async function handleUpload(
 
   const p = await getPaper(env, id);
   if (!p) return messagePage(env, 404, "Paper not found", html`<p>Paper ${id} isn’t in the mirror.</p>${back}`, { cache: "no-store" });
-  if (p.pdf_key && !p.pdf_maybe_stale)
+  if (p.pdf_key && !p.pdf_maybe_stale && (p.withdrawn || url.searchParams.get("update") !== "1"))
     return fail(409, "not_needed");
 
   const len = Number(req.headers.get("content-length") ?? "0");
@@ -448,7 +454,7 @@ export async function handleUpload(
 
   const sha = toHex(await crypto.subtle.digest("SHA-256", buf));
   const known = await knownSha(env, url, p, sha);
-  if (known) return uploadRedirect(url, id, known);
+  if (known && !(known === "older" && p.pdf_key && !p.withdrawn)) return uploadRedirect(url, id, known);
   if (await pendingDuplicate(env, id, sha)) return thanks(true);
 
   // Instant verification: page 1-2 text must contain the title and an author surname.
@@ -459,6 +465,10 @@ export async function handleUpload(
   if (report.active) report.ok = false;
   const now = new Date().toISOString();
   const uploadId = crypto.randomUUID();
+  if (p.pdf_key && !p.withdrawn && report.ok) {
+    await saveCandidate(env, id, sha, buf, ip, "web");
+    return uploadRedirect(url, id, "candidate");
+  }
   if (report.ok) {
     // Published immediately, under a per-upload key (never overwrites an earlier copy).
     const stamp = now.replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
@@ -511,7 +521,7 @@ async function largeUpload(
   await file.stream().pipeTo(ds);
   const sha = toHex(await ds.digest);
   const known = await knownSha(env, url, p, sha);
-  if (known) return uploadRedirect(url, p.id, known);
+  if (known && !(known === "older" && p.pdf_key && !p.withdrawn)) return uploadRedirect(url, p.id, known);
   if (await pendingDuplicate(env, p.id, sha)) return thanks(true);
   await queueForReview(env, url.origin, {
     paperId: p.id, body: file, size: file.size, sha, ip, uploader: null, originalName: file.name,

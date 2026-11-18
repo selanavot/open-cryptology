@@ -1,3 +1,4 @@
+import { saveCandidate } from "./revisionCandidate";
 import { canonicalId, confirmCurrent, eprintSize, getPaper, knownCopy, parseAuthors, STALE_AFTER_UPLOAD, type Env } from "./db";
 import { coverageChanged } from "./years";
 import { pendingDuplicate, queueForReview } from "./quarantine";
@@ -26,7 +27,7 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
   const p = await getPaper(env, id);
   if (!p) return j(404, { error: "not_found", id, message: `Paper ${id} isn't in the mirror.` });
   const pdfUrl = `${url.origin}/${id}.pdf`;
-  if (p.pdf_key && !p.pdf_maybe_stale)
+  if (p.pdf_key && !p.pdf_maybe_stale && (p.withdrawn || url.searchParams.get("update") !== "1"))
     return j(409, { error: "already_have_it", id, pdf_url: pdfUrl, message: "This paper already has an up-to-date PDF here." });
 
   const ip = await ipHash(env, req);
@@ -55,7 +56,7 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
 
   const sha = toHex(await crypto.subtle.digest("SHA-256", buf));
   const known = await knownCopy(env, p, sha);
-  if (known === "current") {
+  if (known === "current" && (!p.pdf_maybe_stale || p.withdrawn)) {
     // The copy we serve: for an outdated paper, that confirms it is ePrint's latest version.
     const confirmed = await confirmCurrent(env, p);
     if (confirmed) await coverageChanged(url.origin, id);
@@ -74,7 +75,7 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
         `No need to upload it again.`,
     });
   }
-  if (known === "older")
+  if (known === "older" && (!p.pdf_key || p.withdrawn))
     return j(409, {
       error: "older_version", id, pdf_url: pdfUrl, sha256: sha,
       message: "We already have this file as an earlier version of the paper. Please upload the latest version from ePrint.",
@@ -96,6 +97,10 @@ export async function apiUpload(env: Env, req: Request, url: URL, year: number, 
   const rawActive = activeContentScan(buf);
   const report = await verifyPdf(buf, p.title, parseAuthors(p.authors));
   if (rawActive && !report.active) report.active = rawActive;
+  if (p.pdf_key && !p.withdrawn && report.ok && !report.active) {
+    await saveCandidate(env, id, sha, buf, ip, "api");
+    return j(202, { status: "awaiting_revision", id, sha256: sha, message: "Saved for revision verification. No need to upload again." });
+  }
   if (report.active) {
     // Active content (scripts, launch actions, XFA): never auto-published, but kept for a person to review.
     const full = await reviewQueueFull(env, ip);
