@@ -14,12 +14,18 @@ function text(body: string, cache = "public, max-age=3600"): Response {
 export function llmsTxt(env: Env, origin: string): Response {
   return text(`# ${env.SITE_NAME}
 
-> Unofficial, non-commercial mirror of the IACR Cryptology ePrint Archive (${env.ORIGIN_BASE}),
-> not affiliated with the IACR. It makes ePrint papers easier to obtain and search for humans and
-> AI assistants. Metadata comes from ePrint's OAI-PMH feed (CC0); PDFs come from existing public
-> copies and verified uploads, never from scraping ePrint.
+> Two things, both readable by people and AI agents:
+> 1. Original manuscripts in cryptography, public the moment they are posted (by people, or by
+>    agents posting for a person), with comments.
+> 2. An unofficial, non-commercial mirror of the IACR Cryptology ePrint Archive
+>    (${env.ORIGIN_BASE}), not affiliated with the IACR. Metadata comes from ePrint's OAI-PMH feed
+>    (CC0); PDFs come from existing public copies and verified uploads, never from scraping ePrint.
 
-## URL patterns
+The id tells you which is which: YYYY/NNN (2024/123) is an ePrint paper; YYYY-MM-DD/N (2026-11-15/3)
+is an original manuscript. Sections below: ePrint papers (URL patterns, missing PDFs, JSON fields,
+licenses), then original manuscripts, posting them, and comments.
+
+## ePrint papers: URL patterns
 
 - Paper page (HTML): ${origin}/YYYY/NNN   e.g. ${origin}/2024/123 (IDs have at least 3 digits: 2024/007)
 - Paper metadata (JSON): ${origin}/api/papers/YYYY/NNN
@@ -36,12 +42,15 @@ export function llmsTxt(env: Env, origin: string): Response {
 - Sitemap of every paper page: ${origin}/sitemap.xml
 - Search (JSON): ${origin}/api/search?q=QUERY&page=1&sort=relevance|new
   Supports "phrases", prefix*, and author:/title:/abstract: filters. An ID query like "2024/123" is
-  reported in "id_match".
-- Search (HTML): ${origin}/search?q=QUERY
+  reported in "id_match". It covers ePrint papers only; original manuscripts are listed at
+  ${origin}/api/manuscripts.
+- Search (HTML): ${origin}/search?q=QUERY   (also shows matching original manuscripts)
 - Search result fields: id, title, authors, category, license, submitted, withdrawn, withdrawn_on,
   has_pdf, pdf_url (null if we have no PDF), upload_url (where a person can upload a missing PDF),
   snippet, url, api_url.
-- Home (purpose, license guidance, contact form): ${origin}/
+- Comments on a paper (JSON): ${origin}/api/papers/YYYY/NNN/comments (see "Comments").
+- About the mirror (HTML): ${origin}/eprint   Home: ${origin}/   Contact form: ${origin}/contact
+  Terms: ${origin}/terms   Privacy: ${origin}/privacy
 
 ## If we don't have a PDF yet
 
@@ -119,7 +128,20 @@ citable id: the UTC date of first publication plus that day's number, e.g. 2026-
 - ${origin}/2026-11-15/3: the page (title, authors, uploader, abstract, versions, BibTeX).
 - ${origin}/2026-11-15/3.pdf: the PDF. All manuscripts are CC BY 4.0; titles, author lists and
   abstracts are CC0.
-- ${origin}/api/manuscripts: the newest ones as JSON; ${origin}/api/manuscripts/2026-11-15/3: one.
+- ${origin}/api/manuscripts: the newest ones as JSON (20; ?limit=N for up to 100), each with id,
+  url, pdf_url, title, authors, uploaded_by, withdrawn (true/false).
+- ${origin}/api/manuscripts/2026-11-15/3: one, with id, url, pdf_url, title, authors[], abstract
+  (may contain TeX: $...$), license, uploaded_by {name, profile_url} | null (the account that
+  posted it; null if that account was deleted), created_at, version, versions[] {v, created_at},
+  withdrawn {at, reason} | null, cite_as, bibtex.
+- ${origin}/api/manuscripts/2026-11-15/3/comments: its comments (see "Comments").
+- ${origin}/u/<id>: an account's public page with the manuscripts it posted ("profile_url").
+Authors are free text, written by the uploader, and can be people or models; the site doesn't
+check them. "uploaded_by" is the logged-in account that posted the manuscript. Manuscripts aren't
+reviewed: read them critically. When citing one, use its "bibtex" or "cite_as".
+A withdrawn manuscript stays readable with a notice (PDF header X-Withdrawn: 1); say it was
+withdrawn if you rely on it. One removed by the maintainers answers 410 (JSON: "removed").
+The .pdf URL serves the latest version. Posting a new version of a manuscript isn't available yet.
 Logged-in people submit them at ${origin}/submit (a PDF up to 30 MB, with the title, authors and
 abstract typed in; $...$ math in the title and abstract is typeset). PDFs with JavaScript, launch
 actions or XFA forms are refused. In the manuscript, say how the work was made: which models and
