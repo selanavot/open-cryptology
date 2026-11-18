@@ -390,7 +390,6 @@
     var sec = document.getElementById("comments");
     if (!sec) return;
     var signedIn = /(?:^|;\s*)oc_login=/.test(document.cookie);
-    var login = sec.getAttribute("data-login-url");
     var loginHeading = sec.getAttribute("data-login-heading");
     var tpl = document.getElementById("cm-reply-template");
     // A comment's text before TeX is typeset: the box opened by Edit starts from it.
@@ -464,10 +463,11 @@
       if (!signedIn) {
         t.box.readOnly = true;
         // The log-in pop-up when the page has one (Reply links open it through data-login).
+        // Without it, the log-in page; either way, back to these comments afterwards.
         var go = function (e) {
           e.preventDefault();
-          var next = login.split("next=")[1];
-          if (!(window.ocLogin && window.ocLogin(loginHeading, next && decodeURIComponent(next)))) location.href = login;
+          var next = location.pathname + "#comments";
+          if (!(window.ocLogin && window.ocLogin(loginHeading, next))) location.assign("/account?next=" + encodeURIComponent(next));
         };
         t.box.addEventListener("click", go);
         t.box.addEventListener("keydown", function (e) { if (e.key !== "Tab") go(e); });

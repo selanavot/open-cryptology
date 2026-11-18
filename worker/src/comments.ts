@@ -281,7 +281,7 @@ export function commentsSection(t: Thread, url: URL): Html {
   }
   const top = t.rows.filter((c) => c.reply_to == null && keep.has(c.id));
   const count = t.rows.filter(shown).length;
-  return html`<section id="comments" class="cm-section" data-login-url="/account?next=${encodeURIComponent(`/${t.target}#comments`)}" data-login-heading="${LOGIN_HEADING}">
+  return html`<section id="comments" class="cm-section" data-login-heading="${LOGIN_HEADING}">
   <h2 class="cm-title">Comments${count ? html` <span class="cm-count">${count}</span>` : ""}</h2>
   ${error && html`<div class="cm-error" role="alert">${error}</div>`}
   ${composer(`/${t.target}/comments`, { submit: "Comment", id: "comment-new" })}
