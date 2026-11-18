@@ -65,6 +65,8 @@ export function identityDetail(i: Identity): Html {
 export const providerTag = (p: Provider): Html => html`<span class="provider-tag">${PROVIDER_ICON[p]}${PROVIDER_LABEL[p]}</span>`;
 
 const pencil = html`<svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.2 2.3l2.5 2.5-8.1 8.1-3.1.6.6-3.1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9.6 3.9l2.5 2.5" stroke="currentColor" stroke-width="1.3"/></svg>`;
+const check = html`<svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const chevron = html`<svg class="acct-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5l4.5 4.5L6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 function settingsPage(env: Env, title: string, body: Html, status = 200): Response {
   return page(env, { title, status, ...NO_STORE, body: html`<div class="settings">${body}</div>` });
@@ -115,7 +117,7 @@ function accountPage(env: Env, a: Actor, notice: Notice, status = 200): Response
     "Account settings",
     html`${notice.ok && html`<p class="settings-notice" role="status">${notice.ok}</p>`}
 ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert">${notice.err}</p>`}
-<header class="settings-head">
+<header class="settings-head acct-head">
   ${avatar(u, "avatar-lg")}
   <div class="settings-who">
     <div class="settings-name-row">
@@ -141,51 +143,49 @@ ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert"
     <button class="btn btn-sm btn-outline-dark" type="submit">Log out</button></form>
 </header>
 
-<section class="settings-card">
-  <h2 class="settings-h">Log-in methods</h2>
-  <ul class="settings-rows">
+<section class="acct-section">
+  <h2 class="acct-h">Log-in methods</h2>
+  <ul class="acct-card">
     ${[...u.identities].sort((x, y) => order(x) - order(y)).map(
-      (i) => html`<li class="settings-row">
-      <span class="settings-row-label">${providerTag(i.provider)}</span>
-      <span class="settings-row-value">${identityDetail(i)}</span>
-      <span class="settings-row-state">Connected</span>
+      (i) => html`<li class="acct-row">
+      <span class="acct-tile">${PROVIDER_ICON[i.provider]}</span>
+      <span class="acct-main"><span class="acct-label">${PROVIDER_LABEL[i.provider]}</span><span class="acct-sub">${identityDetail(i)}</span></span>
+      <span class="acct-state">${check} Connected</span>
     </li>`,
     )}
     ${missing.map((p) => {
       const h = providerHref(env, p, "/account", true);
-      return html`<li class="settings-row">
-      <span class="settings-row-label">${providerTag(p)}</span>
-      <span class="settings-row-value text-muted">Not connected</span>
-      ${h ? html`<a class="btn btn-sm btn-outline-dark" href="${h}">Connect</a>` : html`<span class="settings-row-state">Not available yet</span>`}
+      return html`<li class="acct-row">
+      <span class="acct-tile">${PROVIDER_ICON[p]}</span>
+      <span class="acct-main"><span class="acct-label">${PROVIDER_LABEL[p]}</span><span class="acct-sub">Not connected</span></span>
+      ${h ? html`<a class="btn btn-sm btn-outline-dark" href="${h}">Connect</a>` : html`<span class="acct-sub">Not available yet</span>`}
     </li>`;
     })}
   </ul>
 </section>
 
 ${u.role === "maintainer" &&
-html`<section class="settings-card">
-  <h2 class="settings-h">Maintainer</h2>
-  <ul class="settings-rows"><li class="settings-row">
-    <span class="settings-row-value">Upload review queue</span>
-    <a class="btn btn-sm btn-outline-dark" href="/review">Open</a>
-  </li></ul>
+html`<section class="acct-section">
+  <h2 class="acct-h">Maintainer</h2>
+  <div class="acct-card">
+    <a class="acct-row acct-link" href="/review"><span class="acct-main"><span class="acct-label">Upload review queue</span></span>${chevron}</a>
+  </div>
 </section>`}
 
-<section class="settings-card settings-danger">
-  <h2 class="settings-h">Danger zone</h2>
-  <div class="settings-row settings-row-top">
-    <div class="settings-row-value">
-      <strong>Delete this account</strong>
-      <p class="settings-hint mb-0">Your posts stay, credited to “deleted user”. Can’t be undone.</p>
+<section class="acct-section">
+  <h2 class="acct-h">Delete account</h2>
+  <div class="acct-card">
+    <div class="acct-row acct-row-top">
+      <span class="acct-main"><span class="acct-sub">Your posts stay, credited to “deleted user”. Can’t be undone.</span></span>
+      <details class="danger-confirm">
+        <summary class="btn btn-sm btn-danger-outline">Delete account…</summary>
+        <form method="post" action="/account" class="danger-form">
+          <input type="hidden" name="action" value="delete">
+          <label class="acct-check"><input type="checkbox" name="confirm" value="yes" required> Yes, delete my account</label>
+          <button class="btn btn-sm btn-danger-outline" type="submit">Delete forever</button>
+        </form>
+      </details>
     </div>
-    <details class="danger-confirm">
-      <summary class="btn btn-sm btn-danger-outline">Delete account…</summary>
-      <form method="post" action="/account" class="danger-form">
-        <input type="hidden" name="action" value="delete">
-        <label class="acct-check"><input type="checkbox" name="confirm" value="yes" required> Yes, delete my account</label>
-        <button class="btn btn-sm btn-danger-outline" type="submit">Delete forever</button>
-      </form>
-    </details>
   </div>
 </section>`,
     status,
