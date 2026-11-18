@@ -343,15 +343,46 @@ span.authorName { font-style: italic; }
 .paper-abstract { white-space: pre-wrap; overflow-wrap: break-word; }
 .paper-abstract .katex-display { margin: .4em 0; overflow-x: auto; overflow-y: hidden; white-space: normal; }
 .paper-meta { margin-top: 1.5rem; overflow-wrap: anywhere; }
-/* phones: the metadata column sits below the abstract, so repeat the PDF and BibTeX links under the authors */
-.paper-quick { display: none; }
+/* Phones: one column. The PDF/BibTeX/ePrint row goes under the authors, the metadata rows under the abstract. */
 @media (max-width: 767.98px) {
-  .paper-quick { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.25rem; margin: .9rem 0 0; }
+  .paper-main, .paper-meta { display: contents; }
+  .paper-main > h5, .paper-abstract { order: 1; }
+  .meta-note, .meta-rows, .meta-report { order: 2; }
+  .meta-top { margin-top: 1rem; }
 }
 @media (min-width: 768px) { .paper-meta { margin-top: 0; } }
-#metadata dt { margin-top: 1rem; }
-#metadata dt + dd { margin-top: .75rem; }
-#metadata dd { margin-left: 2rem; }
+/* Metadata column: PDF + BibTeX + ePrint in one row, then short label/value rows. */
+.paper-meta { position: relative; }
+.meta-top { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.btn-pdf { background: var(--nav); border-color: var(--text); font-weight: 500; padding-left: 1rem; padding-right: 1rem; }
+.btn-pdf:hover { color: #fefefe; background: var(--text); }
+.meta-note { margin: .5rem 0 0; font-size: .875rem; }
+.meta-rows { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .45rem 1rem; align-items: baseline; margin: 1.25rem 0 0; font-size: .925rem; }
+@media (max-width: 767.98px) { .meta-rows { margin-top: 1.5rem; } }
+.meta-rows dt { font-weight: 600; }
+.meta-rows dd { margin: 0; }
+.meta-report { margin: 1.25rem 0 0; font-size: .875rem; }
+.meta-list { list-style: none; margin: 0; padding: 0; }
+.meta-list li + li { margin-top: .2rem; }
+.meta-list small { white-space: nowrap; }
+.meta-more { margin-top: .2rem; }
+.meta-more > summary { cursor: pointer; color: var(--link); font-size: .875rem; width: max-content; }
+.meta-more > summary:hover { color: var(--link-hover); }
+.meta-more[open] > summary { margin-bottom: .2rem; }
+/* BibTeX: a link-style toggle in the first row; the entry opens in a quiet panel on the row below. */
+.cite > summary { list-style: none; display: inline-flex; align-items: center; gap: .15rem; cursor: pointer; color: var(--link); }
+.cite > summary::-webkit-details-marker { display: none; }
+.cite > summary:hover { color: var(--link-hover); }
+.cite-chev { width: 1em; height: 1em; color: var(--muted); transition: transform .15s ease; }
+.cite[open] .cite-chev { transform: rotate(180deg); }
+.cite-panel { display: none; flex-basis: 100%; position: relative; padding: .55rem .75rem; background: #fbf8ef; border-radius: .25rem; }
+.cite[open] ~ .cite-panel { display: block; }
+.cite-panel pre { margin: 0; font-size: .75rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.cite-panel pre > span { display: block; padding-left: 8ch; text-indent: -8ch; }
+.cite-copy { float: right; display: inline-flex; align-items: center; margin: 0 0 .25rem .5rem; padding: 0; border: 0; background: none; font: inherit; font-size: .8rem; color: var(--link); cursor: pointer; }
+.cite-copy:hover { color: var(--link-hover); }
+.cite-copy .icon { width: 1em; height: 1em; margin-right: .25rem; vertical-align: 0; }
+@media (prefers-reduced-motion: reduce) { .cite-chev { transition: none; } }
 .upload-form { margin-top: .75rem; padding: .75rem; background: #fff8e1; border: 1px dashed #e0b84a; border-radius: .25rem; }
 /* No PDF yet: the upload box sits under the authors; /YYYY/NNNN#upload lands on it below the fixed navbar. */
 .upload-cta {
@@ -366,7 +397,6 @@ span.authorName { font-style: italic; }
 /* Keep room for the 300px Turnstile widget on narrow phones. */
 @media (max-width: 575.98px) { .upload-cta { margin-left: -.5rem; margin-right: -.5rem; padding: .75rem; border-left-width: 4px; } }
 .attribution { overflow-wrap: anywhere; margin-bottom: .5rem; }
-#bibtex { white-space: pre; }
 
 /* ---------- message pages */
 .message { max-width: 48rem; padding: .5rem 0; }

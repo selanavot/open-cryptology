@@ -4,6 +4,7 @@
 
 import type { Version } from "./db";
 import { html, type Html } from "./html";
+import { metaList } from "./layout";
 
 const SOURCE_SHORT: Record<string, string> = {
   "github-mirror": "GitHub mirror",
@@ -21,15 +22,14 @@ export function fmtSize(n: number | null): string {
 
 const day = (iso: string) => iso.slice(0, 10);
 
-/** Compact list for the paper page's metadata column, newest first. */
-export function versionsList(id: string, versions: Version[], pdfKey: string | null): Html | "" {
+/** The paper page's Versions row, newest first; older copies fold away (metaList). */
+export function versionsList(id: string, versions: Version[]): Html | "" {
   if (!versions.length) return "";
   return html`<dt id="versions">Versions</dt>
-      <dd><ul class="versions">${versions.map(
-        (v) => html`<li><a href="${versionPath(id, v)}" rel="nofollow">copy captured <time datetime="${v.captured_at}">${day(v.captured_at)}</time></a>
-          <small class="text-muted">${[SOURCE_SHORT[v.source] ?? v.source, fmtSize(v.size)].filter(Boolean).join(" · ")}${v.r2_key === pdfKey ? " · default PDF" : ""}</small></li>`,
-      )}</ul>
-      ${versions.length > 1 && html`<div class="small text-muted">Dated by capture, not ePrint version numbers.</div>`}</dd>`;
+      <dd>${metaList(versions.map(
+        (v) => html`<a href="${versionPath(id, v)}" rel="nofollow" title="Copy captured ${day(v.captured_at)}"><time datetime="${v.captured_at}">${day(v.captured_at)}</time></a>
+          <small class="text-muted">${[SOURCE_SHORT[v.source] ?? v.source, fmtSize(v.size)].filter(Boolean).join(" · ")}</small>`,
+      ))}</dd>`;
 }
 
 export function versionJson(origin: string, id: string, v: Version, pdfKey: string | null) {

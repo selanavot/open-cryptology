@@ -6,7 +6,7 @@
 // always shown as "uploaded by", separately from the free-text authors.
 import type { Env } from "./db";
 import { html, raw, type Html } from "./html";
-import { icons, messagePage, page } from "./layout";
+import { citeControl, icons, messagePage, metaList, page } from "./layout";
 import { avatar, identityDetail, providerTag } from "./account";
 import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type User } from "./auth";
 import { siteOrigin } from "./seo";
@@ -224,24 +224,18 @@ ${authors.map((a) => html`<meta name="citation_author" content="${a}">`)}
     <h5 class="mt-3">Abstract</h5>
     <p class="paper-abstract tex">${v.abstract}</p>
   </div>
-  <div class="paper-meta">
-    <h5>Metadata</h5>
-    <dl>
-      <dt>Available format</dt>
-      <dd><a class="btn btn-sm btn-outline-dark" href="${fileHref}">${icons.pdf}PDF</a></dd>
-      <dt>License</dt>
-      <dd><a class="cc" href="${LICENSE_URL}" rel="license noopener">CC BY</a></dd>
-      <dt>Cite as</dt>
-      <dd>Open Cryptology ${m.id}</dd>
+  <div id="metadata" class="paper-meta">
+    <div class="meta-top">
+      <a class="btn btn-pdf" href="${fileHref}">${icons.pdf}PDF</a>
+      ${citeControl(bibtex(m, v, origin))}
+    </div>
+    <dl class="meta-rows">
+      <dt>License</dt><dd><a class="cc" href="${LICENSE_URL}" rel="license noopener">CC BY</a></dd>
       <dt>Versions</dt>
-      ${versions.map((x, i) => html`<dd>v${x.v}: ${dateLong(x.created_at)}${i === 0 ? " (latest)" : ""}</dd>`)}
+      <dd>${metaList(versions.map((x) => html`v${x.v} <small class="text-muted">${dateLong(x.created_at)}</small>`))}</dd>
     </dl>
   </div>
-</div>
-
-<p class="mt-4 mb-2"><strong>BibTeX</strong>
-  <button type="button" class="ms-2 btn btn-sm btn-outline-dark" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy to clipboard</span></button></p>
-<pre id="bibtex">${bibtex(m, v, origin)}</pre>`;
+</div>`;
   return page(env, {
     title: `${m.id}: ${v.title}`,
     description: v.abstract.replace(/\s+/g, " ").slice(0, 200),
