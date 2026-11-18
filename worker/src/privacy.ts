@@ -38,6 +38,11 @@ export function privacyPage(env: Env): Response {
   public as described in the <a href="/terms">terms</a>. We keep each version you post, with when you posted
   it.</p>
 
+  <h4>Comments</h4>
+  <p>Comments are public right away, with your name and photo, and we keep when you posted and last
+  edited them. Editing replaces the text. Deleting a comment erases its text; maintainers can hide one
+  instead, keeping the text.</p>
+
   <h4>Cookies</h4>
   <p>Only when you sign in: a session cookie that keeps you signed in, a cookie with your display name
   so pages can show it, and a short-lived cookie during sign-in itself. We store only a hash of the

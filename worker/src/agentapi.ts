@@ -3,8 +3,9 @@
 // Approve, and the agent collects a bearer token. Like a browser login, a token is short-lived
 // (TOKEN_TTL_HOURS from approval, or until the person logs out) and there's nothing to manage:
 // when it ends, the agent connects again. Tables: the "agent API" section of db/schema.sql. Only a token's SHA-256 is
-// stored, and it's minted when the agent collects it. A token can post and read manuscripts as
-// that person, nothing else: it can't change the account or remove anything.
+// stored, and it's minted when the agent collects it. A token can post and read manuscripts, and
+// post and edit comments (comments.ts), as that person, nothing else: it can't change the account
+// or remove anything.
 import type { Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage, page } from "./layout";
@@ -14,7 +15,9 @@ import { siteOrigin } from "./seo";
 import { avatar } from "./account";
 
 const TOKEN_PREFIX = "oct_";
-const SCOPE = "manuscripts";
+/** What a new token can do. Tokens minted before comments existed carry only "manuscripts". */
+const SCOPES = "manuscripts comments";
+export type Scope = "manuscripts" | "comments";
 /** How long a token works after the person approves it. Then the agent connects again (one click). */
 export const TOKEN_TTL_HOURS = 24;
 const DAY_MS = 86_400_000;
@@ -22,13 +25,13 @@ export const LICENSE_ID = "CC-BY-4.0";
 
 const nowIso = () => new Date().toISOString();
 
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
+export function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data, null, 2) + "\n", {
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex", ...headers },
   });
 }
-const err = (status: number, error: string, message: string, headers: Record<string, string> = {}) => json({ error, message }, status, headers);
+export const err = (status: number, error: string, message: string, headers: Record<string, string> = {}) => json({ error, message }, status, headers);
 const unauthorized = (error: string, message: string) => err(401, error, message, { "www-authenticate": `Bearer error="invalid_token"` });
 const CONNECT_AGAIN = "Connect again (POST /api/oauth/device); the person approves with one click.";
 
@@ -38,6 +41,7 @@ const CONNECT_AGAIN = "Connect again (POST /api/oauth/device); the person approv
 interface TokenRow {
   id: string;
   user_id: string;
+  scopes: string;
   expires_at: string;
 }
 
@@ -48,23 +52,23 @@ async function mintToken(env: Env, userId: string, keepExpiry?: string): Promise
   const now = new Date();
   const expires = keepExpiry ?? new Date(now.getTime() + TOKEN_TTL_HOURS * 3600_000).toISOString();
   await env.DB.prepare("INSERT INTO api_tokens (id, hash, user_id, scopes, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-    .bind(id, await sha256hex(token), userId, SCOPE, now.toISOString(), expires)
+    .bind(id, await sha256hex(token), userId, SCOPES, now.toISOString(), expires)
     .run();
   return { id, token, expires };
 }
 
 /** The person and token behind `Authorization: Bearer oct_...`, or an error response. Never
  *  falls back to the session cookie. */
-export async function tokenActor(env: Env, req: Request, origin: string): Promise<{ user: User; token: TokenRow } | Response> {
+export async function tokenActor(env: Env, req: Request, origin: string, scope: Scope = "manuscripts"): Promise<{ user: User; token: TokenRow } | Response> {
   const m = /^Bearer\s+(\S+)\s*$/i.exec(req.headers.get("authorization") ?? "");
   if (!m) return unauthorized("no_token", `Send "Authorization: Bearer ${TOKEN_PREFIX}...". To get a token, connect first: see ${origin}/llms.txt.`);
   if (!m[1].startsWith(TOKEN_PREFIX)) return unauthorized("bad_token", "That isn't an Open Cryptology token.");
   const t = await env.DB.prepare("SELECT id, user_id, scopes, expires_at FROM api_tokens WHERE hash = ?1 AND revoked_at IS NULL")
     .bind(await sha256hex(m[1]))
-    .first<TokenRow & { scopes: string }>();
+    .first<TokenRow>();
   if (!t) return unauthorized("token_revoked", `That token is unknown or was revoked. ${CONNECT_AGAIN}`);
   if (Date.parse(t.expires_at) < Date.now()) return unauthorized("token_expired", `Tokens last ${TOKEN_TTL_HOURS} hours, and this one expired. ${CONNECT_AGAIN}`);
-  if (!t.scopes.split(" ").includes(SCOPE)) return err(403, "scope", `This token can't post manuscripts. ${CONNECT_AGAIN}`);
+  if (!t.scopes.split(" ").includes(scope)) return err(403, "scope", `This token can't ${scope === "comments" ? "post comments" : "post manuscripts"}. ${CONNECT_AGAIN}`);
   // loadUser refuses deleted accounts; merges move tokens to the kept account (auth.ts).
   const user = await loadUser(env, t.user_id);
   if (!user) return unauthorized("token_revoked", "The account behind this token is gone.");
@@ -199,7 +203,10 @@ async function routeAgentApi(req: Request, env: Env, url: URL): Promise<Response
     if (who instanceof Response) return who;
     return json({
       user: { displayName: who.user.displayName, profile_url: `${origin}/u/${who.user.id}` },
-      can: ["post manuscripts", "read manuscripts"],
+      can: [
+        ...(who.token.scopes.split(" ").includes("manuscripts") ? ["post manuscripts", "read manuscripts"] : []),
+        ...(who.token.scopes.split(" ").includes("comments") ? ["post comments", "edit its person's comments"] : []),
+      ],
       expires_at: who.token.expires_at,
     });
   }
@@ -397,7 +404,7 @@ function tokenJson(origin: string, user: User, t: { token: string; expires: stri
     token_type: "Bearer",
     expires_in: TOKEN_TTL_HOURS * 3600,
     expires_at: t.expires,
-    scope: SCOPE,
+    scope: SCOPES,
     user: { displayName: user.displayName, profile_url: `${origin}/u/${user.id}` },
     note: `Store this token and reuse it until expires_at; then connect again. Tell the person which account you're connected as (user.displayName). If you lose the token within 15 minutes of approval, POST the same device_code again for a new one (the old one stops working).`,
   });
@@ -489,6 +496,6 @@ async function connectRoute(env: Env, req: Request, url: URL): Promise<Response>
     <button class="btn hm-primary" type="submit" name="decision" value="approve">Approve</button>
     <button class="btn btn-outline-dark" type="submit" name="decision" value="deny">Deny</button>
   </form>
-  <p class="settings-fine">It can post manuscripts as you, under <a href="/terms">CC BY 4.0</a>, for ${TOKEN_TTL_HOURS} hours or until you log out.</p>`,
+  <p class="settings-fine">It can post manuscripts as you, under <a href="/terms">CC BY 4.0</a>, and post and edit comments as you, for ${TOKEN_TTL_HOURS} hours or until you log out.</p>`,
   );
 }

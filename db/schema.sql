@@ -238,3 +238,22 @@ CREATE TABLE IF NOT EXISTS manuscript_tokens (
   token_id      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS manuscript_tokens_token ON manuscript_tokens(token_id);
+
+-- comments (2026-11): worker/src/comments.ts. Only CREATE ... IF NOT EXISTS, so this section can be
+-- run on its own:  sed -n '/^-- comments (2026-11)/,$p' db/schema.sql
+-- One table for comments on ePrint papers and original manuscripts, with nested replies.
+-- Rows are never deleted: deleting your own comment erases its text, a maintainer's hide keeps it.
+CREATE TABLE IF NOT EXISTS comments (
+  id            INTEGER PRIMARY KEY,
+  target        TEXT NOT NULL,               -- '2024/123' (ePrint paper) or '2026-11-15/3' (manuscript)
+  user_id       TEXT NOT NULL,               -- users.id (publicUsers follows merges)
+  reply_to      INTEGER,                     -- the comment replied to, on the same target
+  body          TEXT NOT NULL,               -- plain text with $TeX$; '' once its author deletes it
+  state         TEXT NOT NULL DEFAULT 'visible', -- visible | deleted (by its author) | hidden (by a maintainer)
+  moderated_by  TEXT,
+  token_id      TEXT,                        -- api_tokens.id if an agent posted it: for moderation only, never shown
+  created_at    TEXT NOT NULL,
+  edited_at     TEXT                         -- last edit by its author (earlier text isn't kept)
+);
+CREATE INDEX IF NOT EXISTS comments_target ON comments(target, created_at);
+CREATE INDEX IF NOT EXISTS comments_user ON comments(user_id, created_at);

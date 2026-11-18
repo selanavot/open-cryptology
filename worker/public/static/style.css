@@ -714,3 +714,94 @@ ol.year-list .badge { margin-left: .35rem; }
 .connect-buttons .btn { padding: .6rem 1rem; border-radius: .45rem; }
 .connect-input { text-transform: uppercase; font-size: 1.2rem; }
 .connect-input.is-invalid { border-color: #d9534f; }
+
+/* ---------- comments on paper and manuscript pages (comments.ts): a Reddit-like thread */
+.cm-section { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #f0eee8; }
+.cm-section [hidden] { display: none !important; }
+.cm-title { font-size: 1.15rem; font-weight: 650; margin: 0 0 .75rem; }
+.cm-count { color: var(--muted); font-weight: 400; }
+.cm-error { color: #a12a1c; font-size: .88rem; margin: 0 0 .5rem; }
+
+/* the comment box */
+.cm-composer { border: 1px solid var(--border); border-radius: 1.1rem; background: #fff; margin: 0 0 1.25rem; transition: border-color .15s; }
+.cm-composer:focus-within { border-color: #8f8a7e; }
+.cm-composer textarea, .cm-preview {
+  display: block; width: 100%; padding: .6rem 1rem; border: 0; background: transparent; border-radius: 1.1rem;
+  font: inherit; font-size: .95rem; line-height: 1.5; color: var(--text); resize: none; outline: none; overflow: hidden;
+}
+.cm-preview { white-space: pre-wrap; overflow-wrap: break-word; }
+.cm-composer textarea::placeholder { color: #8a8f94; }
+.cm-composer textarea[readonly] { cursor: text; }
+.cm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; padding: 0 .5rem .5rem; }
+.cm-spacer { flex: 1; }
+.cm-tool, .cm-cancel, .cm-submit {
+  display: inline-flex; align-items: center; gap: .3rem; border: 0; border-radius: 999px; font: inherit;
+  font-size: .82rem; font-weight: 600; line-height: 1; padding: .5rem .8rem; cursor: pointer;
+}
+.cm-tool { background: transparent; color: var(--muted); }
+.cm-tool:hover, .cm-tool[aria-pressed="true"] { background: #f2f1ec; color: var(--text); }
+.cm-cancel { background: #f2f1ec; color: var(--text); }
+.cm-cancel:hover { background: #e6e4dd; }
+.cm-submit { background: var(--text); color: #fff; }
+.cm-submit:hover { background: #000; }
+.cm-submit:disabled { background: #e6e4dd; color: #9a9890; cursor: default; }
+.cm-composer.is-collapsed { border-radius: 999px; }
+.cm-composer.is-collapsed .cm-bar { display: none; }
+.cm-composer.is-collapsed textarea { height: 2.6rem !important; white-space: nowrap; }
+.cm-composer.is-collapsed:hover { border-color: #8f8a7e; }
+.cm .cm-composer { margin: .4rem 0 .6rem; }
+
+/* the thread: avatar column with a line down to the replies; click the line to collapse */
+.cm { display: grid; grid-template-columns: 2rem 1fr; column-gap: .5rem; padding-top: .7rem; }
+.cm-gutter { display: flex; flex-direction: column; align-items: center; }
+.cm-gutter .avatar-xs { width: 1.75rem; height: 1.75rem; font-size: .62rem; margin: 0; }
+.cm-avatar { line-height: 0; }
+.cm-avatar-gone { background: #e6e4dd; }
+.cm-line { flex: 1; width: 1rem; margin-top: .3rem; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
+.cm-line::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #e2e0d9; transform: translateX(-50%); }
+.cm-line:hover::before { width: 2px; background: var(--text); }
+.cm-expand { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: #fff; color: var(--muted); cursor: pointer; }
+.cm-expand:hover { color: var(--text); border-color: var(--text); }
+.cm-content { min-width: 0; }
+.cm-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; min-height: 1.75rem; font-size: .84rem; color: var(--muted); }
+.cm-name { font-weight: 650; color: var(--text); }
+.cm-name:visited { color: var(--text); }
+.cm-name:hover { color: var(--text); text-decoration: underline; }
+.cm-name-gone { color: var(--muted); font-weight: 600; }
+.cm-dot { color: #b0aea6; }
+.cm-time, .cm-time:visited { color: var(--muted); }
+.cm-time:hover { color: var(--text); text-decoration: underline; }
+.cm-flair { font-size: .68rem; font-weight: 700; letter-spacing: .02em; padding: .12rem .45rem; border-radius: 999px; line-height: 1.2; }
+.cm-flair-op { color: #8a4b00; background: #fff1d0; }
+.cm-body { font-size: .95rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: break-word; margin: .1rem 0 .15rem; }
+.cm-body .katex-display { margin: .4em 0; overflow-x: auto; overflow-y: hidden; white-space: normal; }
+.cm-body-gone { color: var(--muted); font-style: italic; }
+.cm-actions { display: flex; align-items: center; gap: .15rem; margin-left: -.55rem; }
+.cm-act {
+  display: inline-flex; align-items: center; gap: .3rem; padding: .35rem .55rem; border: 0; border-radius: 999px;
+  background: none; font: inherit; font-size: .8rem; font-weight: 600; color: var(--muted); cursor: pointer; list-style: none;
+}
+.cm-act:visited { color: var(--muted); }
+.cm-act:hover { background: #f2f1ec; color: var(--text); }
+.cm-icon { width: 1rem; height: 1rem; flex: none; }
+.cm-menu { position: relative; }
+.cm-menu > summary::-webkit-details-marker { display: none; }
+.cm-menu-list {
+  position: absolute; z-index: 5; top: 100%; left: 0; min-width: 10rem; padding: .3rem 0; background: #fff;
+  border: 1px solid #e6e4df; border-radius: .6rem; box-shadow: 0 6px 18px rgba(0, 0, 0, .1);
+}
+.cm-menu-list form { margin: 0; }
+.cm-menu-item { display: block; width: 100%; padding: .5rem .9rem; border: 0; background: none; font: inherit; font-size: .88rem; text-align: left; color: var(--text); cursor: pointer; }
+.cm-menu-item:hover { background: #f6f5f1; }
+.cm-children { margin-top: .1rem; }
+.cm.is-collapsed > .cm-content > :not(.cm-head) { display: none; }
+.cm.is-collapsed > .cm-gutter > :not(.cm-expand) { display: none; }
+.cm:target > .cm-content > .cm-body { animation: cm-flash 2.5s ease-out; border-radius: .3rem; }
+@keyframes cm-flash { from { background: #fff4cc; } to { background: transparent; } }
+@media (max-width: 575.98px) {
+  .cm { grid-template-columns: 1.5rem 1fr; column-gap: .4rem; }
+  .cm-gutter .avatar-xs, .cm-expand { width: 1.5rem; height: 1.5rem; }
+  .cm-act[data-share] span { display: none; }
+  .cm-act { padding: .4rem .5rem; }
+}
+.cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-actions { display: none; }

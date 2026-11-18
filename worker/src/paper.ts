@@ -10,6 +10,7 @@ import { categoryBadge, citeControl, hasTex, icons, messagePage, page } from "./
 import { bibtex, licenseInfo, originalUrl, versionsUrl, type LicenseInfo } from "./license";
 import { day, json } from "./pages";
 import { ogImage, paperHead, siteOrigin } from "./seo";
+import { commentsSection, loadThread, threadHasTex } from "./comments";
 
 export const MAX_UPLOAD = 95 * 1024 * 1024; // Workers accept request bodies up to 100 MB
 /** Above this, the upload is streamed (no in-memory copy) and sent to review instead of auto-verified. */
@@ -36,6 +37,7 @@ export async function paperPage(
   const affs = parseAffiliations(p.affiliations);
   const pdfHref = p.pdf_key ? `/${id}.pdf` : null;
   const versions = await getVersions(env, id);
+  const thread = await loadThread(env, id);
   const title = p.title || `Withdrawn paper ${id}`;
 
   const body = html`<div class="paper-row">
@@ -67,7 +69,8 @@ export async function paperPage(
     </dl>
     <p class="meta-report"><a href="/contact?paper=${p.id}">Report a problem</a></p>
   </div>
-</div>`;
+</div>
+${commentsSection(thread, url)}`;
 
   const origin = siteOrigin(env, url);
   const description = `${withdrawn ? "Withdrawn. " : ""}${(p.abstract ?? "").replace(/\s+/g, " ")}`.slice(0, 200);
@@ -75,7 +78,8 @@ export async function paperPage(
     title: `${id}: ${title}${withdrawn ? " (withdrawn)" : ""}`,
     description,
     body,
-    katex: hasTex(p.title, p.abstract),
+    katex: hasTex(p.title, p.abstract) || threadHasTex(thread),
+    texPreview: true,
     original: orig,
     originalLabel: `View paper ${id} on the original ePrint`,
     canonical: `${origin}/${id}`,
@@ -83,7 +87,7 @@ export async function paperPage(
     ogImage: ogImage(origin),
     head: paperHead(p, title, pdfHref && `${origin}${pdfHref}`),
     // Pages that can still change through an upload must not be served stale from a browser cache.
-    cache: url.searchParams.has("upload") ? "no-store" : pdfHref && !p.pdf_maybe_stale ? "public, max-age=600" : "no-cache",
+    cache: url.searchParams.has("upload") || url.searchParams.has("comment") ? "no-store" : pdfHref && !p.pdf_maybe_stale ? "public, max-age=600" : "no-cache",
     headers: lic.url ? { link: `<${lic.url}>; rel="license"` } : undefined,
   });
 }
