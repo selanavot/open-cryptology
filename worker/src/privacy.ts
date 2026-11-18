@@ -17,7 +17,8 @@ export function privacyPage(env: Env): Response {
   <h4>Reading the site</h4>
   <p>You don't need an account to read or download papers. The site uses Cloudflare Web Analytics,
   which counts page views without cookies, and Cloudflare (our host) keeps its usual short-lived
-  request logs.</p>
+  request logs. For seven days we also keep a log line for each request: the page or file, your
+  country, your browser's user-agent and the site that linked you here, but not your IP address.</p>
 
   <h4>Accounts</h4>
   <p>You sign in with GitHub, Google or ORCID. We never see your password, and we don't keep the

@@ -152,6 +152,31 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   return notFound(env);
 }
 
+/**
+ * One line per request for Workers Logs (kept 7 days), so traffic questions can be answered later
+ * without deciding up front what to count. No IP address and no query string (it can hold search
+ * terms and sign-in codes); Cloudflare's own invocation logs, which record the full URL, are off
+ * in wrangler.jsonc.
+ */
+function logRequest(req: Request, u: URL, status: number): void {
+  let ref = "";
+  try {
+    ref = new URL(req.headers.get("referer") ?? "").hostname;
+  } catch {
+    // no referer, or not a URL
+  }
+  console.log({
+    kind: "request",
+    method: req.method,
+    path: u.pathname,
+    status,
+    country: (req.cf?.country as string | undefined) ?? "",
+    ua: (req.headers.get("user-agent") ?? "").slice(0, 300),
+    ref,
+    range: req.headers.has("range"),
+  });
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const u = new URL(req.url);
@@ -184,6 +209,7 @@ export default {
     }
     try {
       const res = await route(req, env, ctx);
+      logRequest(req, u, res.status);
       if (req.method === "HEAD" && res.body) return new Response(null, res);
       return res;
     } catch (e) {

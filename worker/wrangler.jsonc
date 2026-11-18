@@ -24,6 +24,10 @@
     { "pattern": "www.opencryptology.org", "custom_domain": true }
   ],
   "triggers": { "crons": ["17 */4 * * *"] },
+  // Workers Logs: keeps console output for 7 days, including the one line per request that
+  // logRequest (src/index.ts) writes. Cloudflare's automatic invocation logs stay off because they
+  // record full URLs, query strings included.
+  "observability": { "enabled": true, "head_sampling_rate": 1, "logs": { "invocation_logs": false } },
   "send_email": [{ "name": "MAILER" }],
   // Upload rate limits per (salted) IP: web form 60/min, agent API 120/min. Daily caps: src/uploadguard.ts.
   "ratelimits": [
