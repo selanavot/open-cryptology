@@ -142,7 +142,7 @@ const pct = (have: number, total: number) => (total ? Math.floor((100 * have) / 
 const share = (n: number, total: number) => `${total ? ((100 * n) / total).toFixed(2) : 100}%`;
 
 /** One tile per year, filled from the bottom: green for papers with an up-to-date PDF here, then
- *  yellow for those whose PDF may be outdated, light grey for the rest. The label is the green share. */
+ *  yellow for those whose PDF may be outdated, sand for the rest. The label is the green share. */
 /** `selected` gets the .sel outline; `aria` is its aria-current ("page" on its own year page,
  *  "true" for the homepage card's shown grid). */
 function yearTiles(years: YearStat[], selected: number | null = null, aria = "page"): Html {
@@ -278,7 +278,7 @@ export async function yearPage(env: Env, url: URL, year: number): Promise<Respon
   <h3 class="mb-3">Papers from ${year}</h3>
   ${yearTiles(years, year)}
   <h5 class="mt-4">${papersWord(sel.total)}${missing ? html` · ${fmtInt(missing)} missing` : ""}${sel.outdated ? html` · ${fmtInt(sel.outdated)} may be outdated` : ""}</h5>
-  ${!!(missing || sel.outdated) && html`<p class="small mb-2 grid-hint">Click a grey or yellow square to upload, or see <a href="/missing?year=${year}">the list</a>.</p>`}
+  ${!!(missing || sel.outdated) && html`<p class="small mb-2 grid-hint">Click a missing or yellow square to upload, or see <a href="/missing?year=${year}">the list</a>.</p>`}
   ${paperGrid(year, rows)}
   ${legend(rows)}
   <h5 class="mt-4">All ${papersWord(listed.length)}, newest first</h5>
