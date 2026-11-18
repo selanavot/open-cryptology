@@ -25,6 +25,9 @@ class RevisionTest(unittest.TestCase):
         reconcile(db)
         current = lambda: db.query("SELECT pdf_sha256 FROM papers")[0][0]
         self.assertEqual(current(), 'a')
+        db.query("INSERT INTO revision_heads VALUES('p','B')")
+        reconcile(db)
+        self.assertEqual(current(), 'b')
         db.query("UPDATE papers SET updated='B'")
         reconcile(db)
         self.assertEqual(current(), 'b')
