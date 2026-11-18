@@ -80,7 +80,7 @@ function logInPage(env: Env, url: URL): Response {
     env,
     "Log in",
     html`<section class="settings-card settings-login">
-  <h1 class="settings-title">Log in to ${env.SITE_NAME}</h1>
+  <h1 class="settings-title">Log in or create an account</h1>
   ${buttons
     ? html`${buttons}
   ${devLogin(env) && html`<p class="settings-hint">Local test server: unconfigured providers use made-up accounts.</p>`}`

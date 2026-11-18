@@ -140,7 +140,7 @@ const form = (c, fields) => c.req("/account", { method: "POST", form: fields });
 test("/account: log-in page when logged out, settings when logged in", async () => {
   const out = await new Client().req("/account?next=/2024/1");
   const t = await out.text();
-  check("logged-out page says Log in", out.status === 200 && /Log in to/.test(t));
+  check("logged-out page says Log in", out.status === 200 && /Log in or create an account/.test(t));
   check("no-store", out.headers.get("cache-control") === "no-store");
   const c = new Client();
   await c.login(`dora${RUN}`, 940000 + (RUN % 1e5));
