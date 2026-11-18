@@ -6,7 +6,7 @@ import { canonicalId, confirmCurrent, eprintSize, getPaper, getSources, getVersi
 import { coverageChanged } from "./years";
 import { versionJson, versionsList } from "./versions";
 import { html, safeUrl, type Html } from "./html";
-import { categoryBadge, hasTex, icons, messagePage, page } from "./layout";
+import { categoryBadge, citeControl, hasTex, icons, messagePage, page } from "./layout";
 import { bibtex, licenseInfo, originalUrl, versionsUrl, type LicenseInfo } from "./license";
 import { day, json } from "./pages";
 import { ogImage, paperHead, siteOrigin } from "./seo";
@@ -43,47 +43,32 @@ export async function paperPage(
     <h4>Paper ${id}</h4>
     ${withdrawn && html`<div class="alert alert-warning withdrawn-notice" role="note">
       <strong>Withdrawn</strong> by the authors on ePrint${p.withdrawn_on ? html` on <time datetime="${p.withdrawn_on}">${day(p.withdrawn_on)}</time>` : ""}.
-      ${pdfHref ? "The last version we have is kept below for reference." : ""}
+      ${pdfHref ? "The last version we have is kept for reference." : ""}
     </div>`}
     <h3 class="paper-title tex"><a href="${pdfHref ?? orig}">${title}</a></h3>
     ${authors.map((a, i) => html`<div class="author"><span class="authorName">${a}</span>${affs[i] && html`<span class="affiliation">, ${affs[i]}</span>`}</div>`)}
-    <p class="paper-quick">${pdfHref ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF${withdrawn ? " (withdrawn)" : ""}</a>` : ""}<a href="#bibtex">BibTeX</a><a href="${orig}" rel="noopener">ePrint ↗</a></p>
     ${pdfHref && !outdated ? uploadNotice(url.searchParams.get("upload")) : ""}
     ${(!pdfHref || outdated) && uploadForm(env, p, orig, uploadNotice(url.searchParams.get("upload")))}
     <h5 class="mt-3">Abstract</h5>
     <p class="paper-abstract tex">${p.abstract || "No abstract available."}</p>
   </div>
   <div id="metadata" class="paper-meta">
-    <h5>Metadata</h5>
-    <dl>
-      <dt id="pdf-status">Available format(s)</dt>
-      <dd>${withdrawn
-        ? html`<div>-- withdrawn --</div>
-          ${pdfHref && html`<a class="btn btn-sm btn-outline-dark mt-1" href="${pdfHref}">${icons.pdf}PDF (withdrawn)</a>
-          <div class="small text-muted mt-1">Last version we have${p.pdf_source_date ? `, copy captured ${day(p.pdf_source_date)}` : ""}</div>`}
-          ${!pdfHref && html`<div class="mt-1"><span class="text-muted">No PDF here yet.</span> <a href="#upload">Upload it</a></div>`}`
-        : pdfHref
-        ? html`<a class="btn btn-sm btn-outline-dark" href="${pdfHref}">${icons.pdf}PDF</a>
-          ${outdated ? html`<div class="small mt-1"><span class="text-muted">May be outdated.</span> <a href="#upload">Upload the latest</a></div>` : ""}`
-        : html`<span class="text-muted">No PDF here yet.</span> <a href="#upload">Upload it</a>`}
-      </dd>
+    <div class="meta-top">
+      ${pdfHref && html`<a class="btn btn-pdf" href="${pdfHref}">${icons.pdf}PDF${withdrawn ? " (withdrawn)" : ""}</a>`}
+      ${citeControl(bibtex(p, env.ORIGIN_BASE))}
+      <a href="${orig}" rel="noopener">ePrint ↗</a>
+    </div>
+    ${outdated && html`<p class="meta-note"><a href="#upload">PDF may be outdated</a></p>`}
+    <dl class="meta-rows">
       ${p.category && html`<dt>Category</dt><dd><a rel="nofollow" href="/search?${new URLSearchParams({ q: p.category }).toString()}">${categoryBadge(p.category)}</a></dd>`}
-      <dt>License</dt>
-      <dd>${licenseBadge(lic)}</dd>
-      <dt>History</dt>
-      ${withdrawn && html`<dd>${p.withdrawn_on ? html`<time datetime="${p.withdrawn_on}">${day(p.withdrawn_on)}</time>: ` : ""}withdrawn</dd>`}
-      ${!withdrawn && p.updated && p.updated !== p.submitted && html`<dd><time datetime="${p.updated}">${day(p.updated)}</time>: last updated</dd>`}
-      ${p.submitted && html`<dd><time datetime="${p.submitted}">${day(p.submitted)}</time>: submitted</dd>`}
-      ${versionsList(id, versions, p.pdf_key)}
-      <dt>Original</dt>
-      <dd><a href="${orig}" rel="noopener">View on ePrint ↗</a></dd>
+      <dt>License</dt><dd>${licenseBadge(lic)}</dd>
+      ${p.submitted && html`<dt>Submitted</dt><dd><time datetime="${p.submitted}">${day(p.submitted)}</time></dd>`}
+      ${!withdrawn && p.updated && p.updated !== p.submitted && html`<dt>Updated</dt><dd><time datetime="${p.updated}">${day(p.updated)}</time></dd>`}
+      ${versionsList(id, versions)}
     </dl>
   </div>
 </div>
 
-<p class="mt-4 mb-2"><strong>BibTeX</strong>
-  <button type="button" class="ms-2 btn btn-sm btn-outline-dark" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy to clipboard</span></button></p>
-<pre id="bibtex">${bibtex(p, env.ORIGIN_BASE)}</pre>
 <p class="small mb-0"><a href="/contact?paper=${p.id}">Report a problem with this paper</a></p>`;
 
   const origin = siteOrigin(env, url);

@@ -8,7 +8,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "61";
+const ASSET_VER = "62";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -165,6 +165,28 @@ export const icons = {
   pdf: html`<svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 1h5.5L13 4.5V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M9 1v4h4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 9h5M5.5 11.5h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
   copy: html`<svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="5" y="5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.5 11H3a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1V3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`,
 };
+
+/** The metadata column's BibTeX control: a <details> popover (opens without JS too) holding the
+ *  entry, so it stays in the HTML, plus a copy button. */
+export function citeControl(bib: string): Html {
+  return html`<details class="cite" id="cite">
+      <summary class="btn btn-outline-dark">BibTeX</summary>
+      <div class="cite-pop">
+        <pre id="bibtex">${bib}</pre>
+        <button type="button" class="btn btn-sm btn-outline-dark" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy</span></button>
+      </div>
+    </details>`;
+}
+
+/** A short list for the metadata column: past two items, the first stays and the rest fold away. */
+export function metaList(items: Html[]): Html | "" {
+  if (!items.length) return "";
+  const shown = items.length > 2 ? items.slice(0, 1) : items;
+  const rest = items.slice(shown.length);
+  return html`<ul class="meta-list">${shown.map((x) => html`<li>${x}</li>`)}</ul>${rest.length
+    ? html`<details class="meta-more"><summary>${rest.length} earlier</summary><ul class="meta-list">${rest.map((x) => html`<li>${x}</li>`)}</ul></details>`
+    : ""}`;
+}
 
 /** ePrint-style card: centred h3 header with the gradient underline, then content. */
 export function card(title: string, content: Val, cls = "", id = ""): Html {
