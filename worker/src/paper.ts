@@ -65,10 +65,9 @@ export async function paperPage(
       ${!withdrawn && p.updated && p.updated !== p.submitted && html`<dt>Updated</dt><dd><time datetime="${p.updated}">${day(p.updated)}</time></dd>`}
       ${versionsList(id, versions)}
     </dl>
+    <p class="meta-report"><a href="/contact?paper=${p.id}">Report a problem</a></p>
   </div>
-</div>
-
-<p class="small mb-0"><a href="/contact?paper=${p.id}">Report a problem with this paper</a></p>`;
+</div>`;
 
   const origin = siteOrigin(env, url);
   const description = `${withdrawn ? "Withdrawn. " : ""}${(p.abstract ?? "").replace(/\s+/g, " ")}`.slice(0, 200);

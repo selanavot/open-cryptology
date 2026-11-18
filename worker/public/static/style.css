@@ -347,12 +347,11 @@ span.authorName { font-style: italic; }
 @media (max-width: 767.98px) {
   .paper-main, .paper-meta { display: contents; }
   .paper-main > h5, .paper-abstract { order: 1; }
-  .meta-note, .meta-rows { order: 2; }
+  .meta-note, .meta-rows, .meta-report { order: 2; }
   .meta-top { margin-top: 1rem; }
 }
 @media (min-width: 768px) { .paper-meta { margin-top: 0; } }
 /* Metadata column: PDF + BibTeX + ePrint in one row, then short label/value rows. */
-.paper-row { margin-bottom: 1.5rem; }
 .paper-meta { position: relative; }
 .meta-top { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
 .btn-pdf { background: var(--nav); border-color: var(--text); font-weight: 500; padding-left: 1rem; padding-right: 1rem; }
@@ -362,6 +361,7 @@ span.authorName { font-style: italic; }
 @media (max-width: 767.98px) { .meta-rows { margin-top: 1.5rem; } }
 .meta-rows dt { font-weight: 600; }
 .meta-rows dd { margin: 0; }
+.meta-report { margin: 1.25rem 0 0; font-size: .875rem; }
 .meta-list { list-style: none; margin: 0; padding: 0; }
 .meta-list li + li { margin-top: .2rem; }
 .meta-list small { white-space: nowrap; }
