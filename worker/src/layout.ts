@@ -1,6 +1,7 @@
 import { TURNSTILE_JS, turnstileOn } from "./turnstile";
 import type { Env } from "./db";
 import { html, raw, type Html, type Val } from "./html";
+import { loginDialog } from "./login";
 
 const KATEX = "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.19.1";
 const KATEX_SRI = {
@@ -8,7 +9,7 @@ const KATEX_SRI = {
   js: "sha384-a1WQdjRj162i159OYq041X6I4K8NenkrI09LlPmiHg0YOb7CR+wJOraXwK9abpnE",
   autoRender: "sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz",
 };
-const ASSET_VER = "61";
+const ASSET_VER = "62";
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "content-security-policy": [
@@ -125,6 +126,7 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
 ${o.body}
 </main>
 ${footer(env)}
+${login && loginDialog(env)}
 </body>
 </html>`;
   return new Response(doc.value, {

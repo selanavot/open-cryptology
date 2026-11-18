@@ -30,6 +30,10 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **Cached pages.** Paper pages are publicly cached, so they never contain signed-in state. The
   display-only `oc_login` cookie (URI-encoded JSON `{n: name, a: photo URL}`) lets `app.js` swap
   the navbar's "Log in" for the person's photo or initials; the server never trusts it. The session is looked up only on POSTs, `/api/me` and `/account`.
+- **Log-in pop-up.** Every page carries the log-in buttons in a hidden `<dialog>` (login.ts). The
+  navbar's "Log in", and any link marked `data-login="<heading>"`, opens it over the page instead
+  of going to `/account` (see `setupLoginDialog` in `app.js`). Without JS, the link still opens
+  `/account?next=...`, which stays the full log-in page.
 - **CSRF.** Cookie-authenticated POSTs must carry our Origin (or `Sec-Fetch-Site: same-origin`).
   Redirect targets (`next=`) must be same-origin paths.
 - **Maintainers.** An account is a maintainer exactly while one of its sign-ins is a GitHub id in

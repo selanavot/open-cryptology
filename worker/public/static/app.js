@@ -183,14 +183,19 @@
     img.src = photo;
     return img;
   }
+  // The display-only oc_login cookie ({n: name, a: photo}) says who is logged in, or null.
+  function loginInfo() {
+    var m = document.cookie.match(/(?:^|;\s*)oc_login=([^;]+)/);
+    var info = null;
+    try { info = m && JSON.parse(decodeURIComponent(m[1])); } catch (e) { /* ignore a malformed cookie */ }
+    return info && typeof info.n === "string" && info.n ? info : null;
+  }
   function setupAccountLink() {
     var a = document.querySelector(".nav-account");
     if (!a) return;
     var menu = document.querySelector(".nav-login");
-    var m = document.cookie.match(/(?:^|;\s*)oc_login=([^;]+)/);
-    var info = null;
-    try { info = m && JSON.parse(decodeURIComponent(m[1])); } catch (e) { /* ignore a malformed cookie */ }
-    if (info && typeof info.n === "string" && info.n) {
+    var info = loginInfo();
+    if (info) {
       a.textContent = "";
       a.classList.add("has-avatar");
       a.title = info.n;
@@ -199,8 +204,79 @@
       if (menu) menu.remove();
     } else if (location.pathname !== "/account") {
       a.href = "/account?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
-      if (menu) menu.firstElementChild.href = a.href;
+      a.setAttribute("data-login", "");
+      if (menu) {
+        menu.firstElementChild.href = a.href;
+        menu.firstElementChild.setAttribute("data-login", "");
+      }
     }
+  }
+
+  // Log-in pop-up (the <dialog id="login-dialog"> from layout.ts). Any element with a data-login
+  // attribute opens it in place instead of going to the full /account log-in page:
+  //
+  //   <a href="/account?next=/manuscripts/12" data-login="Log in or create an account to comment">…</a>
+  //
+  // - data-login is the pop-up's heading; leave it empty for "Log in or create an account".
+  // - After logging in (which creates the account the first time) the person lands back on the
+  //   link's ?next=, or on the current page when there is none (or the element isn't a link).
+  // - Keep the href pointing at /account?next=...: it is what works without JS, on a modifier- or
+  //   middle-click, for people already logged in, and on /account itself.
+  // - Clicks are delegated from the document, so elements added later work too.
+  // - From script: window.ocLogin(heading, next) opens it (both optional); it returns false when
+  //   there is no pop-up on the page (logging in isn't switched on).
+  function setupLoginDialog() {
+    var dlg = document.getElementById("login-dialog");
+    if (!dlg || typeof dlg.showModal !== "function") return;
+    var title = document.getElementById("login-dialog-title");
+    var DEFAULT_TITLE = title.textContent;
+    var here = function () { return location.pathname + location.search + location.hash; };
+    var returnTo = null;
+
+    function open(heading, next) {
+      if (dlg.open) return true;
+      title.textContent = (heading || "").trim() || DEFAULT_TITLE;
+      dlg.querySelectorAll(".login-buttons a").forEach(function (a) {
+        var u = new URL(a.getAttribute("href"), location.origin);
+        u.searchParams.set("next", next || here());
+        a.setAttribute("href", u.pathname + u.search);
+      });
+      returnTo = document.activeElement;
+      dlg.showModal();
+      return true;
+    }
+    window.ocLogin = function (heading, next) { return open(heading, next); };
+
+    document.addEventListener("click", function (ev) {
+      if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      var el = ev.target.closest && ev.target.closest("[data-login]");
+      if (!el || dlg.contains(el) || location.pathname === "/account" || loginInfo()) return;
+      var next = null;
+      if (el.tagName === "A" && el.href) {
+        var u = new URL(el.href);
+        if (u.origin === location.origin && u.pathname === "/account") next = u.searchParams.get("next");
+      }
+      ev.preventDefault();
+      open(el.getAttribute("data-login"), next);
+    });
+
+    dlg.querySelector("[data-login-close]").addEventListener("click", function () { dlg.close(); });
+    // A click on the backdrop lands on the <dialog> itself (the card fills it). Both ends of the
+    // click must be outside, so a drag that starts on the card doesn't close it.
+    var downOutside = false;
+    dlg.addEventListener("pointerdown", function (ev) { downOutside = ev.target === dlg; });
+    dlg.addEventListener("click", function (ev) {
+      if (ev.target === dlg && downOutside) dlg.close();
+      downOutside = false;
+    });
+    // Esc closes the dialog (natively); keep it from also folding the phone menu behind it.
+    dlg.addEventListener("keydown", function (ev) { if (ev.key === "Escape") ev.stopPropagation(); });
+    dlg.addEventListener("close", function () {
+      if (returnTo && returnTo.focus && document.contains(returnTo)) returnTo.focus();
+      returnTo = null;
+    });
+    // Coming back from the provider with the Back button restores the page as it was: closed.
+    window.addEventListener("pageshow", function (ev) { if (ev.persisted && dlg.open) dlg.close(); });
   }
 
   // Submit an original manuscript: "+ Add author" / remove rows, the chosen PDF's name in the
@@ -275,6 +351,7 @@
 
   renderTex();
   setupAccountLink();
+  setupLoginDialog();
   scrollToUpload();
   setupGridNav();
   setupCopy();
