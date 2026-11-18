@@ -22,7 +22,7 @@ import { handleAgentApi, isAgentApiPath } from "./agentapi";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
-const PAPER_RE = /^\/(\d{4})\/(\d{1,6})(\.pdf|\/upload|\/|\/versions\/(\d{8}T\d{6}Z)\.pdf|\/versions\/?)?$/;
+const PAPER_RE = /^\/(\d{4})\/(\d{1,6})(\.pdf|\/upload|\/|\/versions\/(\d{8}T\d{6}Z|[0-9a-f]{64})\.pdf|\/versions\/?)?$/;
 const API_PAPER_RE = /^\/api\/papers\/(\d{4})\/(\d{1,6})\/?$/;
 const API_UPLOAD_RE = /^\/api\/upload\/(\d{4})\/(\d{1,6})\/?$/;
 const YEAR_RE = /^\/(\d{4})\/?$/;

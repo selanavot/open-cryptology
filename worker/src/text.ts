@@ -51,7 +51,9 @@ download it there. Then either you or they can upload it:
 
 - Agents: POST the PDF to ${origin}/api/upload/YYYY/NNN
     curl -X POST --data-binary @paper.pdf -H "Content-Type: application/pdf" ${origin}/api/upload/2026/123
+  To submit an update before metadata catches up, append ?update=1 to the upload URL.
   Responses (JSON):
+  - 202 {"status":"awaiting_revision"}: saved for comparison with the official revision. Do not resend.
   - 201 {"status":"live", "pdf_url": ...}: the file matched the paper (title and an author's name on
     its first pages) and is live now.
   - 202 {"status":"queued_for_review", "id", "check", "message"}: received and stored, but we couldn't

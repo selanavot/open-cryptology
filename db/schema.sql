@@ -238,3 +238,12 @@ CREATE TABLE IF NOT EXISTS manuscript_tokens (
   token_id      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS manuscript_tokens_token ON manuscript_tokens(token_id);
+
+-- A trusted observation binds an immutable ePrint revision to exact bytes.
+CREATE TABLE IF NOT EXISTS verified_revisions (
+  paper_id TEXT NOT NULL, revision TEXT NOT NULL, sha256 TEXT NOT NULL,
+  PRIMARY KEY (paper_id, revision)
+);
+CREATE INDEX IF NOT EXISTS uploads_candidate ON uploads(paper_id, sha256) WHERE status='candidate';
+CREATE TABLE IF NOT EXISTS revision_checks (paper_id TEXT PRIMARY KEY, checked_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS revision_heads (paper_id TEXT PRIMARY KEY, revision TEXT NOT NULL);

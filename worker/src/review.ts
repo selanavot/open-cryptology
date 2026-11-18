@@ -132,6 +132,11 @@ export async function handleReview(req: Request, env: Env, url: URL): Promise<Re
   if (isPost) {
     if (up.status !== "pending") return messagePage(env, 409, "Already handled", html`<p>This upload was already ${up.status}.</p><p><a href="/${p.id}">Paper ${p.id}</a></p>`, { cache: "no-store", noindex: true });
     const action = String(form!.get("action") ?? "");
+    if (action === "approve" && p.pdf_key && !p.withdrawn) {
+      await env.DB.prepare("UPDATE uploads SET status='candidate' WHERE id=? AND status='pending'").bind(up.id).run();
+      await coverageChanged(url.origin, p.id);
+      return messagePage(env, 200, "Awaiting revision verification", html`<p>The approved file will be checked against the ePrint revision.</p><p><a href="/review">All pending uploads</a></p>`, { cache: "no-store", noindex: true });
+    }
     if (action === "approve") {
       const obj = await env.PDFS.get(up.r2_key);
       if (!obj) return messagePage(env, 404, "File missing", html`<p>The uploaded file is gone.</p>`, { cache: "no-store", noindex: true });
