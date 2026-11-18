@@ -631,6 +631,8 @@ ol.year-list .badge { margin-left: .35rem; }
 .ms-idents .provider-tag { font-weight: 600; font-size: .9rem; }
 .hm-primary { background: var(--text); color: #fff; padding: .55rem 1.1rem; }
 .hm-primary:hover { background: #000; color: #fff; }
+/* as a link: a.btn:visited would otherwise turn the label the same dark as the background */
+a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 
 
 /* homepage: the letter, with a short list of where to go beside it (phones: below it) */
