@@ -54,7 +54,7 @@ export async function paperPage(
   </div>
   <div id="metadata" class="paper-meta">
     <div class="meta-top">
-      ${pdfHref && html`<a class="btn btn-pdf" href="${pdfHref}">${icons.pdf}PDF${withdrawn ? " (withdrawn)" : ""}</a>`}
+      ${pdfHref && html`<a class="btn btn-pdf" href="${pdfHref}">${icons.pdf}PDF</a>`}
       ${citeControl(bibtex(p, env.ORIGIN_BASE))}
       <a href="${orig}" rel="noopener">ePrint ↗</a>
     </div>
