@@ -42,21 +42,6 @@
     });
   }
 
-  // BibTeX popover (<details class="cite">): an outside click or Escape closes it.
-  function setupCite() {
-    var d = document.querySelector("details.cite");
-    if (!d) return;
-    document.addEventListener("click", function (ev) {
-      if (d.open && !d.contains(ev.target)) d.open = false;
-    });
-    document.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape" && d.open) {
-        d.open = false;
-        d.querySelector("summary").focus();
-      }
-    });
-  }
-
   // Client-side pre-check for uploads (the server re-checks everything).
   function setupUpload() {
     var form = document.querySelector(".upload-form");
@@ -293,7 +278,6 @@
   scrollToUpload();
   setupGridNav();
   setupCopy();
-  setupCite();
   setupUpload();
   setupNavSearch();
   foldSearchTips();

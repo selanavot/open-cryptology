@@ -166,16 +166,17 @@ export const icons = {
   copy: html`<svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="5" y="5" width="9" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.5 11H3a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1V3" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`,
 };
 
-/** The metadata column's BibTeX control: a <details> popover (opens without JS too) holding the
- *  entry, so it stays in the HTML, plus a copy button. */
-export function citeControl(bib: string): Html {
-  return html`<details class="cite" id="cite">
-      <summary class="btn btn-outline-dark">BibTeX</summary>
-      <div class="cite-pop">
-        <pre id="bibtex">${bib}</pre>
-        <button type="button" class="btn btn-sm btn-outline-dark" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy</span></button>
-      </div>
-    </details>`;
+/** The metadata column's BibTeX toggle, for its first row: "BibTeX" opens the entry in a panel on
+ *  the next line (CSS only, `.cite[open] ~ .cite-panel`), so it is in the HTML and works without JS.
+ *  `between` goes after the toggle on the same row (e.g. the ePrint link). One span per line, so a
+ *  wrapped line keeps a hanging indent; the text (and what Copy copies) is unchanged. */
+export function citeControl(bib: string, between: Html | "" = ""): Html {
+  return html`<details class="cite" id="cite"><summary>BibTeX<svg class="cite-chev" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></summary></details>
+      ${between}
+      <div class="cite-panel">
+        <button type="button" class="cite-copy" data-copy="bibtex" aria-label="Copy BibTeX to clipboard">${icons.copy}<span>Copy</span></button>
+        <pre id="bibtex">${bib.split("\n").map((l) => html`<span>${l}\n</span>`)}</pre>
+      </div>`;
 }
 
 /** A short list for the metadata column: past two items, the first stays and the rest fold away. */
