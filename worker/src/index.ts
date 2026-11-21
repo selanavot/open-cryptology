@@ -20,6 +20,7 @@ import { handleAccount, isAccountPath } from "./account";
 import { handleManuscripts, isManuscriptPath } from "./manuscripts";
 import { handleAgentApi, isAgentApiPath } from "./agentapi";
 import { handleComments, isCommentsPath } from "./comments";
+import { logRequest } from "./reqlog";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
@@ -152,35 +153,11 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   return notFound(env);
 }
 
-/**
- * One line per request for Workers Logs (kept 7 days), so traffic questions can be answered later
- * without deciding up front what to count. No IP address and no query string (it can hold search
- * terms and sign-in codes); Cloudflare's own invocation logs, which record the full URL, are off
- * in wrangler.jsonc.
- */
-function logRequest(req: Request, u: URL, status: number): void {
-  let ref = "";
-  try {
-    ref = new URL(req.headers.get("referer") ?? "").hostname;
-  } catch {
-    // no referer, or not a URL
-  }
-  console.log({
-    kind: "request",
-    method: req.method,
-    path: u.pathname,
-    status,
-    country: (req.cf?.country as string | undefined) ?? "",
-    ua: (req.headers.get("user-agent") ?? "").slice(0, 300),
-    ref,
-    range: req.headers.has("range"),
-  });
-}
-
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const u = new URL(req.url);
     const host = u.hostname;
+    const t0 = Date.now();
     // One hop to https on the bare domain (local dev stays on plain http). `wrangler dev` hands the
     // Worker the production host from the routes in wrangler.jsonc, so local runs are recognized
     // by LOCAL_DEV (set by scripts/dev.sh) or a localhost AUTH_ORIGIN, as well as by the host.
@@ -192,6 +169,7 @@ export default {
       if (host.startsWith("www.")) to.hostname = host.slice(4);
       if (!local) to.protocol = "https:";
       const isGet = req.method === "GET" || req.method === "HEAD";
+      logRequest(req, u, isGet ? 301 : 308, 0);
       return Response.redirect(to.toString(), isGet ? 301 : 308);
     }
     // Private-preview gate: while REQUIRE_ACCESS=1, only serve requests that came through
@@ -202,6 +180,7 @@ export default {
       env.REQUIRE_ACCESS === "1" &&
       (!host.endsWith(".workers.dev") || !req.headers.get("cf-access-jwt-assertion"))
     ) {
+      logRequest(req, u, 403, 0);
       return new Response("Private preview.\n", {
         status: 403,
         headers: { "content-type": "text/plain", "cache-control": "no-store", "x-robots-tag": "noindex" },
@@ -209,11 +188,12 @@ export default {
     }
     try {
       const res = await route(req, env, ctx);
-      logRequest(req, u, res.status);
+      logRequest(req, u, res.status, Date.now() - t0, res);
       if (req.method === "HEAD" && res.body) return new Response(null, res);
       return res;
     } catch (e) {
       console.error("unhandled", req.method, req.url, e instanceof Error ? e.stack : String(e));
+      logRequest(req, u, 500, Date.now() - t0);
       return messagePage(
         env,
         500,

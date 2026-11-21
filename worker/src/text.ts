@@ -233,6 +233,10 @@ export function robotsTxt(env: Env, origin: string): Response {
 
 User-agent: *
 Allow: /
+Disallow: /contact?
+Disallow: /auth/
+Disallow: /account
+Disallow: /api/upload/
 Crawl-delay: 5
 
 Sitemap: ${origin}/sitemap.xml
