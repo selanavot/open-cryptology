@@ -25,7 +25,8 @@ function contactConfigured(env: Env): boolean {
 }
 
 /** /contact: the contact form, with a GitHub issue as the alternative. ?paper=2024/123 and
- *  ?topic=help preselect the form. */
+ *  ?topic=help preselect the form. Paper pages link to /contact#paper=2024/123 instead (app.js fills
+ *  the form), so crawlers see one address here, not one per paper. */
 export function contactPage(env: Env, url: URL): Response {
   return page(env, {
     title: "Get in touch",

@@ -580,3 +580,14 @@
   window.addEventListener("hashchange", openContact);
   openContact();
 })();
+
+// "Report a problem" on a paper page links to /contact#paper=2024/123. The id travels in the
+// fragment so that crawlers following the link all land on the one /contact address.
+(function () {
+  var input = document.getElementById("c-paper");
+  var m = /^#paper=(\d{4}\/\d{1,6})$/.exec(decodeURIComponent(location.hash));
+  if (!input || !m || input.value) return;
+  input.value = m[1];
+  var topic = document.getElementById("c-topic");
+  if (topic && topic.querySelector('option[value="paper"]')) topic.value = "paper";
+})();
