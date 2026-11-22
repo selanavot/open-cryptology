@@ -809,9 +809,10 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-actions { display: none; }
 .cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-post-title { display: none; }
 
-/* a post's label (comment, issue, question or extension) and title: the choice at the top of the
-   box, the chip and title on a post, and the filter row above the thread */
-.cm-kinds { display: flex; flex-wrap: wrap; gap: .2rem; padding: .5rem .3rem 0; }
+/* a post's title and label (comment, issue, question or extension): the title above the text and
+   the labels under it, drawn like the chip; the chip and title on a post; the filter row */
+.cm-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: 0 1rem .7rem; }
+.cm-kinds-name { font-size: .78rem; color: #8a8f94; margin-right: .2rem; }
 .cm-kind input { position: absolute; opacity: 0; width: 0; height: 0; }
 .cm-kind span, .cm-filter {
   display: inline-block; padding: .32rem .7rem; border: 0; border-radius: 999px; background: none;
@@ -819,6 +820,8 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 }
 .cm-kind span:hover, .cm-filter:hover { background: #f2f1ec; color: var(--text); }
 .cm-kind input:checked + span, .cm-filter[aria-pressed="true"] { background: var(--sand-2); color: var(--text); }
+.cm-kind span { padding: .2rem .55rem; font-size: .72rem; font-weight: 700; letter-spacing: .02em; box-shadow: inset 0 0 0 1px var(--line); }
+.cm-kind input:checked + span { box-shadow: none; }
 .cm-kind-issue input:checked + span { color: #8f2a1c; background: #fbe9e4; }
 .cm-kind-extension input:checked + span { color: #2f5d3a; background: #e6f1e6; }
 .cm-kind input:focus-visible + span { box-shadow: 0 0 0 .2rem var(--focus); }

@@ -262,23 +262,24 @@ const ICON = {
 
 /** The comment box: top of the section, and (cloned by app.js) for replies and edits. */
 function composer(action: string, o: { submit: string; replyTo?: number; value?: string; id: string }): Html {
-  // Only the box at the top starts a post, so only it has the labels and the title. A post is a
+  // Only the box at the top starts a post, so only it has the title (above the text) and the
+  // labels (under it, drawn like the chip a post will carry). A post is a
   // plain comment unless another label is picked. app.js copies both into the edit box of a post.
   const top = o.replyTo === undefined;
   const title = top
     ? html`<input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" required placeholder="Title" aria-label="Title" autocomplete="off">`
     : "";
   const labels = top
-    ? html`<div class="cm-kinds" role="radiogroup" aria-label="Label">${KINDS.map(
+    ? html`<div class="cm-kinds" role="radiogroup" aria-label="Label"><span class="cm-kinds-name" aria-hidden="true">Label</span>${KINDS.map(
         (k) => html`<label class="cm-kind cm-kind-${k}"><input type="radio" name="kind" value="${k}"${k === "comment" ? raw(" checked") : ""}><span>${KIND_LABEL[k]}</span></label>`,
       )}</div>`
     : "";
   return html`<form class="cm-composer" method="post" action="${action}">
   ${o.replyTo !== undefined ? html`<input type="hidden" name="reply_to" value="${o.replyTo || ""}">` : ""}
-  ${labels}
   ${title}
   <textarea id="${o.id}" name="body" rows="3" maxlength="${MAX_BODY}" required placeholder="Add a comment" aria-label="${o.submit === "Save" ? "Edit comment" : "Add a comment"}">${o.value ?? ""}</textarea>
   <div class="cm-preview comment-body tex" hidden></div>
+  ${labels}
   <div class="cm-bar">
     <button type="button" class="cm-tool" data-preview aria-pressed="false">Preview</button>
     <span class="cm-spacer"></span>

@@ -530,7 +530,8 @@
           var ti = first.querySelector(".cm-title-input").cloneNode(true);
           ti.value = rawTitle[c.id] || "";
           ti.required = rawTitle[c.id] !== undefined;
-          box.before(ks, ti);
+          box.before(ti);
+          form.querySelector(".cm-bar").before(ks);
         }
         body.hidden = true;
         body.after(form);
