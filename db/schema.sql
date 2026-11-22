@@ -261,9 +261,10 @@ CREATE INDEX IF NOT EXISTS comments_user ON comments(user_id, created_at);
 -- comment types and votes (2026-11): worker/src/comments.ts. Run on an existing database with:
 --   sed -n '/^-- comment types and votes/,$p' db/schema.sql
 -- (the two ALTERs fail with "duplicate column" if run twice; the CREATEs are idempotent).
--- A top-level comment can be an issue or a question, with a title; replies are always 'comment'.
-ALTER TABLE comments ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment';  -- 'comment' | 'issue' | 'question'
-ALTER TABLE comments ADD COLUMN title TEXT;                            -- issues and questions only
+-- A top-level comment is a post with a title and an optional label (kind; 'comment' is none);
+-- replies are always 'comment' and have no title.
+ALTER TABLE comments ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment';  -- 'comment' | 'issue' | 'question' | 'extension'
+ALTER TABLE comments ADD COLUMN title TEXT;                            -- top-level posts
 
 -- One vote per person per comment: 1 (up) or -1 (down). Pages show only the sum; who voted is
 -- never shown. Only people vote (no agent API), and an account's votes go when it is deleted.

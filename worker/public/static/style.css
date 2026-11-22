@@ -809,9 +809,10 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-actions { display: none; }
 .cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-post-title { display: none; }
 
-/* a thread's tag (comment, issue, question) and title: the choice in the box, the chip and title
-   on a post, and the filter row above the thread */
-.cm-kinds { display: flex; gap: .2rem; padding: .5rem .55rem 0; }
+/* a post's title and optional label (issue, question or extension): the choice in the box's bar, the chip
+   and title on a post, and the filter row above the thread */
+.cm-kinds { display: inline-flex; align-items: center; gap: .15rem; margin-left: .4rem; }
+.cm-kinds-name { font-size: .78rem; color: #8a8f94; margin-right: .15rem; }
 .cm-kind input { position: absolute; opacity: 0; width: 0; height: 0; }
 .cm-kind span, .cm-filter {
   display: inline-block; padding: .32rem .7rem; border: 0; border-radius: 999px; background: none;
@@ -819,6 +820,8 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 }
 .cm-kind span:hover, .cm-filter:hover { background: #f2f1ec; color: var(--text); }
 .cm-kind input:checked + span, .cm-filter[aria-pressed="true"] { background: var(--sand-2); color: var(--text); }
+.cm-kind-issue input:checked + span { color: #8f2a1c; background: #fbe9e4; }
+.cm-kind-extension input:checked + span { color: #2f5d3a; background: #e6f1e6; }
 .cm-kind input:focus-visible + span { box-shadow: 0 0 0 .2rem var(--focus); }
 .cm-title-input {
   display: block; width: calc(100% - 2rem); margin: .55rem 1rem 0; padding: 0 0 .45rem; border: 0;
@@ -826,16 +829,16 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
   color: var(--text); outline: none;
 }
 .cm-title-input::placeholder { color: #8a8f94; font-weight: 600; }
-.cm-composer.is-collapsed .cm-kinds, .cm-composer.is-collapsed .cm-title-input { display: none; }
-.cm-flair-comment { color: var(--muted); background: #f2f1ec; }
+.cm-composer.is-collapsed .cm-title-input { display: none; }
 .cm-flair-issue { color: #8f2a1c; background: #fbe9e4; }
 .cm-flair-question { color: #5a5345; background: var(--sand-2); }
+.cm-flair-extension { color: #2f5d3a; background: #e6f1e6; }
 .cm-post-title { font-size: 1.02rem; font-weight: 650; line-height: 1.35; margin: .15rem 0 .2rem; overflow-wrap: break-word; }
 .cm-filters { display: flex; flex-wrap: wrap; gap: .2rem; margin: -.5rem 0 .2rem -.3rem; }
 .cm-filter .cm-count { margin-left: .15rem; }
 .cm-thread[data-show="issue"] > .cm:not([data-kind="issue"]),
 .cm-thread[data-show="question"] > .cm:not([data-kind="question"]),
-.cm-thread[data-show="comment"] > .cm:not([data-kind="comment"]) { display: none; }
+.cm-thread[data-show="extension"] > .cm:not([data-kind="extension"]) { display: none; }
 
 /* votes: up arrow, score, down arrow; the person's own vote is lit (app.js) */
 .cm-vote { display: inline-flex; align-items: center; margin: 0 .3rem 0 .2rem; }

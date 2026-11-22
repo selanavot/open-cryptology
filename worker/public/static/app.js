@@ -427,13 +427,16 @@
         submit.disabled = !box.value.trim() || !!(title && !title.value.trim());
       };
       if (title) title.addEventListener("input", grow);
-      form.querySelectorAll('input[name="kind"]').forEach(function (k) {
+      // The labels: at most one, and a click on the lit one takes it off.
+      var kinds = form.querySelectorAll('input[name="kind"]');
+      kinds.forEach(function (k) {
         k.addEventListener("change", function () {
+          if (k.checked) kinds.forEach(function (x) { if (x !== k) x.checked = false; });
           var kind = kindOf();
           box.placeholder = kind === "issue" ? "What’s wrong, where in the paper, and how serious you think it is"
-            : kind === "question" ? "What would you like to know?" : "Add a comment";
+            : kind === "question" ? "What would you like to know?"
+            : kind === "extension" ? "What follows from the paper, or how it could go further" : "Add a comment";
           grow();
-          (title.value.trim() ? box : title).focus();
         });
       });
       var write = function () {
@@ -574,7 +577,7 @@
       sec.querySelectorAll(".cm-menu[open]").forEach(function (m) { if (!m.contains(e.target)) m.open = false; });
     });
 
-    // The filter row: All, Issues, Questions, Comments (threads by tag).
+    // The filter row: All, Issues, Questions, Extensions (posts by label).
     var filters = sec.querySelector(".cm-filters");
     var thread = sec.querySelector(".cm-thread");
     if (filters) {

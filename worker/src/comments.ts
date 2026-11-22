@@ -4,8 +4,8 @@
 //
 // Bodies are plain text, like abstracts: paragraphs and line breaks are kept, URLs become links,
 // and $TeX$ is typeset by KaTeX in the browser. Replies nest (shown up to MAX_DEPTH levels).
-// A top-level comment starts a thread: it has a title and one tag (comment, issue or question),
-// shown as a chip and used by the filter row. Severity, location and the like are for the text,
+// A top-level comment is a post: it has a title and may carry one label, Issue, Question or
+// Extension (kind; 'comment' is a post with no label), shown as a chip and used by the filter row. Severity, location and the like are for the text,
 // not fields. Threads from before titles (2026-11) have none.
 // Every comment has up and down votes; pages show the sum, never who voted.
 //
@@ -31,9 +31,9 @@ export const MAX_BODY = 10_000;
 export const MAX_TITLE = 200;
 const DAILY = 200; // comments per account per 24 hours; lower it if there is abuse
 const VOTES_DAILY = 2000; // votes (and changes of vote) per account per 24 hours
-const KINDS = ["comment", "issue", "question"] as const;
+const KINDS = ["comment", "issue", "question", "extension"] as const;
 type Kind = (typeof KINDS)[number];
-const KIND_LABEL: Record<Kind, string> = { comment: "Comment", issue: "Issue", question: "Question" };
+const KIND_LABEL: Record<Kind, string> = { comment: "Comment", issue: "Issue", question: "Question", extension: "Extension" };
 const MS_TARGET = /^\d{4}-\d{2}-\d{2}\/\d+$/;
 
 interface Row {
@@ -92,7 +92,7 @@ const ERRORS = {
   rate: [429, `That's ${DAILY} comments in 24 hours, the most one account can post. Try again tomorrow.`],
   not_found: [404, "No such comment, or no such page."],
   bad_reply: [400, "reply_to must be a visible comment on the same page."],
-  bad_kind: [400, 'kind is "comment", "issue" or "question"; replies are always comments.'],
+  bad_kind: [400, 'kind is "comment" (no label), "issue", "question" or "extension"; replies are always comments.'],
   title: [400, `A top-level comment needs a title, up to ${MAX_TITLE} characters; replies have none.`],
   bad_vote: [400, "vote is 1, -1 or 0."],
   vote_rate: [429, "That's a lot of votes for one day. Try again tomorrow."],
@@ -258,22 +258,26 @@ const ICON = {
 
 /** The comment box: top of the section, and (cloned by app.js) for replies and edits. */
 function composer(action: string, o: { submit: string; replyTo?: number; value?: string; id: string }): Html {
-  // Only the box at the top starts a thread, so only it has the title and the tags. app.js adds a
-  // title field to the edit box of a titled post.
-  const kinds =
-    o.replyTo === undefined
-      ? html`<div class="cm-kinds" role="radiogroup" aria-label="Tag">${KINDS.map(
-          (k) => html`<label class="cm-kind"><input type="radio" name="kind" value="${k}"${k === "comment" ? raw(" checked") : ""}><span>${KIND_LABEL[k]}</span></label>`,
-        )}</div>
-  <input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" required placeholder="Title" aria-label="Title" autocomplete="off">`
-      : "";
+  // Only the box at the top starts a post, so only it has the title and the labels. A label is
+  // optional and there is at most one: app.js unticks the other (without it, the first one counts).
+  // app.js adds a title field to the edit box of a titled post.
+  const top = o.replyTo === undefined;
+  const title = top
+    ? html`<input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" required placeholder="Title" aria-label="Title" autocomplete="off">`
+    : "";
+  const labels = top
+    ? html`<span class="cm-kinds" role="group" aria-label="Label"><span class="cm-kinds-name">Label</span>${KINDS.filter((k) => k !== "comment").map(
+        (k) => html`<label class="cm-kind cm-kind-${k}"><input type="checkbox" name="kind" value="${k}"><span>${KIND_LABEL[k]}</span></label>`,
+      )}</span>`
+    : "";
   return html`<form class="cm-composer" method="post" action="${action}">
   ${o.replyTo !== undefined ? html`<input type="hidden" name="reply_to" value="${o.replyTo || ""}">` : ""}
-  ${kinds}
+  ${title}
   <textarea id="${o.id}" name="body" rows="3" maxlength="${MAX_BODY}" required placeholder="Add a comment" aria-label="${o.submit === "Save" ? "Edit comment" : "Add a comment"}">${o.value ?? ""}</textarea>
   <div class="cm-preview comment-body tex" hidden></div>
   <div class="cm-bar">
     <button type="button" class="cm-tool" data-preview aria-pressed="false">Preview</button>
+    ${labels}
     <span class="cm-spacer"></span>
     <button type="button" class="cm-cancel">Cancel</button>
     <button type="submit" class="cm-submit">${o.submit}</button>
@@ -313,7 +317,7 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
   const owner = live?.id ?? c.user_id;
   const login = `/account?next=${encodeURIComponent(`/${t.target}#comment-${c.id}`)}`;
   const deleted = c.state === "deleted";
-  const typed = c.reply_to == null && !deleted;
+  const post = c.reply_to == null && !deleted;
   return [
     html`<article class="cm${deleted ? " cm-deleted" : ""}" id="comment-${c.id}"${c.reply_to == null ? html` data-kind="${c.kind}"` : ""}${deleted ? "" : html` data-owner="${owner}"`}>
   <div class="cm-gutter">
@@ -322,8 +326,8 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
     ${line}
   </div>
   <div class="cm-content">
-    <div class="cm-head">${typed ? html`<span class="cm-flair cm-flair-${c.kind}">${KIND_LABEL[c.kind]}</span>` : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><span class="cm-edited" title="${day(c.edited_at)}">edited</span>` : ""}</div>
-    ${deleted ? html`<div class="cm-body cm-body-gone">Comment deleted</div>` : html`${typed && c.title ? html`<h3 class="cm-post-title tex">${c.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(c.body)}</div>
+    <div class="cm-head">${post && c.kind !== "comment" ? html`<span class="cm-flair cm-flair-${c.kind}">${KIND_LABEL[c.kind]}</span>` : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><span class="cm-edited" title="${day(c.edited_at)}">edited</span>` : ""}</div>
+    ${deleted ? html`<div class="cm-body cm-body-gone">Comment deleted</div>` : html`${post && c.title ? html`<h3 class="cm-post-title tex">${c.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(c.body)}</div>
     <div class="cm-actions">
       <form class="cm-vote" method="post" action="/comments/${c.id}/vote">
         <button class="cm-act cm-up" name="vote" value="1" aria-label="Upvote" aria-pressed="false">${ICON.up}</button>
@@ -379,13 +383,13 @@ export function commentsSection(t: Thread, url: URL): Html {
   }
   const top = t.rows.filter((c) => c.reply_to == null && keep.has(c.id));
   const count = t.rows.filter(shown).length;
-  // The filter row (app.js shows it): only when the page has an issue or a question to pick out.
+  // The filter row (app.js shows it): only when the page has a labelled post to pick out.
   const n = (k: Kind) => top.filter((c) => c.kind === k && c.state === "visible").length;
   const filters =
-    n("issue") + n("question") > 0
+    n("issue") + n("question") + n("extension") > 0
       ? html`<div class="cm-filters" role="group" aria-label="Show" hidden>
     <button type="button" class="cm-filter" data-filter="" aria-pressed="true">All</button>
-    ${([["issue", "Issues"], ["question", "Questions"], ["comment", "Comments"]] as const).map(([k, label]) =>
+    ${([["issue", "Issues"], ["question", "Questions"], ["extension", "Extensions"]] as const).map(([k, label]) =>
       n(k) ? html`<button type="button" class="cm-filter" data-filter="${k}" aria-pressed="false">${label} <span class="cm-count">${n(k)}</span></button>` : "",
     )}
   </div>`
