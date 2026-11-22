@@ -811,8 +811,10 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 
 /* a post's title and label (comment, issue, question or extension): the title above the text and
    the labels under it, drawn like the chip; the chip and title on a post; the filter row */
-.cm-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: 0 1rem .7rem; }
-.cm-kinds-name { font-size: .78rem; color: #8a8f94; margin-right: .2rem; }
+.cm-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: 0 1rem .75rem; }
+/* the chips belong to the post being written; a line sets the box's buttons apart from them */
+.cm-kinds + .cm-bar { border-top: 1px solid var(--line); margin: 0 1rem; padding: .5rem 0; }
+.cm-kinds + .cm-bar .cm-tool { margin-left: -.6rem; }
 .cm-kind input { position: absolute; opacity: 0; width: 0; height: 0; }
 .cm-kind span, .cm-filter {
   display: inline-block; padding: .32rem .7rem; border: 0; border-radius: 999px; background: none;

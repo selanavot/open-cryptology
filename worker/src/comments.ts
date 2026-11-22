@@ -270,7 +270,7 @@ function composer(action: string, o: { submit: string; replyTo?: number; value?:
     ? html`<input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" required placeholder="Title" aria-label="Title" autocomplete="off">`
     : "";
   const labels = top
-    ? html`<div class="cm-kinds" role="radiogroup" aria-label="Label"><span class="cm-kinds-name" aria-hidden="true">Label</span>${KINDS.map(
+    ? html`<div class="cm-kinds" role="radiogroup" aria-label="Label">${KINDS.map(
         (k) => html`<label class="cm-kind cm-kind-${k}"><input type="radio" name="kind" value="${k}"${k === "comment" ? raw(" checked") : ""}><span>${KIND_LABEL[k]}</span></label>`,
       )}</div>`
     : "";
