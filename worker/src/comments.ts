@@ -4,8 +4,9 @@
 //
 // Bodies are plain text, like abstracts: paragraphs and line breaks are kept, URLs become links,
 // and $TeX$ is typeset by KaTeX in the browser. Replies nest (shown up to MAX_DEPTH levels).
-// A top-level comment can be an issue or a question: it then has a title, a chip, and a place in
-// the filter row. Severity, location and the like are for the text, not fields.
+// A top-level comment starts a thread: it has a title and one tag (comment, issue or question),
+// shown as a chip and used by the filter row. Severity, location and the like are for the text,
+// not fields. Threads from before titles (2026-11) have none.
 // Every comment has up and down votes; pages show the sum, never who voted.
 //
 // Who may do what (checked here; the page only hides controls):
@@ -92,7 +93,7 @@ const ERRORS = {
   not_found: [404, "No such comment, or no such page."],
   bad_reply: [400, "reply_to must be a visible comment on the same page."],
   bad_kind: [400, 'kind is "comment", "issue" or "question"; replies are always comments.'],
-  title: [400, `Issues and questions need a title, up to ${MAX_TITLE} characters; other comments have none.`],
+  title: [400, `A top-level comment needs a title, up to ${MAX_TITLE} characters; replies have none.`],
   bad_vote: [400, "vote is 1, -1 or 0."],
   vote_rate: [429, "That's a lot of votes for one day. Try again tomorrow."],
   not_yours: [403, "Only its author can edit or delete a comment."],
@@ -109,12 +110,12 @@ function checkBody(s: string): string | Fail {
   return body;
 }
 
-/** The kind and title of a post, checked: only top-level issues and questions have a title. */
+/** The kind and title of a post, checked: a top-level post has a title, a reply has none. */
 function checkKind(kind: string, title: string, isReply: boolean): { kind: Kind; title: string | null } | Fail {
   const k = (kind || "comment") as Kind;
   if (!KINDS.includes(k) || (isReply && k !== "comment")) return { error: "bad_kind" };
   const t = title.replace(/\s+/g, " ").trim();
-  if (k === "comment" ? t : !t || t.length > MAX_TITLE) return { error: "title" };
+  if (isReply ? t : !t || t.length > MAX_TITLE) return { error: "title" };
   return { kind: k, title: t || null };
 }
 
@@ -153,13 +154,15 @@ async function getComment(env: Env, id: number): Promise<(Row & { owner: string 
     .first<Row & { owner: string }>();
 }
 
-/** New text, and for an issue or question a new title if one is given (its kind stays). */
+/** New text, and for a top-level post a new title if one is given (its kind stays). A thread
+ *  from before titles stays untitled until it is given one. */
 async function editComment(env: Env, user: User, c: Row & { owner: string }, text: string, newTitle?: string): Promise<null | Fail> {
   if (c.owner !== user.id) return { error: "not_yours" };
   if (c.state !== "visible") return { error: "removed" };
   const body = checkBody(text);
   if (typeof body !== "string") return body;
-  const k = checkKind(c.kind, newTitle ?? c.title ?? "", c.reply_to != null);
+  const k =
+    newTitle === undefined && c.title == null ? { kind: c.kind, title: null } : checkKind(c.kind, newTitle ?? c.title ?? "", c.reply_to != null);
   if ("error" in k) return k;
   if (body !== c.body || k.title !== c.title)
     await env.DB.prepare("UPDATE comments SET body = ?2, title = ?3, edited_at = ?4 WHERE id = ?1").bind(c.id, body, k.title, new Date().toISOString()).run();
@@ -255,14 +258,14 @@ const ICON = {
 
 /** The comment box: top of the section, and (cloned by app.js) for replies and edits. */
 function composer(action: string, o: { submit: string; replyTo?: number; value?: string; id: string }): Html {
-  // Only the box at the top starts a post, so only it offers the kinds. The title field shows for
-  // issues and questions (style.css, :has), and app.js adds one to the edit box of such a post.
+  // Only the box at the top starts a thread, so only it has the title and the tags. app.js adds a
+  // title field to the edit box of a titled post.
   const kinds =
     o.replyTo === undefined
-      ? html`<div class="cm-kinds" role="radiogroup" aria-label="Kind of post">${KINDS.map(
+      ? html`<div class="cm-kinds" role="radiogroup" aria-label="Tag">${KINDS.map(
           (k) => html`<label class="cm-kind"><input type="radio" name="kind" value="${k}"${k === "comment" ? raw(" checked") : ""}><span>${KIND_LABEL[k]}</span></label>`,
         )}</div>
-  <input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" placeholder="Title" aria-label="Title" autocomplete="off">`
+  <input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" required placeholder="Title" aria-label="Title" autocomplete="off">`
       : "";
   return html`<form class="cm-composer" method="post" action="${action}">
   ${o.replyTo !== undefined ? html`<input type="hidden" name="reply_to" value="${o.replyTo || ""}">` : ""}
@@ -310,7 +313,7 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
   const owner = live?.id ?? c.user_id;
   const login = `/account?next=${encodeURIComponent(`/${t.target}#comment-${c.id}`)}`;
   const deleted = c.state === "deleted";
-  const typed = c.kind !== "comment" && !deleted;
+  const typed = c.reply_to == null && !deleted;
   return [
     html`<article class="cm${deleted ? " cm-deleted" : ""}" id="comment-${c.id}"${c.reply_to == null ? html` data-kind="${c.kind}"` : ""}${deleted ? "" : html` data-owner="${owner}"`}>
   <div class="cm-gutter">
@@ -320,7 +323,7 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
   </div>
   <div class="cm-content">
     <div class="cm-head">${typed ? html`<span class="cm-flair cm-flair-${c.kind}">${KIND_LABEL[c.kind]}</span>` : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><span class="cm-edited" title="${day(c.edited_at)}">edited</span>` : ""}</div>
-    ${deleted ? html`<div class="cm-body cm-body-gone">Comment deleted</div>` : html`${typed ? html`<h3 class="cm-post-title tex">${c.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(c.body)}</div>
+    ${deleted ? html`<div class="cm-body cm-body-gone">Comment deleted</div>` : html`${typed && c.title ? html`<h3 class="cm-post-title tex">${c.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(c.body)}</div>
     <div class="cm-actions">
       <form class="cm-vote" method="post" action="/comments/${c.id}/vote">
         <button class="cm-act cm-up" name="vote" value="1" aria-label="Upvote" aria-pressed="false">${ICON.up}</button>
@@ -354,7 +357,7 @@ const PAGE_ERRORS: Record<string, string> = {
   not_found: "That comment no longer exists.",
   bad_reply: "That comment no longer exists.",
   bad_kind: "Couldn’t post that. Try again.",
-  title: `Issues and questions need a title, up to ${MAX_TITLE} characters.`,
+  title: `Give your comment a title, up to ${MAX_TITLE} characters.`,
   bad_vote: "Couldn’t count that vote. Try again.",
   vote_rate: "You’ve reached today’s voting limit.",
   removed: "That comment was deleted.",
@@ -382,7 +385,7 @@ export function commentsSection(t: Thread, url: URL): Html {
     n("issue") + n("question") > 0
       ? html`<div class="cm-filters" role="group" aria-label="Show" hidden>
     <button type="button" class="cm-filter" data-filter="" aria-pressed="true">All</button>
-    ${([["issue", "Issues"], ["question", "Questions"], ["comment", "Discussion"]] as const).map(([k, label]) =>
+    ${([["issue", "Issues"], ["question", "Questions"], ["comment", "Comments"]] as const).map(([k, label]) =>
       n(k) ? html`<button type="button" class="cm-filter" data-filter="${k}" aria-pressed="false">${label} <span class="cm-count">${n(k)}</span></button>` : "",
     )}
   </div>`
@@ -390,7 +393,7 @@ export function commentsSection(t: Thread, url: URL): Html {
   return html`<section id="comments" class="cm-section" data-target="${t.target}" data-login-heading="${LOGIN_HEADING}">
   <h2 class="cm-title">Comments${count ? html` <span class="cm-count">${count}</span>` : ""}</h2>
   ${error && html`<div class="cm-error" role="alert">${error}</div>`}
-  ${composer(`/${t.target}/comments`, { submit: "Comment", id: "comment-new" })}
+  ${composer(`/${t.target}/comments`, { submit: "Post", id: "comment-new" })}
   <template id="cm-reply-template">${composer(`/${t.target}/comments`, { submit: "Reply", replyTo: 0, id: "" })}</template>
   ${filters}
   <div class="cm-thread">${top.flatMap((c) => commentHtml(t, c, kids, keep, 1))}</div>
@@ -457,9 +460,8 @@ async function form(req: Request, env: Env, path: string): Promise<Response> {
       : back(target, a.code);
   if (nm) {
     const replyTo = Number(field("reply_to")) || null;
-    // The title box keeps what was typed when the person switches back to a plain comment.
     const kind = replyTo ? "comment" : field("kind") || "comment";
-    const r = await addComment(env, a.user, target, { body: field("body"), replyTo, kind, title: kind === "comment" ? "" : field("title") });
+    const r = await addComment(env, a.user, target, { body: field("body"), replyTo, kind, title: replyTo ? "" : field("title") });
     return "error" in r ? back(target, r.error) : back(target, "posted", `comment-${r.id}`);
   }
   const action = am![2];
@@ -561,7 +563,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   const who = await tokenActor(env, req, origin, "comments");
   if (who instanceof Response) return who;
   const f = await readFields(req);
-  if (f.body === undefined && f.title === undefined) return err(400, "nothing_to_do", 'Send {"body": "..."} with the new text ("title" retitles an issue or question).');
+  if (f.body === undefined && f.title === undefined) return err(400, "nothing_to_do", 'Send {"body": "..."} with the new text ("title" retitles a top-level comment).');
   const r = await editComment(env, who.user, c, typeof f.body === "string" ? f.body : c.body, typeof f.title === "string" ? f.title : undefined);
   if (r) return fail(r);
   const t = await loadThread(env, c.target);

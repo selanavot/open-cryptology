@@ -415,16 +415,16 @@
       var preview = form.querySelector(".cm-preview");
       var toggle = form.querySelector("[data-preview]");
       var submit = form.querySelector(".cm-submit");
-      // An issue or a question needs a title: the box at the top (by its kind) and their edit boxes.
+      // A thread needs a title: the box at the top, and the edit box of a titled post.
       var title = form.querySelector(".cm-title-input");
       var kindOf = function () {
         var k = form.querySelector('input[name="kind"]:checked');
-        return k ? k.value : title ? "issue" : "comment";
+        return k ? k.value : "comment";
       };
       var grow = function () {
         box.style.height = "auto";
         box.style.height = box.scrollHeight + 2 + "px";
-        submit.disabled = !box.value.trim() || (kindOf() !== "comment" && !title.value.trim());
+        submit.disabled = !box.value.trim() || !!(title && !title.value.trim());
       };
       if (title) title.addEventListener("input", grow);
       form.querySelectorAll('input[name="kind"]').forEach(function (k) {
@@ -432,9 +432,8 @@
           var kind = kindOf();
           box.placeholder = kind === "issue" ? "What’s wrong, where in the paper, and how serious you think it is"
             : kind === "question" ? "What would you like to know?" : "Add a comment";
-          submit.textContent = kind === "comment" ? "Comment" : "Post";
           grow();
-          (kind === "comment" ? box : title).focus();
+          (title.value.trim() ? box : title).focus();
         });
       });
       var write = function () {
@@ -493,7 +492,13 @@
         t.box.addEventListener("click", go);
         t.box.addEventListener("keydown", function (e) { if (e.key !== "Tab") go(e); });
       } else {
-        var expand = function () { top.classList.remove("is-collapsed"); };
+        // Opening the box starts at the title.
+        var expand = function () {
+          if (!top.classList.contains("is-collapsed")) return;
+          top.classList.remove("is-collapsed");
+          var ti = top.querySelector(".cm-title-input");
+          if (ti && !ti.value) ti.focus();
+        };
         ["focus", "click", "input"].forEach(function (ev) { t.box.addEventListener(ev, expand); });
       }
     }
@@ -569,7 +574,7 @@
       sec.querySelectorAll(".cm-menu[open]").forEach(function (m) { if (!m.contains(e.target)) m.open = false; });
     });
 
-    // The filter row: All, Issues, Questions, Discussion (top-level posts by kind).
+    // The filter row: All, Issues, Questions, Comments (threads by tag).
     var filters = sec.querySelector(".cm-filters");
     var thread = sec.querySelector(".cm-thread");
     if (filters) {

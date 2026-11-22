@@ -809,8 +809,8 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-actions { display: none; }
 .cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-post-title { display: none; }
 
-/* kinds of post (comment, issue, question): the choice in the box, the chip and title on a post,
-   and the filter row above the thread */
+/* a thread's tag (comment, issue, question) and title: the choice in the box, the chip and title
+   on a post, and the filter row above the thread */
 .cm-kinds { display: flex; gap: .2rem; padding: .5rem .55rem 0; }
 .cm-kind input { position: absolute; opacity: 0; width: 0; height: 0; }
 .cm-kind span, .cm-filter {
@@ -826,8 +826,8 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
   color: var(--text); outline: none;
 }
 .cm-title-input::placeholder { color: #8a8f94; font-weight: 600; }
-.cm-composer:has(.cm-kind input[value="comment"]:checked) .cm-title-input,
 .cm-composer.is-collapsed .cm-kinds, .cm-composer.is-collapsed .cm-title-input { display: none; }
+.cm-flair-comment { color: var(--muted); background: #f2f1ec; }
 .cm-flair-issue { color: #8f2a1c; background: #fbe9e4; }
 .cm-flair-question { color: #5a5345; background: var(--sand-2); }
 .cm-post-title { font-size: 1.02rem; font-weight: 650; line-height: 1.35; margin: .15rem 0 .2rem; overflow-wrap: break-word; }

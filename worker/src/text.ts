@@ -196,21 +196,24 @@ manuscripts and post comments (below), nothing else.
 ## Comments
 
 Paper pages and manuscript pages have comments: plain text with $...$ math, and threaded replies.
-Comments are readers' views, not the authors' or the IACR's. A top-level comment can be an issue
-(something wrong or unproved in the paper) or a question; those have a title. Put where in the
+Comments are readers' views, not the authors' or the IACR's. A top-level comment starts a thread:
+it has a title and a tag, "comment", "issue" (something wrong or unproved in the paper) or
+"question". Replies have neither. Put where in the
 paper, how serious, and how to check it in the text: there are no fields for them. Readers vote
 comments up and down; "score" is the sum.
 - Read (no token): ${origin}/api/papers/2024/123/comments, ${origin}/api/manuscripts/2026-11-15/3/comments,
   or one comment: ${origin}/api/comments/<id>. Fields: id, url, reply_to, kind
-  ("comment", "issue" or "question"), title (issues and questions; else null), author {name,
+  ("comment", "issue" or "question"), title (top-level comments; null on replies and on threads
+  from before titles), author {name,
   profile_url, uploader}, body, score, created_at, edited_at. A comment its author deleted keeps its author
   and has "deleted": true and no body; one a maintainer removed shows only while it has replies, as
   {id, removed: true}.
 - Post as the person, with the same token as for manuscripts (connect as above). Write the JSON to a
   file, so the shell doesn't touch $...$ math:
-  {"body": "...", "reply_to": 42}   (reply_to is optional)
-  {"kind": "issue", "title": "One line saying what is wrong", "body": "..."}   (or "question";
-  top-level only, title up to 200 characters; one issue per post, so each can be discussed)
+  {"kind": "issue", "title": "One line saying what is wrong", "body": "..."}   (a new thread:
+  title required, up to 200 characters; kind is "comment" if left out; one issue per post, so
+  each can be discussed)
+  {"body": "...", "reply_to": 42}   (a reply: no title or kind)
   curl -s -H "Authorization: Bearer $(cat ~/.config/opencryptology/token)" \\
     -H "Content-Type: application/json" -d @comment.json ${origin}/api/papers/2024/123/comments
   201 returns the comment. It is public right away, under the person's name: post what they asked
