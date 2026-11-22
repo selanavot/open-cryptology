@@ -415,7 +415,7 @@
       var preview = form.querySelector(".cm-preview");
       var toggle = form.querySelector("[data-preview]");
       var submit = form.querySelector(".cm-submit");
-      // A thread needs a title: the box at the top, and the edit box of a titled post.
+      // A post needs a title: the box at the top, and the edit box of a titled post.
       var title = form.querySelector(".cm-title-input");
       var kindOf = function () {
         var k = form.querySelector('input[name="kind"]:checked');
@@ -424,14 +424,11 @@
       var grow = function () {
         box.style.height = "auto";
         box.style.height = box.scrollHeight + 2 + "px";
-        submit.disabled = !box.value.trim() || !!(title && !title.value.trim());
+        submit.disabled = !box.value.trim() || !!(title && title.required && !title.value.trim());
       };
       if (title) title.addEventListener("input", grow);
-      // The labels: at most one, and a click on the lit one takes it off.
-      var kinds = form.querySelectorAll('input[name="kind"]');
-      kinds.forEach(function (k) {
+      form.querySelectorAll('input[name="kind"]').forEach(function (k) {
         k.addEventListener("change", function () {
-          if (k.checked) kinds.forEach(function (x) { if (x !== k) x.checked = false; });
           var kind = kindOf();
           box.placeholder = kind === "issue" ? "What’s wrong, where in the paper, and how serious you think it is"
             : kind === "question" ? "What would you like to know?"
@@ -524,15 +521,16 @@
         form.querySelector(".cm-submit").textContent = "Save";
         box.value = raw[c.id] || "";
         box.setAttribute("aria-label", "Edit comment");
-        if (rawTitle[c.id] !== undefined) {
-          var ti = document.createElement("input");
-          ti.className = "cm-title-input";
-          ti.type = "text";
-          ti.name = "title";
-          ti.maxLength = 200;
-          ti.value = rawTitle[c.id];
-          ti.setAttribute("aria-label", "Title");
-          box.before(ti);
+        // A post's label and title can be changed too: both are copied from the box at the top.
+        // A post from before titles may stay without one.
+        var first = sec.querySelector(".cm-section > .cm-composer");
+        if (c.hasAttribute("data-kind") && first) {
+          var ks = first.querySelector(".cm-kinds").cloneNode(true);
+          ks.querySelectorAll("input").forEach(function (x) { x.checked = x.value === c.getAttribute("data-kind"); });
+          var ti = first.querySelector(".cm-title-input").cloneNode(true);
+          ti.value = rawTitle[c.id] || "";
+          ti.required = rawTitle[c.id] !== undefined;
+          box.before(ks, ti);
         }
         body.hidden = true;
         body.after(form);

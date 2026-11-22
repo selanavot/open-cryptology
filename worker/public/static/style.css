@@ -809,10 +809,9 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-actions { display: none; }
 .cm-content:has(> .cm-composer[data-kind="edit"]) > .cm-post-title { display: none; }
 
-/* a post's title and optional label (issue, question or extension): the choice in the box's bar, the chip
-   and title on a post, and the filter row above the thread */
-.cm-kinds { display: inline-flex; align-items: center; gap: .15rem; margin-left: .4rem; }
-.cm-kinds-name { font-size: .78rem; color: #8a8f94; margin-right: .15rem; }
+/* a post's label (comment, issue, question or extension) and title: the choice at the top of the
+   box, the chip and title on a post, and the filter row above the thread */
+.cm-kinds { display: flex; flex-wrap: wrap; gap: .2rem; padding: .5rem .3rem 0; }
 .cm-kind input { position: absolute; opacity: 0; width: 0; height: 0; }
 .cm-kind span, .cm-filter {
   display: inline-block; padding: .32rem .7rem; border: 0; border-radius: 999px; background: none;
@@ -829,7 +828,7 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
   color: var(--text); outline: none;
 }
 .cm-title-input::placeholder { color: #8a8f94; font-weight: 600; }
-.cm-composer.is-collapsed .cm-title-input { display: none; }
+.cm-composer.is-collapsed .cm-kinds, .cm-composer.is-collapsed .cm-title-input { display: none; }
 .cm-flair-issue { color: #8f2a1c; background: #fbe9e4; }
 .cm-flair-question { color: #5a5345; background: var(--sand-2); }
 .cm-flair-extension { color: #2f5d3a; background: #e6f1e6; }

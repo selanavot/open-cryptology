@@ -154,18 +154,22 @@ async function getComment(env: Env, id: number): Promise<(Row & { owner: string 
     .first<Row & { owner: string }>();
 }
 
-/** New text, and for a top-level post a new title if one is given (its kind stays). A thread
- *  from before titles stays untitled until it is given one. */
-async function editComment(env: Env, user: User, c: Row & { owner: string }, text: string, newTitle?: string): Promise<null | Fail> {
+/** New text, and for a top-level post a new title and label if given. A post from before
+ *  titles stays untitled until it is given one. */
+async function editComment(env: Env, user: User, c: Row & { owner: string }, text: string, newTitle?: string, newKind?: string): Promise<null | Fail> {
   if (c.owner !== user.id) return { error: "not_yours" };
   if (c.state !== "visible") return { error: "removed" };
   const body = checkBody(text);
   if (typeof body !== "string") return body;
-  const k =
-    newTitle === undefined && c.title == null ? { kind: c.kind, title: null } : checkKind(c.kind, newTitle ?? c.title ?? "", c.reply_to != null);
+  const title = newTitle ?? c.title ?? "";
+  const untitled = c.reply_to == null && c.title == null && !title.trim();
+  const k = checkKind(newKind ?? c.kind, untitled ? "-" : title, c.reply_to != null);
   if ("error" in k) return k;
-  if (body !== c.body || k.title !== c.title)
-    await env.DB.prepare("UPDATE comments SET body = ?2, title = ?3, edited_at = ?4 WHERE id = ?1").bind(c.id, body, k.title, new Date().toISOString()).run();
+  if (untitled) k.title = null;
+  if (body !== c.body || k.title !== c.title || k.kind !== c.kind)
+    await env.DB.prepare("UPDATE comments SET body = ?2, title = ?3, kind = ?4, edited_at = ?5 WHERE id = ?1")
+      .bind(c.id, body, k.title, k.kind, new Date().toISOString())
+      .run();
   return null;
 }
 
@@ -258,26 +262,25 @@ const ICON = {
 
 /** The comment box: top of the section, and (cloned by app.js) for replies and edits. */
 function composer(action: string, o: { submit: string; replyTo?: number; value?: string; id: string }): Html {
-  // Only the box at the top starts a post, so only it has the title and the labels. A label is
-  // optional and there is at most one: app.js unticks the other (without it, the first one counts).
-  // app.js adds a title field to the edit box of a titled post.
+  // Only the box at the top starts a post, so only it has the labels and the title. A post is a
+  // plain comment unless another label is picked. app.js copies both into the edit box of a post.
   const top = o.replyTo === undefined;
   const title = top
     ? html`<input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" required placeholder="Title" aria-label="Title" autocomplete="off">`
     : "";
   const labels = top
-    ? html`<span class="cm-kinds" role="group" aria-label="Label"><span class="cm-kinds-name">Label</span>${KINDS.filter((k) => k !== "comment").map(
-        (k) => html`<label class="cm-kind cm-kind-${k}"><input type="checkbox" name="kind" value="${k}"><span>${KIND_LABEL[k]}</span></label>`,
-      )}</span>`
+    ? html`<div class="cm-kinds" role="radiogroup" aria-label="Label">${KINDS.map(
+        (k) => html`<label class="cm-kind cm-kind-${k}"><input type="radio" name="kind" value="${k}"${k === "comment" ? raw(" checked") : ""}><span>${KIND_LABEL[k]}</span></label>`,
+      )}</div>`
     : "";
   return html`<form class="cm-composer" method="post" action="${action}">
   ${o.replyTo !== undefined ? html`<input type="hidden" name="reply_to" value="${o.replyTo || ""}">` : ""}
+  ${labels}
   ${title}
   <textarea id="${o.id}" name="body" rows="3" maxlength="${MAX_BODY}" required placeholder="Add a comment" aria-label="${o.submit === "Save" ? "Edit comment" : "Add a comment"}">${o.value ?? ""}</textarea>
   <div class="cm-preview comment-body tex" hidden></div>
   <div class="cm-bar">
     <button type="button" class="cm-tool" data-preview aria-pressed="false">Preview</button>
-    ${labels}
     <span class="cm-spacer"></span>
     <button type="button" class="cm-cancel">Cancel</button>
     <button type="submit" class="cm-submit">${o.submit}</button>
@@ -475,7 +478,7 @@ async function form(req: Request, env: Env, path: string): Promise<Response> {
   }
   const r =
     action === "edit"
-      ? await editComment(env, a.user, c!, field("body"), f.has("title") ? field("title") : undefined)
+      ? await editComment(env, a.user, c!, field("body"), f.has("title") ? field("title") : undefined, f.has("kind") ? field("kind") : undefined)
       : await removeComment(env, a.user, c!, action as "delete" | "hide");
   const done = { edit: "edited", delete: "deleted", hide: "hidden" }[action]!;
   return r ? back(target, r.error, `comment-${c!.id}`) : back(target, done, `comment-${c!.id}`);
@@ -567,8 +570,16 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   const who = await tokenActor(env, req, origin, "comments");
   if (who instanceof Response) return who;
   const f = await readFields(req);
-  if (f.body === undefined && f.title === undefined) return err(400, "nothing_to_do", 'Send {"body": "..."} with the new text ("title" retitles a top-level comment).');
-  const r = await editComment(env, who.user, c, typeof f.body === "string" ? f.body : c.body, typeof f.title === "string" ? f.title : undefined);
+  if (f.body === undefined && f.title === undefined && f.kind === undefined)
+    return err(400, "nothing_to_do", 'Send {"body": "..."} with the new text ("title" and "kind" retitle and relabel a top-level comment).');
+  const r = await editComment(
+    env,
+    who.user,
+    c,
+    typeof f.body === "string" ? f.body : c.body,
+    typeof f.title === "string" ? f.title : undefined,
+    typeof f.kind === "string" ? f.kind : undefined,
+  );
   if (r) return fail(r);
   const t = await loadThread(env, c.target);
   return json(commentJson(origin, t, t.rows.find((x) => x.id === id)!));

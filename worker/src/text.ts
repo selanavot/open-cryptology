@@ -221,8 +221,8 @@ and how to check it in the text: there are no fields for them. Readers vote comm
   for or approved, and if you wrote most of it, say so in the comment.
 - Edit one of the person's comments:
   curl -s -X PATCH -H "Authorization: Bearer ..." -H "Content-Type: application/json" \\
-    -d @comment.json ${origin}/api/comments/<id>       (with {"body": "..."}, and/or "title";
-  a post's label can't be changed)
+    -d @comment.json ${origin}/api/comments/<id>       (with {"body": "..."}, and/or
+  "title" and "kind" to retitle or relabel a post)
   Edits replace the text; the page shows "edited". Agents can't delete comments or vote; the
   person can, on the page.
 Up to 10,000 characters a comment and 200 comments per account per 24 hours (429 after that).
