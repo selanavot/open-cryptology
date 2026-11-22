@@ -393,10 +393,12 @@
     var loginHeading = sec.getAttribute("data-login-heading");
     var tpl = document.getElementById("cm-reply-template");
     // A comment's text before TeX is typeset: the box opened by Edit starts from it.
-    var raw = {};
+    var raw = {}, rawTitle = {};
     sec.querySelectorAll(".cm").forEach(function (c) {
       var b = c.querySelector(":scope > .cm-content > .cm-body");
       if (b) raw[c.id] = b.textContent;
+      var h = c.querySelector(":scope > .cm-content > .cm-post-title");
+      if (h) rawTitle[c.id] = h.textContent;
     });
     sec.querySelectorAll(".cm-time time").forEach(function (t) {
       var rel = timeAgo(t.getAttribute("datetime"));
@@ -413,11 +415,28 @@
       var preview = form.querySelector(".cm-preview");
       var toggle = form.querySelector("[data-preview]");
       var submit = form.querySelector(".cm-submit");
+      // An issue or a question needs a title: the box at the top (by its kind) and their edit boxes.
+      var title = form.querySelector(".cm-title-input");
+      var kindOf = function () {
+        var k = form.querySelector('input[name="kind"]:checked');
+        return k ? k.value : title ? "issue" : "comment";
+      };
       var grow = function () {
         box.style.height = "auto";
         box.style.height = box.scrollHeight + 2 + "px";
-        submit.disabled = !box.value.trim();
+        submit.disabled = !box.value.trim() || (kindOf() !== "comment" && !title.value.trim());
       };
+      if (title) title.addEventListener("input", grow);
+      form.querySelectorAll('input[name="kind"]').forEach(function (k) {
+        k.addEventListener("change", function () {
+          var kind = kindOf();
+          box.placeholder = kind === "issue" ? "What’s wrong, where in the paper, and how serious you think it is"
+            : kind === "question" ? "What would you like to know?" : "Add a comment";
+          submit.textContent = kind === "comment" ? "Comment" : "Post";
+          grow();
+          (kind === "comment" ? box : title).focus();
+        });
+      });
       var write = function () {
         preview.hidden = true;
         box.hidden = false;
@@ -455,7 +474,9 @@
       var t = wire(top, {
         cancel: function () {
           t.box.value = "";
-          t.grow();
+          top.reset();
+          top.querySelector('input[name="kind"]').dispatchEvent(new Event("change"));
+          t.box.blur();
           top.classList.add("is-collapsed");
         },
       });
@@ -495,6 +516,16 @@
         form.querySelector(".cm-submit").textContent = "Save";
         box.value = raw[c.id] || "";
         box.setAttribute("aria-label", "Edit comment");
+        if (rawTitle[c.id] !== undefined) {
+          var ti = document.createElement("input");
+          ti.className = "cm-title-input";
+          ti.type = "text";
+          ti.name = "title";
+          ti.maxLength = 200;
+          ti.value = rawTitle[c.id];
+          ti.setAttribute("aria-label", "Title");
+          box.before(ti);
+        }
         body.hidden = true;
         body.after(form);
       } else {
@@ -538,7 +569,62 @@
       sec.querySelectorAll(".cm-menu[open]").forEach(function (m) { if (!m.contains(e.target)) m.open = false; });
     });
 
+    // The filter row: All, Issues, Questions, Discussion (top-level posts by kind).
+    var filters = sec.querySelector(".cm-filters");
+    var thread = sec.querySelector(".cm-thread");
+    if (filters) {
+      filters.hidden = false;
+      filters.addEventListener("click", function (e) {
+        var b = e.target.closest(".cm-filter");
+        if (!b) return;
+        filters.querySelectorAll(".cm-filter").forEach(function (x) { x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+        thread.setAttribute("data-show", b.getAttribute("data-filter"));
+      });
+    }
+
+    // Votes. The arrows are forms, so they work without this; here they vote in place. Signed
+    // out, they open the log-in pop-up.
+    function showVote(form, score, mine) {
+      form.querySelector(".cm-score").textContent = score;
+      form.classList.toggle("is-up", mine > 0);
+      form.classList.toggle("is-down", mine < 0);
+      form.querySelector(".cm-up").setAttribute("aria-pressed", mine > 0 ? "true" : "false");
+      form.querySelector(".cm-down").setAttribute("aria-pressed", mine < 0 ? "true" : "false");
+    }
+    sec.addEventListener("submit", function (e) {
+      var form = e.target;
+      if (!form.matches || !form.matches(".cm-vote") || !e.submitter) return;
+      var c = form.closest(".cm");
+      if (!signedIn) {
+        e.preventDefault();
+        var next = location.pathname + "#" + c.id;
+        if (!(window.ocLogin && window.ocLogin("Log in or create an account to vote", next))) location.assign("/account?next=" + encodeURIComponent(next));
+        return;
+      }
+      if (!window.fetch || !window.URLSearchParams) return;
+      e.preventDefault();
+      fetch(form.action, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { accept: "application/json" },
+        body: new URLSearchParams({ vote: e.submitter.value }),
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d && typeof d.score === "number") showVote(form, d.score, d.vote);
+        else if (d && d.error === "signin") location.assign("/account?next=" + encodeURIComponent(location.pathname + "#" + c.id));
+      }, function () { /* leave it as it was */ });
+    });
+
     if (!signedIn || !window.fetch) return;
+    // The page is cached for everyone: fetch this person's votes, and the scores as they are now.
+    fetch("/" + sec.getAttribute("data-target") + "/comments/votes", { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        sec.querySelectorAll(".cm-vote").forEach(function (form) {
+          var id = form.closest(".cm").id.replace("comment-", "");
+          showVote(form, d.scores[id] || 0, d.mine[id] || 0);
+        });
+      }, function () { /* the page's scores stay */ });
     fetch("/api/me", { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
       var me = d && d.user;
       if (!me) return;

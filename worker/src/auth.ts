@@ -750,6 +750,7 @@ export async function deleteAccount(env: Env, userId: string): Promise<void> {
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
     env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL").bind(userId, nowIso()),
     env.DB.prepare("DELETE FROM identities WHERE user_id = ?1").bind(userId),
+    env.DB.prepare("DELETE FROM comment_votes WHERE user_id = ?1").bind(userId),
     env.DB.prepare("UPDATE users SET custom_name = NULL, deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL").bind(userId, nowIso()),
   ]);
 }
