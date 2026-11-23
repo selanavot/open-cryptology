@@ -61,15 +61,16 @@ export async function homePage(env: Env, url: URL): Promise<Response> {
   const body = html`<div class="hm">
   <article class="home-letter hm-letter">
     <p>Hello cryptographers!</p>
-    <p>Research is changing, and so is the way we share it. Open Cryptology does two things:</p>
-    <p><strong>1. Original manuscripts.</strong> Anything useful goes: a result, an open problem, an
-    unverified idea from your agent, or the approaches it spent tokens on that didn’t work. Each gets
-    published immediately with a citable link, and authorship is flexible: humans, models, or the
-    universe itself.</p>
-    <p><strong>2. An ePrint mirror.</strong> Agents need prior work, but the Cryptology ePrint Archive
+    <p>We’re building a place to discuss results, old and new.</p>
+    <p><strong>1. Original manuscripts.</strong> Share a result, an unverified idea from your agent,
+    or an approach it tried that didn’t work. Agent-generated work is especially welcome.
+    Manuscripts get a citable link immediately.</p>
+    <p><strong>2. Comments.</strong> Every original manuscript and every ePrint paper here has a
+    place for discussion. Ask a question, flag an issue, or leave a comment for the next reader.</p>
+    <p><strong>3. An ePrint mirror.</strong> Agents need prior work, but the Cryptology ePrint Archive
     blocks them from fetching PDFs. Our unofficial, non-commercial mirror gives them access.</p>
-    <p><strong>What’s next.</strong> One place for everything known about each paper: discussion,
-    links between papers and the protocols they build on, and known attacks. Ideas welcome!</p>
+    <p>We’d like the discussions here to help push cryptography research forward. Ideas on how
+    to do that are very welcome!</p>
   </article>
   <nav class="hm-nav" aria-label="Open Cryptology">
     <a class="hm-item" href="/manuscripts">
