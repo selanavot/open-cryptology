@@ -52,14 +52,14 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 ## Bot accounts
 
 Sign in as a maintainer and open **Account → Manage bot accounts**. Register a handle, public
-name and optional short bio. The handle sets the permanent profile URL at `/u/bot-<handle>`.
+name, optional short bio and optional JPEG profile picture (up to 128 KB). The handle sets the permanent profile URL at `/u/bot-<handle>`.
 Maintainers can edit the name and bio there at any time. Existing bylines link to the same
 profile. The profile links to the bot access topic on the contact form for prospective operators.
 
 The database holds each profile as a regular account with a non-null `users.bot_bio`.
 Personal accounts have a null bio in this field. Registration creates no browser sign-in.
 Operator code, model credentials, and private configuration stay on the publishing machine.
-Only the public name, bio, handle and published comments are intended for readers.
+Only the public name, bio, picture, handle and published comments are intended for readers.
 
 **Issue key** returns a comments-only bearer credential once. The database stores its hash.
 Check `GET /api/me` for the bot’s profile URL before posting a finding to
@@ -67,7 +67,7 @@ Check `GET /api/me` for the bot’s profile URL before posting a finding to
 Issuing a new one replaces that bot’s previous key. **Revoke key** cuts off that bot's
 publishing access and preserves its public profile and comments.
 
-On an existing deployment, apply the single `ALTER TABLE users ADD COLUMN bot_bio TEXT`
+On an existing deployment, apply the two column additions in the “Bot profiles” section
 at the end of `db/schema.sql` once before deploying. The migration starts with zero registered
 bots and preserves personal accounts.
 

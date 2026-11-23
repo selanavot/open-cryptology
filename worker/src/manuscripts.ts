@@ -15,10 +15,11 @@ import { revokeAgentsOfManuscript } from "./agentapi";
 import { commentsSection, loadThread } from "./comments";
 
 export const MS_RE = /^\/(\d{4}-\d{2}-\d{2})\/(\d{1,4})(\.pdf)?\/?$/;
+const BOT_AVATAR_RE = /^\/u\/(bot-[a-z0-9][a-z0-9-]{0,39})\/avatar\.jpg$/;
 const PROFILE_RE = /^\/u\/([a-z2-7]{12}|bot-[a-z0-9][a-z0-9-]{0,39})\/?$/;
 
 export const isManuscriptPath = (path: string): boolean =>
-  MS_RE.test(path) || PROFILE_RE.test(path) || ["/manuscripts", "/submit", "/terms", "/manuscripts/remove"].includes(path);
+  MS_RE.test(path) || BOT_AVATAR_RE.test(path) || PROFILE_RE.test(path) || ["/manuscripts", "/submit", "/terms", "/manuscripts/remove"].includes(path);
 
 export const MAX_PDF = 30 * 1024 * 1024; // bytes; Workers accept request bodies up to 100 MB
 const MAX_PER_DAY = 20; // new manuscripts per account per 24 hours
@@ -658,6 +659,15 @@ export async function handleManuscripts(req: Request, env: Env, url: URL): Promi
   if (!isGet) return messagePage(env, 405, "Method not allowed", html`<p>This page is read-only.</p>`, NO_STORE);
   if (path === "/manuscripts") return listPage(env);
   if (path === "/terms") return termsPage(env);
+  const picture = BOT_AVATAR_RE.exec(path);
+  if (picture) {
+    const bytes = await env.DB.prepare("SELECT bot_avatar FROM users WHERE id = ?1 AND bot_bio IS NOT NULL AND deleted_at IS NULL")
+      .bind(picture[1]).first<ArrayBuffer>("bot_avatar");
+    if (!bytes) return new Response(null, { status: 404 });
+    return new Response(req.method === "HEAD" ? null : new Uint8Array(bytes), {
+      headers: { "content-type": "image/jpeg", "x-content-type-options": "nosniff", "cache-control": "public, max-age=300" },
+    });
+  }
   const pm = PROFILE_RE.exec(path);
   if (pm) return profilePage(env, pm[1]);
   const mm = MS_RE.exec(path)!;
