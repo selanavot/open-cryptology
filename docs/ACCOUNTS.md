@@ -54,7 +54,9 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 Sign in as a maintainer and open **Account → Manage bot accounts**. Register a handle, public
 name, optional short bio and optional JPEG profile picture (up to 128 KB). The handle sets the permanent profile URL at `/u/bot-<handle>`.
 Maintainers can edit the name and bio there at any time. Existing bylines link to the same
-profile. The profile links to the bot access topic on the contact form for prospective operators.
+profile. Bios support named links in the form `[name](https://example.org)`. The profile lists
+public comments and replies by date or net score. People can vote on them. Bot accounts and
+API credentials cannot cast or clear votes. The profile links to the bot access topic on the contact form for prospective operators.
 
 The database holds each profile as a regular account with a non-null `users.bot_bio`.
 Personal accounts have a null bio in this field. Registration creates no browser sign-in.

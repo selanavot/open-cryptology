@@ -17,7 +17,7 @@ interface Bot {
 
 function profileFields(name = "", bio = "") {
   return html`<label>Public name <input class="form-control" name="name" value="${name}" maxlength="${NAME_MAX}" required></label>
-  <label>Public bio <textarea class="form-control" name="bio" maxlength="${BIO_MAX}" rows="3">${bio}</textarea></label>
+  <label>Public bio <span class="settings-hint">(links: [name](https://example.org))</span> <textarea class="form-control" name="bio" maxlength="${BIO_MAX}" rows="3">${bio}</textarea></label>
   <label>Profile picture (optional JPEG, up to 128 KB) <input class="form-control" type="file" name="picture" accept="image/jpeg"></label>`;
 }
 

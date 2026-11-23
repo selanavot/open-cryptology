@@ -5,14 +5,14 @@
 // Tables: the "original manuscripts" section of db/schema.sql. Uploaders are accounts (auth.ts),
 // always shown as "uploaded by", separately from the free-text authors.
 import type { Env } from "./db";
-import { html, raw, type Html } from "./html";
+import { html, raw, safeUrl, type Html } from "./html";
 import { citeControl, icons, messagePage, metaList, page } from "./layout";
 import { avatar, identityDetail, providerTag } from "./account";
 import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type User } from "./auth";
 import { siteOrigin } from "./seo";
 import { inspectPdf } from "./verify";
 import { revokeAgentsOfManuscript } from "./agentapi";
-import { commentsSection, loadThread } from "./comments";
+import { botCommentFeed, commentsSection, loadThread } from "./comments";
 
 export const MS_RE = /^\/(\d{4}-\d{2}-\d{2})\/(\d{1,4})(\.pdf)?\/?$/;
 const BOT_AVATAR_RE = /^\/u\/(bot-[a-z0-9][a-z0-9-]{0,39})\/avatar\.jpg$/;
@@ -350,23 +350,39 @@ export async function searchManuscripts(env: Env, q: string, limit: number): Pro
   return { rows: r.results.length ? await rowsHtml(env, r.results) : null, count: r.results.length };
 }
 
+/** A short plain-text bio may contain named HTTP(S) links. Escape all operator-supplied text. */
+function botBio(bio: string) {
+  let offset = 0;
+  const parts: Html[] = [];
+  const plain = bio.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s()<>]+)\)/gi, (match, label: string, target: string, index: number) => {
+    const href = safeUrl(target);
+    if (!href) return match;
+    parts.push(html`${bio.slice(offset, index)}<a href="${href}" rel="ugc noopener">${label}</a>`);
+    offset = index + match.length;
+    return label;
+  });
+  return { plain, linked: html`${parts}${bio.slice(offset)}` };
+}
+
 /** A person's public profile: their log-in methods and the manuscripts they uploaded. */
-async function profilePage(env: Env, userId: string): Promise<Response> {
+async function profilePage(env: Env, userId: string, url: URL): Promise<Response> {
   const u = (await publicUsers(env, [userId])).get(userId);
   if (!u || u.id !== userId) return messagePage(env, 404, "No such account", html`<p>There's no account here.</p>`);
   if (u.deleted) return messagePage(env, 410, "Deleted account", html`<p>This account was deleted.</p>`);
   if (u.botBio !== null) {
+    const bio = botBio(u.botBio);
     return page(env, {
       title: u.displayName,
-      description: u.botBio,
-      cache: "public, max-age=300",
+      description: bio.plain,
+      cache: "public, max-age=30",
       body: html`<div class="ms-profile">
   <header class="ms-profile-head">
     ${avatar(u, "avatar-lg")}
-    <div><h1 class="ms-title">${u.displayName}</h1><span class="cm-flair">Bot</span></div>
+    <div class="bot-profile-name"><h1 class="ms-title">${u.displayName}</h1><span class="cm-flair bot-badge">Bot</span></div>
   </header>
-  ${u.botBio && html`<p>${u.botBio}</p>`}
+  ${u.botBio && html`<p class="bot-bio">${bio.linked}</p>`}
   <p>Want to run your own bot? <a href="/contact?topic=bot">Contact the maintainers</a>.</p>
+  ${await botCommentFeed(env, userId, url)}
 </div>`,
     });
   }
@@ -669,7 +685,7 @@ export async function handleManuscripts(req: Request, env: Env, url: URL): Promi
     });
   }
   const pm = PROFILE_RE.exec(path);
-  if (pm) return profilePage(env, pm[1]);
+  if (pm) return profilePage(env, pm[1], url);
   const mm = MS_RE.exec(path)!;
   const id = `${mm[1]}/${Number(mm[2])}`;
   const want = `/${id}${mm[3] ?? ""}`;

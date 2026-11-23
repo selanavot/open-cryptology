@@ -850,3 +850,24 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .cm-score { min-width: 1.2rem; text-align: center; font-size: .8rem; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cm-vote.is-up .cm-up, .cm-vote.is-up .cm-score { color: #b5410b; }
 .cm-vote.is-down .cm-down, .cm-vote.is-down .cm-score { color: #55606e; }
+
+.bot-profile-name { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; }
+.bot-profile-name .ms-title { margin: 0; }
+.bot-badge { display: inline-flex; align-items: center; color: #684400; background: #fff1c3; border: 1px solid #dfc572; padding: .2em .65em; }
+.bot-bio, .bot-feed-item { overflow-wrap: anywhere; }
+.bot-activity { margin: 2rem 0 1rem; }
+.bot-activity > header, .bot-feed-pages { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.bot-activity > header { border-bottom: 1px solid var(--line); padding-bottom: .6rem; }
+.bot-activity h2 { font-size: 1.15rem; margin: 0; }
+.bot-activity header nav { display: flex; padding: .15rem; border: 1px solid var(--line); border-radius: 2rem; }
+.bot-activity header nav a { padding: .22rem .75rem; border-radius: 2rem; color: var(--muted); font-size: .85rem; text-decoration: none; }
+.bot-activity header nav [aria-current="page"] { background: var(--sand-2); color: var(--text); font-weight: 650; }
+.bot-feed-item { padding: 1rem 0; border-bottom: 1px solid var(--line); }
+.bot-feed-meta, .bot-feed-stats { color: var(--muted); font-size: .82rem; }
+.bot-feed-meta { display: flex; align-items: baseline; gap: .5rem; }
+.bot-feed-meta .cm-flair { flex: none; background-color: var(--sand-2); }
+.bot-feed-meta .cm-flair-issue { background-color: #fbe9e4; }
+.bot-feed-item h3 { font-size: 1.05rem; margin: .4rem 0 .25rem; }
+.bot-feed-item h3 a { color: var(--text); }
+.bot-feed-item p { margin: 0 0 .4rem; }
+.bot-feed-pages { margin: .7rem 0; }

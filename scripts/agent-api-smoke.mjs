@@ -286,7 +286,7 @@ const botComment = await fetch(`${BASE}/api/manuscripts/${id}/comments`, {
 const finding = await botComment.json();
 check("bot comment links to the bot profile", botComment.status === 201 && finding.author?.profile_url === self.user?.profile_url);
 const discussion = await (await fetch(`${BASE}/${id}`)).text();
-check("bot byline is labeled", discussion.includes(`href="${profilePath}">${botName}</a><span class="cm-flair">Bot</span>`));
+check("bot byline is labeled", discussion.includes(`href="${profilePath}">${botName}</a><span class="cm-flair bot-badge">Bot</span>`));
 check("maintainer can edit public profile data", (await manageBot(m, "edit", { name: "Renamed reader", bio: "Works on <proofs>." })).status === 303);
 const profile = await (await fetch(BASE + profilePath)).text();
 const renamed = (await (await botMe(bot.access_token)).json()).user;
@@ -294,6 +294,26 @@ check("existing key follows the edited name at the same address", renamed.displa
 const oldComment = await (await fetch(`${BASE}/api/comments/${finding.id}`)).json();
 check("earlier comments credit the updated profile", oldComment.author?.name === renamed.displayName && oldComment.author?.profile_url === renamed.profile_url);
 check("bot profile has a bio and contact link, with no public login list", profile.includes("Works on &lt;proofs&gt;.") && profile.includes("Renamed reader") && profile.includes('href="/contact?topic=bot"') && !profile.includes('class="ms-idents"'));
+const feedReply = await (await fetch(`${BASE}/api/manuscripts/${id}/comments`, {
+  method: "POST", headers: { ...bearer(bot.access_token), "content-type": "application/json" },
+  body: JSON.stringify({ reply_to: finding.id, body: "A follow-up from the bot." }),
+})).json();
+const votePath = `/comments/${finding.id}/vote`;
+const voteOptions = { method: "POST", body: new URLSearchParams({ vote: "1" }), headers: { accept: "application/json" } };
+check("people can vote on a bot comment", (await (await me.req(votePath, voteOptions)).json()).score === 1);
+for (const value of ["1", "-1", "0"]) {
+  const denied = await me.req(votePath, { ...voteOptions, body: new URLSearchParams({ vote: value }),
+    headers: { ...voteOptions.headers, ...bearer(bot.access_token) } });
+  check(`bot credential cannot cast or clear a vote (${value}), even with a browser cookie`, denied.status === 403 && (await denied.json()).error === "bot_vote");
+}
+const feed = async sort => (await fetch(BASE + profilePath + "?sort=" + sort)).text();
+const linkTo = c => `href="/${id}#comment-${c.id}"`;
+const recentFeed = await feed("recent");
+const topFeed = await feed("top");
+check("recent lists the newest reply first", recentFeed.includes(linkTo(finding)) && recentFeed.includes(linkTo(feedReply)) && recentFeed.indexOf(linkTo(feedReply)) < recentFeed.indexOf(linkTo(finding)));
+check("top lists the higher scoring comment first", topFeed.includes("1 point") && topFeed.indexOf(linkTo(finding)) < topFeed.indexOf(linkTo(feedReply)));
+await m.req(`/comments/${feedReply.id}/hide`, { method: "POST", body: new URLSearchParams() });
+check("hidden bot replies are excluded from the profile", !(await feed("recent")).includes(linkTo(feedReply)));
 const rotated = await (await keyAction(m, "issue")).json();
 check("rotation retires the previous key", (await botMe(bot.access_token)).status === 401 && (await botMe(rotated.access_token)).status === 200);
 check("members cannot revoke the bot key", (await keyAction(me, "revoke")).status === 403);
