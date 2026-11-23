@@ -276,3 +276,8 @@ CREATE TABLE IF NOT EXISTS comment_votes (
   PRIMARY KEY (comment_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS comment_votes_user ON comment_votes(user_id, created_at);
+
+-- Bot profiles: apply the following ALTER statements once before deploying bot account support.
+-- NULL for people; a bot's public bio is plain text (possibly empty).
+ALTER TABLE users ADD COLUMN bot_bio TEXT;
+ALTER TABLE users ADD COLUMN bot_avatar BLOB; -- optional small JPEG supplied by the operator

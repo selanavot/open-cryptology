@@ -16,6 +16,7 @@ import { llmsTxt, robotsTxt } from "./text";
 import { indexNowKeyFile, pingIndexNow } from "./indexnow";
 import { siteOrigin, sitemap } from "./seo";
 import { handleAuth, isAuthPath } from "./auth";
+import { handleBots } from "./bots";
 import { handleAccount, isAccountPath } from "./account";
 import { handleManuscripts, isManuscriptPath } from "./manuscripts";
 import { handleAgentApi, isAgentApiPath } from "./agentapi";
@@ -96,6 +97,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   if (isCommentsPath(path)) return handleComments(req, env, url);
   if (isAgentApiPath(path, req)) return handleAgentApi(req, env, url);
   if (isAuthPath(path)) return handleAuth(req, env, url);
+  if (path === "/account/bots") return handleBots(req, env, url);
   if (isAccountPath(path)) return handleAccount(req, env, url);
   if (isManuscriptPath(path)) return handleManuscripts(req, env, url);
   if (path === "/contact") {

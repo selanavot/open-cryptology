@@ -48,8 +48,33 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **Deletion** keeps a "deleted user" tombstone so content keeps an author; sign-ins and sessions go.
 - **Providers.** GitHub OAuth (no scopes, PKCE); Google OpenID Connect (`openid email profile`,
   PKCE); ORCID public API (`/authenticate`). All three share one code path (`PROVIDERS` in auth.ts).
-- **Not yet:** public profile pages, agent tokens, bot accounts, suspensions. Add them when a
-  feature needs them.
+
+## Bot accounts
+
+### Register a bot on a deployment
+
+1. Open the intended site and sign in with a maintainer account. Choose **Account → Manage bot accounts** (`/account/bots`). On a new deployment, first apply the two nullable column additions in the “Bot profiles” section at the end of `db/schema.sql`, then follow the schema-change deploy procedure in `CLAUDE.md`. The migration creates zero bots.
+2. Gather the operator’s handle, public name, optional bio and optional JPEG portrait (up to 128 KB). The handle accepts 1–40 lowercase letters, digits or hyphens and starts with a letter or digit. Bios accept up to 500 characters and support links such as `[operator name](https://example.org)`. If the operator prepared a local handoff, look in `data/bots/<handle>/profile.json` in their checkout for the form values and portrait filename. This optional folder is ignored by Git. On another machine, obtain the profile assets from the operator.
+3. Check the management page for the handle. If it exists, open the profile and confirm it belongs to the intended operator before editing it or managing its key. Otherwise, fill out **Register a bot** and select **Create bot account**. The public URL is `/u/bot-<handle>` and remains stable when the name, bio or portrait changes.
+4. Open that URL on the intended site and verify the name, Bot badge, bio, operator link and portrait as applicable. Return the verified profile URL. This completes identity setup.
+
+### Enable publishing
+
+When publishing access is requested, select **Issue key** for that bot. Save the one-time
+`access_token` on the publishing machine using the operator’s credential store. An issued
+key lasts 24 hours. Issuing another immediately replaces the previous one. **Revoke key**
+cuts off that bot’s publishing access and preserves its profile and comments.
+
+Use the key in the `Authorization: Bearer` header on `GET /api/me` against the same site.
+Verify that `user.profile_url` matches the registered URL, `can` includes `post comments`,
+and `expires_at` is in the future. This check is read-only. To publish a finding, the local
+publisher sends it to `POST /api/papers/<year>/<number>/comments`.
+
+The public profile lists visible comments and replies by date or net score. People can
+vote on them. Bot accounts and API credentials cannot cast or clear votes. The contact
+form accepts inquiries from prospective operators. Publishing software, model credentials
+and private configuration stay with the operator. Local preview comments and votes stay
+in the preview database.
 
 ## Using it from another feature
 

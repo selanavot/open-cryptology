@@ -32,8 +32,8 @@ export function json(data: unknown, status = 200, headers: Record<string, string
   });
 }
 export const err = (status: number, error: string, message: string, headers: Record<string, string> = {}) => json({ error, message }, status, headers);
+const CONNECT_AGAIN = "For a bot account, ask a maintainer for a new key. For a personal agent, connect again (POST /api/oauth/device).";
 const unauthorized = (error: string, message: string) => err(401, error, message, { "www-authenticate": `Bearer error="invalid_token"` });
-const CONNECT_AGAIN = "Connect again (POST /api/oauth/device); the person approves with one click.";
 
 // ---------------------------------------------------------------------------------------------
 // tokens
@@ -45,21 +45,38 @@ interface TokenRow {
   expires_at: string;
 }
 
-/** A new token for `userId`; returns the secret (handed to the agent once), its id and expiry. */
-async function mintToken(env: Env, userId: string, keepExpiry?: string): Promise<{ id: string; token: string; expires: string }> {
+/** Prepare the insert so a bot key can be replaced atomically with its predecessor. */
+async function prepareToken(env: Env, userId: string, scopes: string, keepExpiry?: string) {
   const token = TOKEN_PREFIX + randomToken(32);
   const id = randomId(16);
   const now = new Date();
   const expires = keepExpiry ?? new Date(now.getTime() + TOKEN_TTL_HOURS * 3600_000).toISOString();
-  await env.DB.prepare("INSERT INTO api_tokens (id, hash, user_id, scopes, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-    .bind(id, await sha256hex(token), userId, SCOPES, now.toISOString(), expires)
-    .run();
-  return { id, token, expires };
+  const insert = env.DB.prepare("INSERT INTO api_tokens (id, hash, user_id, scopes, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+    .bind(id, await sha256hex(token), userId, scopes, now.toISOString(), expires);
+  return { insert, key: { id, token, expires } };
+}
+
+async function mintToken(env: Env, userId: string, keepExpiry?: string) {
+  const { insert, key } = await prepareToken(env, userId, SCOPES, keepExpiry);
+  await insert.run();
+  return key;
+}
+
+/** Called for a registered bot after checking the maintainer session. */
+export async function replaceBotKey(env: Env, userId: string) {
+  const { insert, key } = await prepareToken(env, userId, "comments");
+  await env.DB.batch([revokeBotKeys(env, userId), insert]);
+  return key;
+}
+
+export function revokeBotKeys(env: Env, userId: string) {
+  return env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL")
+    .bind(userId, nowIso());
 }
 
 /** The person and token behind `Authorization: Bearer oct_...`, or an error response. Never
  *  falls back to the session cookie. */
-export async function tokenActor(env: Env, req: Request, origin: string, scope: Scope = "manuscripts"): Promise<{ user: User; token: TokenRow } | Response> {
+export async function tokenActor(env: Env, req: Request, origin: string, scope: Scope | null): Promise<{ user: User; token: TokenRow } | Response> {
   const m = /^Bearer\s+(\S+)\s*$/i.exec(req.headers.get("authorization") ?? "");
   if (!m) return unauthorized("no_token", `Send "Authorization: Bearer ${TOKEN_PREFIX}...". To get a token, connect first: see ${origin}/llms.txt.`);
   if (!m[1].startsWith(TOKEN_PREFIX)) return unauthorized("bad_token", "That isn't an Open Cryptology token.");
@@ -68,7 +85,7 @@ export async function tokenActor(env: Env, req: Request, origin: string, scope: 
     .first<TokenRow>();
   if (!t) return unauthorized("token_revoked", `That token is unknown or was revoked. ${CONNECT_AGAIN}`);
   if (Date.parse(t.expires_at) < Date.now()) return unauthorized("token_expired", `Tokens last ${TOKEN_TTL_HOURS} hours, and this one expired. ${CONNECT_AGAIN}`);
-  if (!t.scopes.split(" ").includes(scope)) return err(403, "scope", `This token can't ${scope === "comments" ? "post comments" : "post manuscripts"}. ${CONNECT_AGAIN}`);
+  if (scope && !t.scopes.split(" ").includes(scope)) return err(403, "scope", `This token can't ${scope === "comments" ? "post comments" : "post manuscripts"}.`);
   // loadUser refuses deleted accounts; merges move tokens to the kept account (auth.ts).
   const user = await loadUser(env, t.user_id);
   if (!user) return unauthorized("token_revoked", "The account behind this token is gone.");
@@ -128,7 +145,7 @@ async function readMetadata(form: FormData): Promise<Metadata | string> {
 
 /** POST /api/manuscripts. Checks the token, the rate and the size before reading the body. */
 async function postManuscript(env: Env, req: Request, origin: string): Promise<Response> {
-  const who = await tokenActor(env, req, origin);
+  const who = await tokenActor(env, req, origin, "manuscripts");
   if (who instanceof Response) return who;
   if (env.API_UPLOAD_LIMITER) {
     const { success } = await env.API_UPLOAD_LIMITER.limit({ key: `tok:${who.token.id}` });
@@ -199,7 +216,7 @@ async function routeAgentApi(req: Request, env: Env, url: URL): Promise<Response
   }
   if (path === "/api/me") {
     if (!isGet) return err(405, "method_not_allowed", "Use GET.");
-    const who = await tokenActor(env, req, origin);
+    const who = await tokenActor(env, req, origin, null);
     if (who instanceof Response) return who;
     return json({
       user: { displayName: who.user.displayName, profile_url: `${origin}/u/${who.user.id}` },

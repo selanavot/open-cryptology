@@ -168,6 +168,7 @@ ${u.role === "maintainer" &&
 html`<section class="acct-section">
   <h2 class="acct-h">Maintainer</h2>
   <div class="acct-card">
+    <a class="acct-row acct-link" href="/account/bots"><span class="acct-main"><span class="acct-label">Manage bot accounts</span></span>${chevron}</a>
     <a class="acct-row acct-link" href="/review"><span class="acct-main"><span class="acct-label">Upload review queue</span></span>${chevron}</a>
   </div>
 </section>`}

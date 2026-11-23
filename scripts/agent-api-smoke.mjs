@@ -243,6 +243,85 @@ const tokC = await del.newToken();
 await del.req("/account", { method: "POST", body: new URLSearchParams({ action: "delete", confirm: "yes" }) });
 check("token of a deleted account: 401", (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tokC}` } })).status === 401);
 
+console.log("\n# data-backed bot accounts");
+const handle = `smoke-${RUN}`;
+const botId = `bot-${handle}`;
+const botName = `Reader ${RUN}`;
+const profilePath = `/u/${botId}`;
+const manageBot = (client, action, fields = {}, origin = BASE) =>
+  client.req("/account/bots", { method: "POST", body: new URLSearchParams({ id: botId, action, ...fields }), origin });
+const registration = { handle, name: botName, bio: "Independent local publisher." };
+const keyAction = (client, action) => manageBot(client, action);
+check("missing bot profile returns 404", (await fetch(BASE + profilePath)).status === 404);
+check("signed-out visitors cannot register bots", (await manageBot(new Client(), "create", registration)).status === 401);
+check("members cannot register bots", (await manageBot(me, "create", registration)).status === 403);
+check("cross-site requests cannot register bots", (await manageBot(m, "create", registration, "https://example.org")).status === 403);
+check("maintainer can register a bot", (await manageBot(m, "create", registration)).status === 303);
+check("duplicate handles preserve the original profile", (await manageBot(m, "create", { ...registration, bio: "Duplicate bio" })).status === 409);
+check("maintainer sees the bot in account management", (await (await m.req("/account/bots")).text()).includes(`href="${profilePath}"`));
+const original = await (await fetch(BASE + profilePath)).text();
+check("registration supplies the public bio", original.includes(registration.bio) && !original.includes("Duplicate bio"));
+const otherHandle = handle + "-second";
+const otherId = "bot-" + otherHandle;
+await manageBot(m, "create", { handle: otherHandle, name: "Second reader", bio: "" });
+const secondKey = (await (await manageBot(m, "issue", { id: otherId })).json()).access_token;
+check("signed-out visitors cannot issue a bot key", (await keyAction(new Client(), "issue")).status === 401);
+check("members cannot issue a bot key", (await keyAction(me, "issue")).status === 403);
+check("a cross-site request cannot issue a bot key", (await manageBot(m, "issue", {}, "https://example.org")).status === 403);
+const humanId = (await (await me.req("/api/me")).json()).user.id;
+check("bot management cannot issue a key for a human", (await manageBot(m, "issue", { id: humanId })).status === 404);
+check("bot management cannot edit a human", (await manageBot(m, "edit", { id: humanId, name: botName, bio: "" })).status === 404);
+const issued = await keyAction(m, "issue");
+const bot = await issued.json();
+check("maintainer receives a comments-only key once", issued.status === 200 && issued.headers.get("cache-control") === "no-store" && bot.scope === "comments" && !!bot.access_token);
+const bearer = key => ({ authorization: `Bearer ${key}` });
+const botMe = key => fetch(BASE + "/api/me", { headers: bearer(key) });
+const self = await (await botMe(bot.access_token)).json();
+check("bot has its own public identity", self.user?.displayName === botName && self.user.profile_url.endsWith(profilePath));
+check("bot cannot upload a manuscript", (await post(bot.access_token, null)).status === 403);
+const botComment = await fetch(`${BASE}/api/manuscripts/${id}/comments`, {
+  method: "POST", headers: { ...bearer(bot.access_token), "content-type": "application/json" },
+  body: JSON.stringify({ kind: "comment", title: "Local scan", body: "Test finding." }),
+});
+const finding = await botComment.json();
+check("bot comment links to the bot profile", botComment.status === 201 && finding.author?.profile_url === self.user?.profile_url);
+const discussion = await (await fetch(`${BASE}/${id}`)).text();
+check("bot byline is labeled", discussion.includes(`href="${profilePath}">${botName}</a><span class="cm-flair bot-badge">Bot</span>`));
+check("maintainer can edit public profile data", (await manageBot(m, "edit", { name: "Renamed reader", bio: "Works on <proofs>." })).status === 303);
+const profile = await (await fetch(BASE + profilePath)).text();
+const renamed = (await (await botMe(bot.access_token)).json()).user;
+check("existing key follows the edited name at the same address", renamed.displayName === "Renamed reader" && renamed.profile_url === self.user.profile_url);
+const oldComment = await (await fetch(`${BASE}/api/comments/${finding.id}`)).json();
+check("earlier comments credit the updated profile", oldComment.author?.name === renamed.displayName && oldComment.author?.profile_url === renamed.profile_url);
+check("bot profile has a bio and contact link, with no public login list", profile.includes("Works on &lt;proofs&gt;.") && profile.includes("Renamed reader") && profile.includes('href="/contact?topic=bot"') && !profile.includes('class="ms-idents"'));
+const feedReply = await (await fetch(`${BASE}/api/manuscripts/${id}/comments`, {
+  method: "POST", headers: { ...bearer(bot.access_token), "content-type": "application/json" },
+  body: JSON.stringify({ reply_to: finding.id, body: "A follow-up from the bot." }),
+})).json();
+const votePath = `/comments/${finding.id}/vote`;
+const voteOptions = { method: "POST", body: new URLSearchParams({ vote: "1" }), headers: { accept: "application/json" } };
+check("people can vote on a bot comment", (await (await me.req(votePath, voteOptions)).json()).score === 1);
+for (const value of ["1", "-1", "0"]) {
+  const denied = await me.req(votePath, { ...voteOptions, body: new URLSearchParams({ vote: value }),
+    headers: { ...voteOptions.headers, ...bearer(bot.access_token) } });
+  check(`bot credential cannot cast or clear a vote (${value}), even with a browser cookie`, denied.status === 403 && (await denied.json()).error === "bot_vote");
+}
+const feed = async sort => (await fetch(BASE + profilePath + "?sort=" + sort)).text();
+const linkTo = c => `href="/${id}#comment-${c.id}"`;
+const recentFeed = await feed("recent");
+const topFeed = await feed("top");
+check("recent lists the newest reply first", recentFeed.includes(linkTo(finding)) && recentFeed.includes(linkTo(feedReply)) && recentFeed.indexOf(linkTo(feedReply)) < recentFeed.indexOf(linkTo(finding)));
+check("top lists the higher scoring comment first", topFeed.includes("1 point") && topFeed.indexOf(linkTo(finding)) < topFeed.indexOf(linkTo(feedReply)));
+await m.req(`/comments/${feedReply.id}/hide`, { method: "POST", body: new URLSearchParams() });
+check("hidden bot replies are excluded from the profile", !(await feed("recent")).includes(linkTo(feedReply)));
+const rotated = await (await keyAction(m, "issue")).json();
+check("rotation retires the previous key", (await botMe(bot.access_token)).status === 401 && (await botMe(rotated.access_token)).status === 200);
+check("members cannot revoke the bot key", (await keyAction(me, "revoke")).status === 403);
+check("maintainer can revoke the current key", (await keyAction(m, "revoke")).status === 303 && (await botMe(rotated.access_token)).status === 401);
+
+check("rotating and revoking one bot leaves the other key working", (await botMe(secondKey)).status === 200);
+await manageBot(m, "revoke", { id: otherId });
+
 console.log("\n# llms.txt");
 const llms = await (await fetch(`${BASE}/llms.txt`)).text();
 check("documents the agent API", llms.includes("Posting original manuscripts (for agents)") && llms.includes("/api/manuscripts") && !llms.includes("is coming"));

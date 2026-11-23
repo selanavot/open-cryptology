@@ -61,6 +61,52 @@ export interface Thread {
 
 const ROW_SQL = "SELECT c.*, (SELECT COALESCE(SUM(vote), 0) FROM comment_votes v WHERE v.comment_id = c.id) AS score FROM comments c";
 
+/** A bot's public activity across paper and manuscript discussions. */
+export async function botCommentFeed(env: Env, userId: string, url: URL): Promise<Html> {
+  const top = url.searchParams.get("sort") === "top";
+  const pageNumber = Number(url.searchParams.get("page")) || 1;
+  const current = Number.isSafeInteger(pageNumber) && pageNumber > 0 && pageNumber <= 1_000_000 ? pageNumber : 1;
+  const limit = 20;
+  const order = top ? "score DESC, c.created_at DESC, c.id DESC" : "c.created_at DESC, c.id DESC";
+  const rows = await env.DB.prepare(
+    `SELECT c.id, c.target, c.reply_to, c.kind, c.title, substr(c.body, 1, 281) AS excerpt, c.created_at,
+       COALESCE(p.title, v.title) AS paper_title,
+       (SELECT COALESCE(SUM(vote), 0) FROM comment_votes WHERE comment_id = c.id) AS score
+     FROM comments c LEFT JOIN papers p ON p.id = c.target
+     LEFT JOIN manuscripts m ON m.id = c.target AND m.removed_at IS NULL
+     LEFT JOIN manuscript_versions v ON v.manuscript_id = m.id
+       AND v.v = (SELECT MAX(v) FROM manuscript_versions WHERE manuscript_id = m.id)
+     WHERE c.user_id = ?1 AND c.state = 'visible' AND (p.id IS NOT NULL OR v.manuscript_id IS NOT NULL)
+     ORDER BY ${order} LIMIT ?2 OFFSET ?3`,
+  ).bind(userId, limit + 1, (current - 1) * limit).all<
+    Pick<Row, "id" | "target" | "reply_to" | "kind" | "title" | "created_at" | "score"> & { excerpt: string; paper_title: string }
+  >();
+  const path = `/u/${userId}`;
+  const pageLink = (n: number) => `${path}?sort=${top ? "top" : "recent"}&page=${n}#activity`;
+  return html`<section id="activity" class="bot-activity">
+    <header><h2>Comments</h2><nav aria-label="Sort comments">
+      <a href="${path}#activity" aria-current="${top ? "false" : "page"}">Recent</a>
+      <a href="${path}?sort=top#activity" aria-current="${top ? "page" : "false"}">Top</a>
+    </nav></header>
+    ${rows.results.slice(0, limit).map(c => {
+      const permalink = `/${c.target}#comment-${c.id}`;
+      const excerpt = Array.from(c.excerpt);
+      const label = c.reply_to !== null ? "Reply" : KIND_LABEL[c.kind];
+      return html`<article class="bot-feed-item">
+        <div class="bot-feed-meta"><span class="cm-flair cm-flair-${c.kind}">${label}</span>
+          <a href="/${c.target}">${c.paper_title}</a></div>
+        <h3><a href="${permalink}">${c.title || (c.reply_to !== null ? "Reply in discussion" : "Comment in discussion")}</a></h3>
+        <p>${excerpt.length > 280 ? excerpt.slice(0, 280).join("").trimEnd() + "…" : c.excerpt}</p>
+        <div class="bot-feed-stats"><strong>${c.score} ${c.score === 1 ? "point" : "points"}</strong> · <time datetime="${c.created_at}">${day(c.created_at)}</time></div>
+      </article>`;
+    })}
+    ${!rows.results.length && html`<p class="text-muted">${current === 1 ? "No public comments yet." : "No more comments."}</p>`}
+    ${(current > 1 || rows.results.length > limit) && html`<nav class="bot-feed-pages" aria-label="Comments pages">
+      ${current > 1 && html`<a href="${pageLink(current - 1)}">Previous</a>`}
+      ${rows.results.length > limit && html`<a href="${pageLink(current + 1)}">Next</a>`}</nav>`}
+  </section>`;
+}
+
 /** Everything on one page, with the people who wrote it. */
 export async function loadThread(env: Env, target: string): Promise<Thread> {
   const r = await env.DB.prepare(`${ROW_SQL} WHERE c.target = ?1 ORDER BY c.created_at, c.id`).bind(target).all<Row>();
@@ -94,6 +140,7 @@ const ERRORS = {
   bad_reply: [400, "reply_to must be a visible comment on the same page."],
   bad_kind: [400, 'kind is "comment" (no label), "issue", "question" or "extension"; replies are always comments.'],
   title: [400, `A top-level comment needs a title, up to ${MAX_TITLE} characters; replies have none.`],
+  bot_vote: [403, "Only people signed in through the website can vote."],
   bad_vote: [400, "vote is 1, -1 or 0."],
   vote_rate: [429, "That's a lot of votes for one day. Try again tomorrow."],
   not_yours: [403, "Only its author can edit or delete a comment."],
@@ -176,6 +223,7 @@ async function editComment(env: Env, user: User, c: Row & { owner: string }, tex
 /** Set (1, -1) or clear (0) the person's vote on a comment; sending the vote they already have
  *  clears it, like clicking a lit arrow again. Returns the comment's new score and their vote. */
 async function voteComment(env: Env, user: User, c: Row, vote: number, toggle: boolean): Promise<{ score: number; vote: number } | Fail> {
+  if (user.botBio !== null) return { error: "bot_vote" };
   if (c.state !== "visible") return { error: "removed" };
   if (![1, 0, -1].includes(vote)) return { error: "bad_vote" };
   const now = new Date();
@@ -291,7 +339,7 @@ function composer(action: string, o: { submit: string; replyTo?: number; value?:
 
 function flairs(t: Thread, p: Person): Html {
   // The maintainer role works (remove) but isn't shown: no public mods for now.
-  return html`${p.id === t.uploader ? html`<span class="cm-flair cm-flair-op" title="Uploaded this manuscript">OP</span>` : ""}`;
+  return html`${p.botBio !== null && html`<span class="cm-flair bot-badge">Bot</span>`}${p.id === t.uploader ? html`<span class="cm-flair cm-flair-op" title="Uploaded this manuscript">OP</span>` : ""}`;
 }
 
 function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<number>, depth: number): Html[] {
@@ -366,6 +414,7 @@ const PAGE_ERRORS: Record<string, string> = {
   bad_reply: "That comment no longer exists.",
   bad_kind: "Couldn’t post that. Try again.",
   title: `Give your comment a title, up to ${MAX_TITLE} characters.`,
+  bot_vote: ERRORS.bot_vote[1],
   bad_vote: "Couldn’t count that vote. Try again.",
   vote_rate: "You’ve reached today’s voting limit.",
   removed: "That comment was deleted.",
@@ -448,10 +497,11 @@ async function form(req: Request, env: Env, path: string): Promise<Response> {
     return isAuthFailure(who) ? json({ scores: {}, mine: {} }, 200, noStore) : json(await pageVotes(env, who.user, targetFrom(vm)), 200, noStore);
   }
   if (req.method !== "POST") return new Response("Use the form on the page.\n", { status: 405, headers: { allow: "POST" } });
+  const am = FORM_ACT_RE.exec(path);
+  if (am?.[2] === "vote" && req.headers.has("authorization")) return fail({ error: "bot_vote" });
   const f = await req.formData().catch(() => new FormData());
   const field = (k: string) => String(f.get(k) ?? "");
   const nm = FORM_NEW_RE.exec(path);
-  const am = FORM_ACT_RE.exec(path);
   const c = am ? await getComment(env, Number(am[1])) : null;
   const target = nm ? targetFrom(nm) : c?.target;
   if (!target) return new Response("No such comment.\n", { status: 404 });

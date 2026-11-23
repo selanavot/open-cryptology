@@ -12,6 +12,7 @@ const TOPICS: Record<string, string> = {
   paper: "Problem with a paper (wrong/outdated PDF, metadata)",
   manuscript: "An original manuscript (report or question)",
   takedown: "Takedown / author request",
+  bot: "Request a bot account",
   help: "I'd like to help",
   bug: "Bug or feature request",
   other: "Something else",
