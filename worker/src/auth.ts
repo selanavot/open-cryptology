@@ -25,6 +25,7 @@ export interface User {
   id: string; // internal: never shown on a page
   displayName: string; // customName, else the name from ORCID, Google or GitHub (in that order)
   customName: string | null;
+  botBio: string | null; // null for a personal account
   avatar: string; // photo from Google or GitHub, or "" (pages show initials)
   role: Role;
   identities: Identity[];
@@ -124,7 +125,7 @@ function json(data: unknown, status = 200): Response {
 
 export const DELETED_NAME = "deleted user";
 export const NAME_MAX = 60;
-const cleanName = (s: string) => s.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+export const cleanName = (s: string) => s.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
 
 /** The name a person goes by here comes from their sign-ins, in this order, unless they set their
  *  own. Names needn't be unique: many researchers share one. */
@@ -195,19 +196,19 @@ const roleOf = (env: Env, ids: Identity[]): Role => {
   return ids.some((i) => i.provider === "github" && m.includes(i.providerUserId)) ? "maintainer" : "member";
 };
 
-function toUser(env: Env, id: string, customName: string | null, identities: Identity[]): User {
-  return { id, displayName: customName || nameFrom(identities), customName, avatar: photoFrom(identities), role: roleOf(env, identities), identities };
+function toUser(env: Env, id: string, customName: string | null, botBio: string | null, identities: Identity[]): User {
+  return { id, botBio, displayName: customName || nameFrom(identities), customName, avatar: photoFrom(identities), role: roleOf(env, identities), identities };
 }
 
 /** A live (not deleted) user with all identities, or null. */
 export async function loadUser(env: Env, id: string): Promise<User | null> {
   const [u, ids] = await env.DB.batch([
-    env.DB.prepare("SELECT id, custom_name FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id),
+    env.DB.prepare("SELECT id, custom_name, bot_bio FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id),
     env.DB.prepare("SELECT * FROM identities WHERE user_id = ?1 ORDER BY created_at").bind(id),
   ]);
-  const row = (u.results as { id: string; custom_name: string | null }[])[0];
+  const row = (u.results as { id: string; custom_name: string | null; bot_bio: string | null }[])[0];
   if (!row) return null;
-  return toUser(env, row.id, row.custom_name, (ids.results as unknown as IdentityRow[]).map(toIdentity));
+  return toUser(env, row.id, row.custom_name, row.bot_bio, (ids.results as unknown as IdentityRow[]).map(toIdentity));
 }
 
 /** Names, photos and sign-ins for many users at once (e.g. bylines), keyed by the ids asked for.
@@ -220,7 +221,7 @@ export async function publicUsers(env: Env, userIds: string[]): Promise<Map<stri
   const list = JSON.stringify(ids);
   const [us, is] = await env.DB.batch([
     env.DB.prepare(
-      `SELECT u.id AS asked, e.id, e.custom_name, e.deleted_at FROM users u JOIN users e ON e.id = COALESCE(u.merged_into, u.id)
+      `SELECT u.id AS asked, e.id, e.custom_name, e.bot_bio, e.deleted_at FROM users u JOIN users e ON e.id = COALESCE(u.merged_into, u.id)
        WHERE u.id IN (SELECT value FROM json_each(?1))`,
     ).bind(list),
     env.DB.prepare(
@@ -231,12 +232,12 @@ export async function publicUsers(env: Env, userIds: string[]): Promise<Map<stri
   const idsBy = new Map<string, Identity[]>();
   for (const r of is.results as unknown as IdentityRow[]) idsBy.set(r.user_id, [...(idsBy.get(r.user_id) ?? []), toIdentity(r)]);
   const byId = new Map<string, User & { deleted: boolean }>();
-  for (const r of us.results as { asked: string; id: string; custom_name: string | null; deleted_at: string | null }[]) {
+  for (const r of us.results as { asked: string; id: string; custom_name: string | null; bot_bio: string | null; deleted_at: string | null }[]) {
     let p = byId.get(r.id);
     if (!p) {
       p = r.deleted_at
-        ? { id: r.id, displayName: DELETED_NAME, customName: null, avatar: "", role: "member", identities: [], deleted: true }
-        : { ...toUser(env, r.id, r.custom_name, idsBy.get(r.id) ?? []), deleted: false };
+        ? { id: r.id, displayName: DELETED_NAME, customName: null, botBio: null, avatar: "", role: "member", identities: [], deleted: true }
+        : { ...toUser(env, r.id, r.custom_name, r.bot_bio, idsBy.get(r.id) ?? []), deleted: false };
       byId.set(r.id, p);
     }
     out.set(r.asked, p);

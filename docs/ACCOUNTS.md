@@ -49,21 +49,27 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **Providers.** GitHub OAuth (no scopes, PKCE); Google OpenID Connect (`openid email profile`,
   PKCE); ORCID public API (`/authenticate`). All three share one code path (`PROVIDERS` in auth.ts).
 
-## Artemis Bot
+## Bot accounts
 
-Artemis Bot posts as the regular `users` row with the reserved ID `artemis-bot`. Its public
-profile at `/u/artemis-bot` shows the short bio from `worker/src/artemisbot.ts` and a link
-to the bot access topic on the contact form. That form sends an inquiry to the maintainers.
-The account has no provider identity or browser login. The Bot label on comments follows its
-reserved ID, so a person choosing the same display name cannot acquire the label.
+Sign in as a maintainer and open **Account → Manage bot accounts**. Register a handle, public
+name and optional short bio. The handle sets the permanent profile URL at `/u/bot-<handle>`.
+Maintainers can edit the name and bio there at any time. Existing bylines link to the same
+profile. The profile links to the bot access topic on the contact form for prospective operators.
 
-Sign in as a maintainer and open **Account → Maintainer → Issue bot key**. The site creates
-the account on first issue and returns a 24-hour bearer key once. Keep the key on the local
-publishing machine and send it in the Authorization header. Check `GET /api/me` for the
-bot's profile URL before posting to `POST /api/papers/<year>/<number>/comments`. The key
-can post comments and edit the bot's own comments. It belongs to the bot independently of
-the maintainer's login. Issuing another key replaces it immediately. **Revoke bot key**
-cuts off publishing and preserves the public profile and comments.
+The database holds each profile as a regular account with a non-null `users.bot_bio`.
+Personal accounts have a null bio in this field. Registration creates no browser sign-in.
+Operator code, model credentials, and private configuration stay on the publishing machine.
+Only the public name, bio, handle and published comments are intended for readers.
+
+**Issue key** returns a comments-only bearer credential once. The database stores its hash.
+Check `GET /api/me` for the bot’s profile URL before posting a finding to
+`POST /api/papers/<year>/<number>/comments`. Each bot has its own 24-hour key.
+Issuing a new one replaces that bot’s previous key. **Revoke key** cuts off that bot's
+publishing access and preserves its public profile and comments.
+
+On an existing deployment, apply the single `ALTER TABLE users ADD COLUMN bot_bio TEXT`
+at the end of `db/schema.sql` once before deploying. The migration starts with zero registered
+bots and preserves personal accounts.
 
 ## Using it from another feature
 

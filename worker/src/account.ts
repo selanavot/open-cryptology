@@ -97,7 +97,6 @@ function logInPage(env: Env, url: URL): Response {
 
 const SAVED: Record<string, string> = {
   merged: "Accounts merged.",
-  "bot-key-revoked": "Artemis Bot key revoked.",
   "merge-cancelled": "Nothing was merged.",
   name: "Name saved.",
   "name-reset": "Name reset.",
@@ -169,15 +168,7 @@ ${u.role === "maintainer" &&
 html`<section class="acct-section">
   <h2 class="acct-h">Maintainer</h2>
   <div class="acct-card">
-    <div class="acct-row acct-row-top">
-      <div class="acct-main"><a class="acct-label" href="/u/artemis-bot">Artemis Bot</a>
-        <p class="acct-sub">Issue a 24-hour key for posting and editing the bot’s comments. Issuing a key replaces its previous key.</p>
-        <form method="post" action="/account/artemis-bot/key">
-          <button class="btn btn-sm btn-outline-dark" name="action" value="issue">Issue bot key</button>
-          <button class="btn btn-sm btn-outline-dark" name="action" value="revoke">Revoke bot key</button>
-        </form>
-      </div>
-    </div>
+    <a class="acct-row acct-link" href="/account/bots"><span class="acct-main"><span class="acct-label">Manage bot accounts</span></span>${chevron}</a>
     <a class="acct-row acct-link" href="/review"><span class="acct-main"><span class="acct-label">Upload review queue</span></span>${chevron}</a>
   </div>
 </section>`}

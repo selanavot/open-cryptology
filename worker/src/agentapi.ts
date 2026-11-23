@@ -6,11 +6,10 @@
 // stored, and it's minted when the agent collects it. A token can post and read manuscripts, and
 // post and edit comments (comments.ts), as that person, nothing else: it can't change the account
 // or remove anything.
-import { ARTEMIS_BOT } from "./artemisbot";
 import type { Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage, page } from "./layout";
-import { authOrigin, currentUser, randomId, randomToken, redirect303, sameOrigin, sha256hex, loadUser, requireUser, isAuthFailure, authJson, type User } from "./auth";
+import { authOrigin, currentUser, randomId, randomToken, redirect303, sameOrigin, sha256hex, loadUser, type User } from "./auth";
 import { latestManuscriptsJson, manuscriptJson, MAX_PDF, publishManuscript } from "./manuscripts";
 import { siteOrigin } from "./seo";
 import { avatar } from "./account";
@@ -33,8 +32,8 @@ export function json(data: unknown, status = 200, headers: Record<string, string
   });
 }
 export const err = (status: number, error: string, message: string, headers: Record<string, string> = {}) => json({ error, message }, status, headers);
+const CONNECT_AGAIN = "For a bot account, ask a maintainer for a new key. For a personal agent, connect again (POST /api/oauth/device).";
 const unauthorized = (error: string, message: string) => err(401, error, message, { "www-authenticate": `Bearer error="invalid_token"` });
-const CONNECT_AGAIN = "Connect again (POST /api/oauth/device); the person approves with one click.";
 
 // ---------------------------------------------------------------------------------------------
 // tokens
@@ -63,29 +62,16 @@ async function mintToken(env: Env, userId: string, keepExpiry?: string) {
   return key;
 }
 
-async function manageBotKey(env: Env, req: Request): Promise<Response> {
-  if (req.method !== "POST") return err(405, "method_not_allowed", "Use the buttons on the account page.", { allow: "POST" });
-  const who = await requireUser(env, req, { role: "maintainer" });
-  if (isAuthFailure(who)) return authJson(who);
-  const action = (await req.formData().catch(() => null))?.get("action");
-  const revoke = env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL")
-    .bind(ARTEMIS_BOT.id, nowIso());
-  if (action === "revoke") {
-    await revoke.run();
-    return redirect303("/account?saved=bot-key-revoked");
-  }
-  if (action !== "issue") return err(400, "bad_action", "Choose Issue or Revoke.");
-  const { insert, key } = await prepareToken(env, ARTEMIS_BOT.id, "comments");
-  await env.DB.batch([
-    env.DB.prepare("INSERT INTO users (id, custom_name, created_at) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO NOTHING")
-      .bind(ARTEMIS_BOT.id, ARTEMIS_BOT.name, nowIso()),
-    revoke,
-    insert,
-  ]);
-  return json({
-    user: ARTEMIS_BOT.name, access_token: key.token, token_type: "Bearer", scope: "comments", expires_at: key.expires,
-    note: "Save this key on the machine running the publisher. It is shown once.",
-  });
+/** Called for a registered bot after checking the maintainer session. */
+export async function replaceBotKey(env: Env, userId: string) {
+  const { insert, key } = await prepareToken(env, userId, "comments");
+  await env.DB.batch([revokeBotKeys(env, userId), insert]);
+  return key;
+}
+
+export function revokeBotKeys(env: Env, userId: string) {
+  return env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL")
+    .bind(userId, nowIso());
 }
 
 /** The person and token behind `Authorization: Bearer oct_...`, or an error response. Never
@@ -97,9 +83,8 @@ export async function tokenActor(env: Env, req: Request, origin: string, scope: 
   const t = await env.DB.prepare("SELECT id, user_id, scopes, expires_at FROM api_tokens WHERE hash = ?1 AND revoked_at IS NULL")
     .bind(await sha256hex(m[1]))
     .first<TokenRow>();
-  if (!t) return unauthorized("token_revoked", `That token is unknown or was revoked. For Artemis Bot, ask a maintainer for a new key. For a personal agent, connect again (POST /api/oauth/device).`);
-  const reconnect = t.user_id === ARTEMIS_BOT.id ? "Ask a maintainer for a replacement bot key." : CONNECT_AGAIN;
-  if (Date.parse(t.expires_at) < Date.now()) return unauthorized("token_expired", `Tokens last ${TOKEN_TTL_HOURS} hours, and this one expired. ${reconnect}`);
+  if (!t) return unauthorized("token_revoked", `That token is unknown or was revoked. ${CONNECT_AGAIN}`);
+  if (Date.parse(t.expires_at) < Date.now()) return unauthorized("token_expired", `Tokens last ${TOKEN_TTL_HOURS} hours, and this one expired. ${CONNECT_AGAIN}`);
   if (scope && !t.scopes.split(" ").includes(scope)) return err(403, "scope", `This token can't ${scope === "comments" ? "post comments" : "post manuscripts"}.`);
   // loadUser refuses deleted accounts; merges move tokens to the kept account (auth.ts).
   const user = await loadUser(env, t.user_id);
@@ -196,7 +181,6 @@ const hasBearer = (req: Request) => /^Bearer\s/i.test(req.headers.get("authoriza
 /** /api/manuscripts, /api/manuscripts/<day>/<n>, and /api/me when it carries a token (the
  *  cookie version of /api/me stays in auth.ts). */
 export const isAgentApiPath = (path: string, req: Request): boolean =>
-  path === "/account/artemis-bot/key" ||
   path === "/api/manuscripts" ||
   API_MS_RE.test(path) ||
   path === "/api/oauth/device" ||
@@ -219,7 +203,6 @@ async function routeAgentApi(req: Request, env: Env, url: URL): Promise<Response
   const origin = siteOrigin(env, url);
   const isGet = req.method === "GET" || req.method === "HEAD";
   const pub = { "cache-control": "public, max-age=60", "access-control-allow-origin": "*" };
-  if (path === "/account/artemis-bot/key") return manageBotKey(env, req);
   if (path === "/connect") {
     if (!isGet && req.method !== "POST") return messagePage(env, 405, "Method not allowed", html`<p>Use the buttons on this page.</p>`, { cache: "no-store", noindex: true });
     return connectRoute(env, req, url);
