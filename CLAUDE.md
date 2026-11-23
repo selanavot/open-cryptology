@@ -26,5 +26,6 @@
 - **Git holds code only**: no PDFs, metadata dumps or secrets. Scratch data goes in `data/` (gitignored).
 - **Cloudflare is the maintainer's personal account.** Payments, plan changes and account creation are
   the maintainer's to do; secrets live in Wrangler secrets / `.dev.vars`, never in the repo.
+- **Registering a bot:** follow [the maintainer registration guide](docs/ACCOUNTS.md#register-a-bot-on-a-deployment) for operator assets, account setup and verification.
 - **UI:** keep the simplified-ePrint layout in yellow (see `worker/public/static/style.css`).
 - **README:** keep it short. Every README change must be reviewed by a human before merging.
