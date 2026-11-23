@@ -6,10 +6,11 @@
 // stored, and it's minted when the agent collects it. A token can post and read manuscripts, and
 // post and edit comments (comments.ts), as that person, nothing else: it can't change the account
 // or remove anything.
+import { ARTEMIS_BOT } from "./artemisbot";
 import type { Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage, page } from "./layout";
-import { authOrigin, currentUser, randomId, randomToken, redirect303, sameOrigin, sha256hex, loadUser, type User } from "./auth";
+import { authOrigin, currentUser, randomId, randomToken, redirect303, sameOrigin, sha256hex, loadUser, requireUser, isAuthFailure, authJson, type User } from "./auth";
 import { latestManuscriptsJson, manuscriptJson, MAX_PDF, publishManuscript } from "./manuscripts";
 import { siteOrigin } from "./seo";
 import { avatar } from "./account";
@@ -45,30 +46,61 @@ interface TokenRow {
   expires_at: string;
 }
 
-/** A new token for `userId`; returns the secret (handed to the agent once), its id and expiry. */
-async function mintToken(env: Env, userId: string, keepExpiry?: string): Promise<{ id: string; token: string; expires: string }> {
+/** Prepare the insert so a bot key can be replaced atomically with its predecessor. */
+async function prepareToken(env: Env, userId: string, scopes: string, keepExpiry?: string) {
   const token = TOKEN_PREFIX + randomToken(32);
   const id = randomId(16);
   const now = new Date();
   const expires = keepExpiry ?? new Date(now.getTime() + TOKEN_TTL_HOURS * 3600_000).toISOString();
-  await env.DB.prepare("INSERT INTO api_tokens (id, hash, user_id, scopes, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-    .bind(id, await sha256hex(token), userId, SCOPES, now.toISOString(), expires)
-    .run();
-  return { id, token, expires };
+  const insert = env.DB.prepare("INSERT INTO api_tokens (id, hash, user_id, scopes, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+    .bind(id, await sha256hex(token), userId, scopes, now.toISOString(), expires);
+  return { insert, key: { id, token, expires } };
+}
+
+async function mintToken(env: Env, userId: string, keepExpiry?: string) {
+  const { insert, key } = await prepareToken(env, userId, SCOPES, keepExpiry);
+  await insert.run();
+  return key;
+}
+
+async function manageBotKey(env: Env, req: Request): Promise<Response> {
+  if (req.method !== "POST") return err(405, "method_not_allowed", "Use the buttons on the account page.", { allow: "POST" });
+  const who = await requireUser(env, req, { role: "maintainer" });
+  if (isAuthFailure(who)) return authJson(who);
+  const action = (await req.formData().catch(() => null))?.get("action");
+  const revoke = env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL")
+    .bind(ARTEMIS_BOT.id, nowIso());
+  if (action === "revoke") {
+    await revoke.run();
+    return redirect303("/account?saved=bot-key-revoked");
+  }
+  if (action !== "issue") return err(400, "bad_action", "Choose Issue or Revoke.");
+  const { insert, key } = await prepareToken(env, ARTEMIS_BOT.id, "comments");
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO users (id, custom_name, created_at) VALUES (?1, ?2, ?3) ON CONFLICT(id) DO NOTHING")
+      .bind(ARTEMIS_BOT.id, ARTEMIS_BOT.name, nowIso()),
+    revoke,
+    insert,
+  ]);
+  return json({
+    user: ARTEMIS_BOT.name, access_token: key.token, token_type: "Bearer", scope: "comments", expires_at: key.expires,
+    note: "Save this key on the machine running the publisher. It is shown once.",
+  });
 }
 
 /** The person and token behind `Authorization: Bearer oct_...`, or an error response. Never
  *  falls back to the session cookie. */
-export async function tokenActor(env: Env, req: Request, origin: string, scope: Scope = "manuscripts"): Promise<{ user: User; token: TokenRow } | Response> {
+export async function tokenActor(env: Env, req: Request, origin: string, scope: Scope | null): Promise<{ user: User; token: TokenRow } | Response> {
   const m = /^Bearer\s+(\S+)\s*$/i.exec(req.headers.get("authorization") ?? "");
   if (!m) return unauthorized("no_token", `Send "Authorization: Bearer ${TOKEN_PREFIX}...". To get a token, connect first: see ${origin}/llms.txt.`);
   if (!m[1].startsWith(TOKEN_PREFIX)) return unauthorized("bad_token", "That isn't an Open Cryptology token.");
   const t = await env.DB.prepare("SELECT id, user_id, scopes, expires_at FROM api_tokens WHERE hash = ?1 AND revoked_at IS NULL")
     .bind(await sha256hex(m[1]))
     .first<TokenRow>();
-  if (!t) return unauthorized("token_revoked", `That token is unknown or was revoked. ${CONNECT_AGAIN}`);
-  if (Date.parse(t.expires_at) < Date.now()) return unauthorized("token_expired", `Tokens last ${TOKEN_TTL_HOURS} hours, and this one expired. ${CONNECT_AGAIN}`);
-  if (!t.scopes.split(" ").includes(scope)) return err(403, "scope", `This token can't ${scope === "comments" ? "post comments" : "post manuscripts"}. ${CONNECT_AGAIN}`);
+  if (!t) return unauthorized("token_revoked", `That token is unknown or was revoked. For Artemis Bot, ask a maintainer for a new key. For a personal agent, connect again (POST /api/oauth/device).`);
+  const reconnect = t.user_id === ARTEMIS_BOT.id ? "Ask a maintainer for a replacement bot key." : CONNECT_AGAIN;
+  if (Date.parse(t.expires_at) < Date.now()) return unauthorized("token_expired", `Tokens last ${TOKEN_TTL_HOURS} hours, and this one expired. ${reconnect}`);
+  if (scope && !t.scopes.split(" ").includes(scope)) return err(403, "scope", `This token can't ${scope === "comments" ? "post comments" : "post manuscripts"}.`);
   // loadUser refuses deleted accounts; merges move tokens to the kept account (auth.ts).
   const user = await loadUser(env, t.user_id);
   if (!user) return unauthorized("token_revoked", "The account behind this token is gone.");
@@ -128,7 +160,7 @@ async function readMetadata(form: FormData): Promise<Metadata | string> {
 
 /** POST /api/manuscripts. Checks the token, the rate and the size before reading the body. */
 async function postManuscript(env: Env, req: Request, origin: string): Promise<Response> {
-  const who = await tokenActor(env, req, origin);
+  const who = await tokenActor(env, req, origin, "manuscripts");
   if (who instanceof Response) return who;
   if (env.API_UPLOAD_LIMITER) {
     const { success } = await env.API_UPLOAD_LIMITER.limit({ key: `tok:${who.token.id}` });
@@ -164,6 +196,7 @@ const hasBearer = (req: Request) => /^Bearer\s/i.test(req.headers.get("authoriza
 /** /api/manuscripts, /api/manuscripts/<day>/<n>, and /api/me when it carries a token (the
  *  cookie version of /api/me stays in auth.ts). */
 export const isAgentApiPath = (path: string, req: Request): boolean =>
+  path === "/account/artemis-bot/key" ||
   path === "/api/manuscripts" ||
   API_MS_RE.test(path) ||
   path === "/api/oauth/device" ||
@@ -186,6 +219,7 @@ async function routeAgentApi(req: Request, env: Env, url: URL): Promise<Response
   const origin = siteOrigin(env, url);
   const isGet = req.method === "GET" || req.method === "HEAD";
   const pub = { "cache-control": "public, max-age=60", "access-control-allow-origin": "*" };
+  if (path === "/account/artemis-bot/key") return manageBotKey(env, req);
   if (path === "/connect") {
     if (!isGet && req.method !== "POST") return messagePage(env, 405, "Method not allowed", html`<p>Use the buttons on this page.</p>`, { cache: "no-store", noindex: true });
     return connectRoute(env, req, url);
@@ -199,7 +233,7 @@ async function routeAgentApi(req: Request, env: Env, url: URL): Promise<Response
   }
   if (path === "/api/me") {
     if (!isGet) return err(405, "method_not_allowed", "Use GET.");
-    const who = await tokenActor(env, req, origin);
+    const who = await tokenActor(env, req, origin, null);
     if (who instanceof Response) return who;
     return json({
       user: { displayName: who.user.displayName, profile_url: `${origin}/u/${who.user.id}` },

@@ -48,8 +48,22 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **Deletion** keeps a "deleted user" tombstone so content keeps an author; sign-ins and sessions go.
 - **Providers.** GitHub OAuth (no scopes, PKCE); Google OpenID Connect (`openid email profile`,
   PKCE); ORCID public API (`/authenticate`). All three share one code path (`PROVIDERS` in auth.ts).
-- **Not yet:** public profile pages, agent tokens, bot accounts, suspensions. Add them when a
-  feature needs them.
+
+## Artemis Bot
+
+Artemis Bot posts as the regular `users` row with the reserved ID `artemis-bot`. Its public
+profile at `/u/artemis-bot` shows the short bio from `worker/src/artemisbot.ts` and a link
+to the bot access topic on the contact form. That form sends an inquiry to the maintainers.
+The account has no provider identity or browser login. The Bot label on comments follows its
+reserved ID, so a person choosing the same display name cannot acquire the label.
+
+Sign in as a maintainer and open **Account → Maintainer → Issue bot key**. The site creates
+the account on first issue and returns a 24-hour bearer key once. Keep the key on the local
+publishing machine and send it in the Authorization header. Check `GET /api/me` for the
+bot's profile URL before posting to `POST /api/papers/<year>/<number>/comments`. The key
+can post comments and edit the bot's own comments. It belongs to the bot independently of
+the maintainer's login. Issuing another key replaces it immediately. **Revoke bot key**
+cuts off publishing and preserves the public profile and comments.
 
 ## Using it from another feature
 

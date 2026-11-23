@@ -19,6 +19,7 @@
 // Pages are publicly cached, so they render the public view only; the forms and buttons are in
 // the HTML but hidden, and app.js reveals them from the oc_login cookie and /api/me.
 import type { Env } from "./db";
+import { ARTEMIS_BOT } from "./artemisbot";
 import { canonicalId } from "./db";
 import { html, raw, safeUrl, type Html } from "./html";
 import { avatar } from "./account";
@@ -291,7 +292,7 @@ function composer(action: string, o: { submit: string; replyTo?: number; value?:
 
 function flairs(t: Thread, p: Person): Html {
   // The maintainer role works (remove) but isn't shown: no public mods for now.
-  return html`${p.id === t.uploader ? html`<span class="cm-flair cm-flair-op" title="Uploaded this manuscript">OP</span>` : ""}`;
+  return html`${p.id === ARTEMIS_BOT.id && html`<span class="cm-flair">Bot</span>`}${p.id === t.uploader ? html`<span class="cm-flair cm-flair-op" title="Uploaded this manuscript">OP</span>` : ""}`;
 }
 
 function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<number>, depth: number): Html[] {

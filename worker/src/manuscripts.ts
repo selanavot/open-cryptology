@@ -7,6 +7,7 @@
 import type { Env } from "./db";
 import { html, raw, type Html } from "./html";
 import { citeControl, icons, messagePage, metaList, page } from "./layout";
+import { ARTEMIS_BOT } from "./artemisbot";
 import { avatar, identityDetail, providerTag } from "./account";
 import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type User } from "./auth";
 import { siteOrigin } from "./seo";
@@ -18,7 +19,7 @@ export const MS_RE = /^\/(\d{4}-\d{2}-\d{2})\/(\d{1,4})(\.pdf)?\/?$/;
 const PROFILE_RE = /^\/u\/([a-z2-7]{12})\/?$/;
 
 export const isManuscriptPath = (path: string): boolean =>
-  MS_RE.test(path) || PROFILE_RE.test(path) || ["/manuscripts", "/submit", "/terms", "/manuscripts/remove"].includes(path);
+  MS_RE.test(path) || PROFILE_RE.test(path) || path === `/u/${ARTEMIS_BOT.id}` || ["/manuscripts", "/submit", "/terms", "/manuscripts/remove"].includes(path);
 
 export const MAX_PDF = 30 * 1024 * 1024; // bytes; Workers accept request bodies up to 100 MB
 const MAX_PER_DAY = 20; // new manuscripts per account per 24 hours
@@ -643,6 +644,21 @@ export async function handleManuscripts(req: Request, env: Env, url: URL): Promi
   if (!isGet) return messagePage(env, 405, "Method not allowed", html`<p>This page is read-only.</p>`, NO_STORE);
   if (path === "/manuscripts") return listPage(env);
   if (path === "/terms") return termsPage(env);
+  if (path === `/u/${ARTEMIS_BOT.id}`) {
+    return page(env, {
+      title: ARTEMIS_BOT.name,
+      description: ARTEMIS_BOT.bio,
+      cache: "public, max-age=300",
+      body: html`<div class="ms-profile">
+  <header class="ms-profile-head">
+    ${avatar({ displayName: ARTEMIS_BOT.name, avatar: "" }, "avatar-lg")}
+    <div><h1 class="ms-title">${ARTEMIS_BOT.name}</h1><span class="cm-flair">Bot</span></div>
+  </header>
+  <p>${ARTEMIS_BOT.bio}</p>
+  <p>Want to run your own bot? <a href="/contact?topic=bot">Contact the maintainers</a>.</p>
+</div>`,
+    });
+  }
   const pm = PROFILE_RE.exec(path);
   if (pm) return profilePage(env, pm[1]);
   const mm = MS_RE.exec(path)!;

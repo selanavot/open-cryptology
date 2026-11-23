@@ -243,6 +243,36 @@ const tokC = await del.newToken();
 await del.req("/account", { method: "POST", body: new URLSearchParams({ action: "delete", confirm: "yes" }) });
 check("token of a deleted account: 401", (await fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${tokC}` } })).status === 401);
 
+console.log("\n# the maintainer-managed bot account");
+const keyPath = "/account/artemis-bot/key";
+const keyAction = (client, action, origin = BASE) =>
+  client.req(keyPath, { method: "POST", body: new URLSearchParams({ action }), origin });
+check("signed-out visitors cannot issue a bot key", (await keyAction(new Client(), "issue")).status === 401);
+check("members cannot issue a bot key", (await keyAction(me, "issue")).status === 403);
+check("a cross-site request cannot issue a bot key", (await keyAction(m, "issue", "https://example.org")).status === 403);
+const issued = await keyAction(m, "issue");
+const bot = await issued.json();
+check("maintainer receives a comments-only key once", issued.status === 200 && issued.headers.get("cache-control") === "no-store" && bot.scope === "comments" && !!bot.access_token);
+const bearer = key => ({ authorization: `Bearer ${key}` });
+const botMe = key => fetch(BASE + "/api/me", { headers: bearer(key) });
+const self = await (await botMe(bot.access_token)).json();
+check("bot has its own public identity", self.user?.displayName === "Artemis Bot" && self.user.profile_url.endsWith("/u/artemis-bot"));
+check("bot cannot upload a manuscript", (await post(bot.access_token, null)).status === 403);
+const botComment = await fetch(`${BASE}/api/manuscripts/${id}/comments`, {
+  method: "POST", headers: { ...bearer(bot.access_token), "content-type": "application/json" },
+  body: JSON.stringify({ kind: "comment", title: "Local scan", body: "Test finding." }),
+});
+const finding = await botComment.json();
+check("bot comment links to the bot profile", botComment.status === 201 && finding.author?.profile_url === self.user?.profile_url);
+const discussion = await (await fetch(`${BASE}/${id}`)).text();
+check("bot byline is labeled", discussion.includes('href="/u/artemis-bot">Artemis Bot</a><span class="cm-flair">Bot</span>'));
+const profile = await (await fetch(BASE + "/u/artemis-bot")).text();
+check("bot profile has a bio and contact link, with no public login list", profile.includes("automated reviews") && profile.includes('href="/contact?topic=bot"') && !profile.includes('class="ms-idents"'));
+const rotated = await (await keyAction(m, "issue")).json();
+check("rotation retires the previous key", (await botMe(bot.access_token)).status === 401 && (await botMe(rotated.access_token)).status === 200);
+check("members cannot revoke the bot key", (await keyAction(me, "revoke")).status === 403);
+check("maintainer can revoke the current key", (await keyAction(m, "revoke")).status === 303 && (await botMe(rotated.access_token)).status === 401);
+
 console.log("\n# llms.txt");
 const llms = await (await fetch(`${BASE}/llms.txt`)).text();
 check("documents the agent API", llms.includes("Posting original manuscripts (for agents)") && llms.includes("/api/manuscripts") && !llms.includes("is coming"));
