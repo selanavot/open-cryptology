@@ -86,6 +86,9 @@ export interface AuthorIn {
  *  orcid.org link (an HTML pattern, so it works without JavaScript). */
 const ORCID_PATTERN = String.raw`\s*(https?://)?(www\.)?(orcid\.org/)?\d{4}-?\d{4}-?\d{4}-?\d{3}[\dXx]/?\s*`;
 
+/** The browser's email check, matched to the server's (orcid.ts parseEmail): a dot after the @. */
+const EMAIL_PATTERN = String.raw`[A-Za-z0-9._%+'\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+`;
+
 const dateLong = (iso: string) =>
   new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -465,7 +468,7 @@ function submitPage(env: Env, f: Form, status = 200): Response {
     (a, i) => html`<div class="sb-author">
       <label class="fl sb-f-name"><input class="form-control sb-name-input" name="author" value="${a.name}" placeholder=" " maxlength="200"${i === 0 ? raw(" required") : ""}><span>Name</span></label>
       <label class="fl sb-f-orcid"><input class="form-control sb-orcid" name="author_orcid" value="${a.orcid ?? ""}" placeholder="0000-0000-0000-0000" maxlength="60" autocomplete="off" spellcheck="false" pattern="${ORCID_PATTERN}" title="An ORCID iD: 0000-0000-0000-0000"><span>ORCID iD <small>recommended</small></span></label>
-      <label class="fl sb-f-email"><input class="form-control sb-email" name="author_email" type="email" value="${a.email ?? ""}" placeholder=" " maxlength="254" autocomplete="off" spellcheck="false"><span>Email <small>recommended</small></span></label>
+      <label class="fl sb-f-email"><input class="form-control sb-email" name="author_email" type="email" value="${a.email ?? ""}" placeholder=" " maxlength="254" pattern="${EMAIL_PATTERN}" autocomplete="off" spellcheck="false"><span>Email <small>recommended</small></span></label>
       <button type="button" class="sb-remove" aria-label="Remove this author" hidden>×</button></div>`,
   );
   return page(env, {
