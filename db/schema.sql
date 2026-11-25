@@ -281,3 +281,10 @@ CREATE INDEX IF NOT EXISTS comment_votes_user ON comment_votes(user_id, created_
 -- NULL for people; a bot's public bio is plain text (possibly empty).
 ALTER TABLE users ADD COLUMN bot_bio TEXT;
 ALTER TABLE users ADD COLUMN bot_avatar BLOB; -- optional small JPEG supplied by the operator
+
+-- issue severity (2026-11): worker/src/comments.ts, levels in worker/src/severity.ts. Run on an
+-- existing database with:  sed -n '/^-- issue severity/,$p' db/schema.sql
+-- (the ALTER fails with "duplicate column" if run twice). 'critical' | 'high' | 'medium' | 'low' on
+-- top-level Issues, NULL otherwise (and on Issues from before severities). The levels are a list in
+-- code, not a CHECK here, because the rubric will change.
+ALTER TABLE comments ADD COLUMN severity TEXT;

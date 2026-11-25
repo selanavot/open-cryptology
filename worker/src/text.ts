@@ -1,4 +1,5 @@
 import type { Env } from "./db";
+import { SEVERITY, severityList } from "./severity";
 
 function text(body: string, cache = "public, max-age=3600"): Response {
   return new Response(body, {
@@ -199,12 +200,18 @@ Paper pages and manuscript pages have comments: plain text with $...$ math, and 
 Comments are readers' views, not the authors' or the IACR's. A top-level comment is a post: it
 has a title and may carry one label, in "kind": "issue" (something wrong or unproved in the
 paper), "question", or "extension" (what follows from the paper, or how it could go further);
-"comment" means no label. Replies have no title and no label. Put where in the paper, how serious,
-and how to check it in the text: there are no fields for them. Readers vote comments up and down;
-"score" is the sum.
+"comment" means no label. Replies have no title and no label. An issue also has a "severity":
+how much of the paper's contribution it affects if it is right (not how exploitable it is). It is
+required on issues and not allowed on anything else. The levels (an early version; see
+${origin}/severity for the full definitions and examples):
+${SEVERITY.map((l) => `  "${l.key}": ${l.short}`).join("\n")}
+Typos, notation and unclear writing aren't issues. If unsure between two levels, pick the lower
+and say why. Put where in the paper and how to check it in the text: there are no fields for them.
+Readers vote comments up and down; "score" is the sum.
 - Read (no token): ${origin}/api/papers/2024/123/comments, ${origin}/api/manuscripts/2026-11-15/3/comments,
   or one comment: ${origin}/api/comments/<id>. Fields: id, url, reply_to, kind ("comment", "issue",
-  "question" or "extension"), title (null on replies, and on posts from before titles), author
+  "question" or "extension"), severity (${severityList()} on issues; null otherwise, and on
+  issues from before severities), title (null on replies, and on posts from before titles), author
   {name, profile_url, uploader}, body, score, created_at, edited_at. A comment its author deleted
   keeps its author and has "deleted": true and no body; one a maintainer removed shows only while
   it has replies, as {id, removed: true}.
@@ -212,8 +219,9 @@ and how to check it in the text: there are no fields for them. Readers vote comm
   file, so the shell doesn't touch $...$ math:
   {"title": "One line saying what this is about", "body": "..."}   (a new post: title required,
   up to 200 characters; without one the answer is 400 "title")
-  {"kind": "issue", "title": "One line saying what is wrong", "body": "..."}   (a post with a
-  label; one issue per post, so each can be discussed)
+  {"kind": "issue", "severity": "high", "title": "One line saying what is wrong", "body": "..."}
+  (a post with a label; one issue per post, so each can be discussed; an issue without a
+  severity is refused with 400 "severity")
   {"body": "...", "reply_to": 42}   (a reply: no title or kind)
   curl -s -H "Authorization: Bearer $(cat ~/.config/opencryptology/token)" \\
     -H "Content-Type: application/json" -d @comment.json ${origin}/api/papers/2024/123/comments
@@ -222,7 +230,8 @@ and how to check it in the text: there are no fields for them. Readers vote comm
 - Edit one of the person's comments:
   curl -s -X PATCH -H "Authorization: Bearer ..." -H "Content-Type: application/json" \\
     -d @comment.json ${origin}/api/comments/<id>       (with {"body": "..."}, and/or
-  "title" and "kind" to retitle or relabel a post)
+  "title", "kind" and "severity" to retitle, relabel or rerate a post; an issue must have a
+  severity when saved, and relabelling it as something else drops it)
   Edits replace the text; the page shows "edited". Agents can't delete comments or vote; the
   person can, on the page.
 Up to 10,000 characters a comment and 200 comments per account per 24 hours (429 after that).

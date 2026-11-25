@@ -811,10 +811,12 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 
 /* a post's title and label (comment, issue, question or extension): the title above the text and
    the labels under it, drawn like the chip; the chip and title on a post; the filter row */
-.cm-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: 0 1rem .75rem; }
+/* the row under the text: labels on the left, an Issue's severity on the right */
+.cm-labels { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: 0 1rem .75rem; }
+.cm-kinds { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 /* the chips belong to the post being written; a line sets the box's buttons apart from them */
-.cm-kinds + .cm-bar { border-top: 1px solid var(--line); margin: 0 1rem; padding: .5rem 0; }
-.cm-kinds + .cm-bar .cm-tool { margin-left: -.6rem; }
+.cm-labels ~ .cm-bar { border-top: 1px solid var(--line); margin: 0 1rem; padding: .5rem 0; }
+.cm-labels ~ .cm-bar .cm-tool { margin-left: -.6rem; }
 .cm-kind input { position: absolute; opacity: 0; width: 0; height: 0; }
 .cm-kind span, .cm-filter {
   display: inline-block; padding: .32rem .7rem; border: 0; border-radius: 999px; background: none;
@@ -833,7 +835,25 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
   color: var(--text); outline: none;
 }
 .cm-title-input::placeholder { color: #8a8f94; font-weight: 600; }
-.cm-composer.is-collapsed .cm-kinds, .cm-composer.is-collapsed .cm-title-input { display: none; }
+.cm-composer.is-collapsed .cm-labels, .cm-composer.is-collapsed .cm-title-input { display: none; }
+/* an Issue's severity, shown while Issue is picked: a segmented control (not pills, so it reads as a
+   different choice from the label); the picked level is filled in its chip's colour */
+.cm-severity { display: flex; align-items: center; gap: .45rem; }
+.cm-severity[hidden] { display: none; }
+.cm-severity-label { font-size: .75rem; font-weight: 600; color: var(--muted); }
+.cm-seg { display: inline-flex; border: 1px solid var(--border); border-radius: .4rem; overflow: hidden; background: #fff; }
+.cm-seg label { margin: 0; }
+.cm-seg label + label { border-left: 1px solid var(--border); }
+.cm-seg input { position: absolute; opacity: 0; width: 0; height: 0; }
+.cm-seg span { display: block; padding: .22rem .6rem; font-size: .72rem; font-weight: 600; line-height: 1.2; color: var(--muted); cursor: pointer; }
+.cm-seg span:hover { background: var(--sand); color: var(--text); }
+.cm-seg input:checked + span { font-weight: 750; }
+.cm-seg input:focus-visible + span { box-shadow: inset 0 0 0 .15rem var(--focus); }
+.cm-severity-help {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.1rem; height: 1.1rem; border: 1px solid var(--border);
+  border-radius: 50%; font-size: .68rem; font-weight: 700; color: var(--muted); text-decoration: none;
+}
+.cm-severity-help:hover { color: var(--text); border-color: var(--text); }
 .cm-flair-issue { color: #8f2a1c; background: #fbe9e4; }
 .cm-flair-question { color: #5a5345; background: var(--sand-2); }
 .cm-flair-extension { color: #2f5d3a; background: #e6f1e6; }
@@ -843,6 +863,12 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .cm-thread[data-show="issue"] > .cm:not([data-kind="issue"]),
 .cm-thread[data-show="question"] > .cm:not([data-kind="question"]),
 .cm-thread[data-show="extension"] > .cm:not([data-kind="extension"]) { display: none; }
+/* Issues: most severe first */
+.cm-thread[data-show="issue"] { display: flex; flex-direction: column; }
+.cm-thread[data-show="issue"] > [data-severity="critical"] { order: -4; }
+.cm-thread[data-show="issue"] > [data-severity="high"] { order: -3; }
+.cm-thread[data-show="issue"] > [data-severity="medium"] { order: -2; }
+.cm-thread[data-show="issue"] > [data-severity="low"] { order: -1; }
 
 /* votes: up arrow, score, down arrow; the person's own vote is lit (app.js) */
 .cm-vote { display: inline-flex; align-items: center; margin: 0 .3rem 0 .2rem; }
@@ -871,3 +897,18 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .bot-feed-item h3 a { color: var(--text); }
 .bot-feed-item p { margin: 0 0 .4rem; }
 .bot-feed-pages { margin: .7rem 0; }
+
+/* severity of an Issue (severity.ts): the chip on a post, the picker's checked chip, /severity.
+   One family of warm reds, stronger for more severe; after .bot-feed-meta so these win there. */
+a.cm-sev, a.cm-sev:visited { text-decoration: none; }
+a.cm-sev:hover { text-decoration: underline; }
+.cm-flair.cm-sev-critical, .cm-seg .cm-sev-critical input:checked + span { color: #fff; background: #9b2c1d; }
+.cm-flair.cm-sev-high, .cm-seg .cm-sev-high input:checked + span { color: #7a1f12; background: #f6d5cc; }
+.cm-flair.cm-sev-medium, .cm-seg .cm-sev-medium input:checked + span { color: #8f2a1c; background: #fbe9e4; }
+.cm-flair.cm-sev-low, .cm-seg .cm-sev-low input:checked + span { color: #4d4538; background: var(--sand-3); }
+.severity-draft { background: var(--sand); border-left: 4px solid var(--nav); padding: .6rem .85rem; }
+.severity-level { margin: 1.25rem 0; scroll-margin-top: calc(var(--nav-h) + 1rem); }
+.severity-level h4 { margin: 0 0 .35rem; line-height: 1; }
+.severity-level h4 .cm-flair { font-size: .8rem; padding: .2rem .6rem; }
+.severity-level p, .severity-level ul { margin-bottom: .35rem; }
+.severity-level:target h4 .cm-flair { box-shadow: 0 0 0 .2rem var(--focus); }

@@ -12,6 +12,7 @@ import { apiMissing, missingPage } from "./missing";
 import { apiSearch, eprintPage, homePage, json, notFound, searchPage } from "./pages";
 import { supportPage } from "./support";
 import { privacyPage } from "./privacy";
+import { severityPage } from "./severity";
 import { llmsTxt, robotsTxt } from "./text";
 import { indexNowKeyFile, pingIndexNow } from "./indexnow";
 import { siteOrigin, sitemap } from "./seo";
@@ -178,6 +179,8 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
       return supportPage(env);
     case "/privacy":
       return privacyPage(env);
+    case "/severity":
+      return severityPage(env);
     case "/llms.txt":
       return llmsTxt(env, url.origin);
     case "/robots.txt":
