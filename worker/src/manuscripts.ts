@@ -463,9 +463,9 @@ interface Form {
 function submitPage(env: Env, f: Form, status = 200): Response {
   const authorRows = (f.authors.length ? f.authors : [{ name: "" }, { name: "" }]).map(
     (a, i) => html`<div class="sb-author">
-      <input class="form-control sb-name-input" name="author" value="${a.name}" aria-label="Author ${i + 1} name (required)" maxlength="200"${i === 0 ? raw(" required") : ""}>
-      <input class="form-control sb-orcid" name="author_orcid" value="${a.orcid ?? ""}" aria-label="Author ${i + 1} ORCID iD (recommended)" maxlength="60" autocomplete="off" spellcheck="false" pattern="${ORCID_PATTERN}" title="An ORCID iD: 0000-0000-0000-0000">
-      <input class="form-control sb-email" name="author_email" type="email" value="${a.email ?? ""}" aria-label="Author ${i + 1} email (recommended)" maxlength="254" autocomplete="off" spellcheck="false">
+      <label class="fl sb-f-name"><input class="form-control sb-name-input" name="author" value="${a.name}" placeholder=" " maxlength="200"${i === 0 ? raw(" required") : ""}><span>Name</span></label>
+      <label class="fl sb-f-orcid"><input class="form-control sb-orcid" name="author_orcid" value="${a.orcid ?? ""}" placeholder="0000-0000-0000-0000" maxlength="60" autocomplete="off" spellcheck="false" pattern="${ORCID_PATTERN}" title="An ORCID iD: 0000-0000-0000-0000"><span>ORCID iD <small>recommended</small></span></label>
+      <label class="fl sb-f-email"><input class="form-control sb-email" name="author_email" type="email" value="${a.email ?? ""}" placeholder=" " maxlength="254" autocomplete="off" spellcheck="false"><span>Email <small>recommended</small></span></label>
       <button type="button" class="sb-remove" aria-label="Remove this author" hidden>×</button></div>`,
   );
   return page(env, {
@@ -487,7 +487,6 @@ function submitPage(env: Env, f: Form, status = 200): Response {
     <label class="form-label" for="sb-title">Title</label>
     <input class="form-control" id="sb-title" name="title" value="${f.title}" maxlength="300" required>
     <label class="form-label">Authors <span class="sb-sub">as they should be cited</span></label>
-    <div class="sb-author sb-author-head" aria-hidden="true"><span class="sb-name-input">Name <span class="sb-sub">required</span></span><span class="sb-orcid">ORCID iD <span class="sb-sub">recommended</span></span><span class="sb-email">Email <span class="sb-sub">recommended</span></span><span class="sb-remove"></span></div>
     <div class="sb-authors">${authorRows}</div>
     <div><button type="button" class="sb-add btn btn-sm btn-link" hidden>+ Add author</button></div>
     <p class="form-hint text-muted">People or models. You're shown separately as the uploader.</p>

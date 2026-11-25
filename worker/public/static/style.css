@@ -693,18 +693,27 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .sb-preview.is-empty { color: var(--muted); }
 .sb-authors { display: flex; flex-direction: column; gap: .4rem; }
 .sb-author { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
-.sb-author .form-control { width: auto; min-width: 0; }
-.sb-name-input { flex: 1.4 1 9rem; }
-.sb-orcid { flex: 0 0 11.8rem; font-size: .9rem; font-variant-numeric: tabular-nums; }
-.sb-email { flex: 1 1 9rem; font-size: .9rem; }
-.sb-author-head { margin-bottom: -.15rem; }
-.sb-author-head > span { font-size: .85rem; font-weight: 600; padding-left: .1rem; white-space: nowrap; }
-.sb-author-head .sb-sub { font-size: .8rem; }
-.sb-author .sb-remove[hidden], .sb-author-head .sb-remove { display: inline-block; visibility: hidden; }
-.sb-orcid:user-invalid, .sb-email:user-invalid { border-color: #b42318; }
-@media (max-width: 575px) { .sb-authors { gap: .9rem; } .sb-name-input { flex-basis: 100%; } .sb-orcid { flex: 0 0 12.4rem; } .sb-email { flex: 1 1 5rem; } }
+.sb-f-name { flex: 1.4 1 9rem; }
+.sb-f-orcid { flex: 0 0 12.8rem; }
+.sb-orcid { font-variant-numeric: tabular-nums; }
+.sb-f-email { flex: 1 1 9rem; }
 .orcid-link { margin-left: .25rem; text-decoration: none; }
 .orcid-icon { vertical-align: -1px; }
+.sb-orcid:user-invalid, .sb-email:user-invalid { border-color: #b42318; }
+@media (max-width: 575px) {
+  .sb-authors { gap: 1.1rem; }
+  .sb-f-name { flex: 1 1 0; }
+  .sb-author .sb-remove { order: 1; }
+  .sb-f-orcid, .sb-f-email { order: 2; flex: 1 1 100%; }
+}
+/* Floating labels: the label sits in the empty field and moves up small once it has focus or text. */
+.fl { position: relative; display: block; margin: 0; min-width: 0; }
+.fl > .form-control { height: 3.2rem; padding: 1.35rem .75rem .35rem; }
+.fl > span { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: .95rem; line-height: 1; white-space: nowrap; pointer-events: none; transition: top .12s, font-size .12s, transform .12s; }
+.fl > span small { font-size: .8em; opacity: .8; }
+.fl > .form-control:focus + span, .fl > .form-control:not(:placeholder-shown) + span { top: .55rem; transform: none; font-size: .72rem; }
+.fl > .form-control::placeholder { color: transparent; }
+.fl > .form-control:focus::placeholder { color: #bdb6a6; }
 .sb-remove { border: 0; background: none; color: var(--muted); font-size: 1.3rem; line-height: 1; padding: 0 .3rem; cursor: pointer; }
 .sb-remove:hover { color: #b42318; }
 .sb-add { padding-left: 0; }

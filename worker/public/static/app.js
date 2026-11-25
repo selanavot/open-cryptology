@@ -354,8 +354,17 @@
         if (tidy && v !== o.value) o.value = v;
         o.setCustomValidity(!v || orcidOk(v) ? "" : "Not a valid ORCID iD");
       };
+      // Typing an iD: the dashes go in by themselves (0000-0000-0000-0000), so either form works.
+      var dashes = function (o, e) {
+        var v = o.value;
+        if (!/^[\d\sXx-]*$/.test(v) || (e && e.inputType && e.inputType.indexOf("delete") === 0)) return;
+        if (o.selectionStart !== v.length) return; // editing in the middle: leave it
+        var d = v.replace(/[^\dXx]/g, "").toUpperCase().slice(0, 16);
+        var f = (d.match(/.{1,4}/g) || []).join("-");
+        if (f !== v) o.value = f;
+      };
       list.addEventListener("input", function (e) {
-        if (e.target.matches(".sb-orcid")) checkOrcid(e.target, false);
+        if (e.target.matches(".sb-orcid")) { dashes(e.target, e); checkOrcid(e.target, false); }
         if (e.target.matches(".sb-orcid, .sb-email")) refresh();
       });
       list.addEventListener("change", function (e) {
