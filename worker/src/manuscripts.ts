@@ -460,8 +460,8 @@ function submitPage(env: Env, f: Form, status = 200): Response {
   const authorRows = (f.authors.length ? f.authors : [{ name: "" }, { name: "" }]).map(
     (a, i) => html`<div class="sb-author">
       <input class="form-control sb-name-input" name="author" value="${a.name}" placeholder="Name" aria-label="Author ${i + 1}" maxlength="200"${i === 0 ? raw(" required") : ""}>
-      <input class="form-control sb-orcid" name="author_orcid" value="${a.orcid ?? ""}" placeholder="ORCID iD" aria-label="Author ${i + 1}: ORCID iD (optional)" maxlength="60" autocomplete="off" spellcheck="false">
-      <input class="form-control sb-email" name="author_email" type="email" value="${a.email ?? ""}" placeholder="Email" aria-label="Author ${i + 1}: email (optional, never shown)" maxlength="254" autocomplete="off" spellcheck="false">
+      <input class="form-control sb-orcid" name="author_orcid" value="${a.orcid ?? ""}" placeholder="ORCID iD" aria-label="Author ${i + 1} ORCID iD" maxlength="60" autocomplete="off" spellcheck="false">
+      <input class="form-control sb-email" name="author_email" type="email" value="${a.email ?? ""}" placeholder="Email" aria-label="Author ${i + 1} email" maxlength="254" autocomplete="off" spellcheck="false">
       <button type="button" class="sb-remove" aria-label="Remove this author" hidden>×</button></div>`,
   );
   return page(env, {
@@ -485,7 +485,7 @@ function submitPage(env: Env, f: Form, status = 200): Response {
     <label class="form-label">Authors <span class="sb-sub">as they should be cited</span></label>
     <div class="sb-authors">${authorRows}</div>
     <div><button type="button" class="sb-add btn btn-sm btn-link" hidden>+ Add author</button></div>
-    <p class="form-hint text-muted">People or models. You're shown separately as the uploader. For people, an ORCID iD and an email are optional but recommended: authors who sign in with them will be recognized as authors. ORCID iDs are shown; emails never are.</p>
+    <p class="form-hint text-muted">People or models. You're shown separately as the uploader.</p>
     <div class="sb-field-head">
       <label class="form-label" for="sb-abstract">Abstract</label>
       <span class="sb-tabs" hidden><button type="button" class="sb-tab" data-tab="write" aria-pressed="true">Write</button><button type="button" class="sb-tab" data-tab="preview" aria-pressed="false">Preview</button></span>
@@ -543,14 +543,14 @@ export async function publishManuscript(env: Env, uploaderId: string, n: NewManu
   if (authors.length > 100 || authors.some((a) => a.length > 200)) return fail(400, "authors_too_long", "That's too many authors, or a very long name.");
   const who = (i: number) => `author ${i + 1}${rows[i].name ? ` (${rows[i].name})` : ""}`;
   const unnamed = rows.findIndex((a) => !a.name);
-  if (unnamed >= 0) return fail(400, "author_name", `Add a name for ${who(unnamed)}: an ORCID iD or email needs a name next to it.`);
+  if (unnamed >= 0) return fail(400, "author_name", `Add a name for ${who(unnamed)}.`);
   const orcids = rows.map((a) => (a.orcid ? parseOrcid(a.orcid) : null));
   const badOrcid = rows.findIndex((a, i) => a.orcid && !orcids[i]);
   if (badOrcid >= 0)
-    return fail(400, "bad_orcid", `The ORCID iD for ${who(badOrcid)} isn't valid. It looks like 0000-0002-1825-0097 (the last character is a check digit).`);
+    return fail(400, "bad_orcid", `The ORCID iD for ${who(badOrcid)} isn't valid.`);
   const emails = rows.map((a) => (a.email ? parseEmail(a.email) : null));
   const badEmail = rows.findIndex((a, i) => a.email && !emails[i]);
-  if (badEmail >= 0) return fail(400, "bad_email", `The email for ${who(badEmail)} doesn't look like an email address.`);
+  if (badEmail >= 0) return fail(400, "bad_email", `The email for ${who(badEmail)} isn't valid.`);
   if (!abstract) return fail(400, "no_abstract", "Add an abstract.");
   if (abstract.length > 5000) return fail(400, "abstract_too_long", "The abstract is over 5,000 characters.");
   if (!n.license.accepted) return fail(400, "license_not_accepted", n.license.message);

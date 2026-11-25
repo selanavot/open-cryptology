@@ -320,8 +320,8 @@
           input.required = i === 0; // at least one author
           input.setAttribute("aria-label", "Author " + (i + 1));
           var o = r.querySelector(".sb-orcid"), m = r.querySelector(".sb-email");
-          if (o) o.setAttribute("aria-label", "Author " + (i + 1) + ": ORCID iD (optional)");
-          if (m) m.setAttribute("aria-label", "Author " + (i + 1) + ": email (optional, never shown)");
+          if (o) o.setAttribute("aria-label", "Author " + (i + 1) + " ORCID iD");
+          if (m) m.setAttribute("aria-label", "Author " + (i + 1) + " email");
           r.querySelector(".sb-remove").hidden = rows.length < 2;
         });
       };

@@ -137,7 +137,7 @@ async function readMetadata(form: FormData): Promise<Metadata | string> {
       (!!a && typeof a === "object" && !Array.isArray(a) &&
         Object.entries(a).every(([k, v]) => ["name", "orcid", "email"].includes(k) && (typeof v === "string" || (k !== "name" && v == null))));
     if (!Array.isArray(authors) || !authors.every(isAuthor))
-      return 'metadata.authors must be an array in citation order, each a name or {"name": "...", "orcid": "...", "email": "..."} (orcid and email optional).';
+      return 'metadata.authors must be an array of names or {"name", "orcid", "email"} objects, in citation order.';
     return { title: String(o.title ?? ""), authors, abstract: String(o.abstract ?? ""), license: String(o.license ?? "") };
   }
   return {

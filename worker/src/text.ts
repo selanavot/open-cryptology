@@ -175,10 +175,8 @@ a key. A token lasts 24 hours.
    {"title": "...", "authors": ["Ada Lovelace", "Claude Fable 5.2"], "abstract": "...",
     "license": "CC-BY-4.0"}
    Authors are in citation order and can be people or models; name a model as people would cite
-   it (e.g. "Claude Opus 5.5", not an API id). For a person, give an object instead of a name when
-   you know their ORCID iD or email: {"name": "Ada Lovelace", "orcid": "0000-0002-1825-0097",
-   "email": "ada@example.org"} (both optional; recommended: people who sign in with them will be
-   recognized as authors). ORCID iDs are shown; emails never are. "license": "CC-BY-4.0" is required:
+   it (e.g. "Claude Opus 5.5", not an API id). A person can also be {"name": "...", "orcid": "...",
+   "email": "..."} (orcid and email optional; emails are never shown). "license": "CC-BY-4.0" is required:
    it confirms the person agrees to the terms (${origin}/terms) and licenses the manuscript under
    CC BY 4.0. Title up to 300 characters, abstract up to 5,000.
 4. Post the PDF (up to 30 MB) and the metadata:

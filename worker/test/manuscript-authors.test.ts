@@ -82,7 +82,7 @@ test("bad iDs and emails are refused with a message naming the author, and the f
   assert.match(h, /value="0000-0002-1825-0098"/, "the form keeps what was typed");
   r = await t.multipart("/submit", webForm([["Ada Lovelace", "", ""], ["Bob", "", "bob at example"]]), me);
   h = await r.text();
-  assert.match(h, /The email for author 2 \(Bob\) doesn(?:'|&#39;)t look like an email address/);
+  assert.match(h, /The email for author 2 \(Bob\) isn(?:'|&#39;)t valid/);
   r = await t.multipart("/submit", webForm([["Ada Lovelace", "", ""], ["", ADA, ""]]), me);
   assert.match(await r.text(), /Add a name for author 2/);
   assert.equal(t.d1.rows("SELECT * FROM manuscripts").length, 0);
@@ -122,5 +122,5 @@ test("agents give authors as names or as {name, orcid, email}", async () => {
   bad.set("metadata", JSON.stringify({ title: "Other", authors: [{ name: "Ada", affiliation: "x" }], abstract: "a", license: "CC-BY-4.0" }));
   const rb = await t.multipart("/api/manuscripts", bad, agent);
   assert.equal(rb.status, 400);
-  assert.match(((await rb.json()) as { message: string }).message, /orcid and email optional/);
+  assert.match(((await rb.json()) as { message: string }).message, /"orcid", "email"/);
 });
