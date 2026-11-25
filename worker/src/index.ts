@@ -22,6 +22,9 @@ import { handleManuscripts, isManuscriptPath } from "./manuscripts";
 import { handleAgentApi, isAgentApiPath } from "./agentapi";
 import { handleComments, isCommentsPath } from "./comments";
 import { logRequest } from "./reqlog";
+import { passedAccess } from "./access";
+import { handleMailSink, isTestEnv } from "./mail";
+import { sameOrigin } from "./auth";
 
 // /YYYY/NNNN, optional trailing slash, .pdf, /upload, or /versions/<stamp>.pdf (one stored
 // version, stamp = capture time YYYYMMDDThhmmssZ). Numbers may be zero-padded.
@@ -128,6 +131,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (req.method !== "GET" && req.method !== "POST") return methodNotAllowed("GET, POST");
     return handleReview(req, env, url);
   }
+  if (path.startsWith("/__dev/") && isTestEnv(env)) return devRoute(req, env, url);
   if (isCommentsPath(path)) return handleComments(req, env, url);
   if (isAgentApiPath(path, req)) return handleAgentApi(req, env, url);
   if (isAuthPath(path)) return handleAuth(req, env, url);
@@ -189,6 +193,36 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
   return notFound(env);
 }
 
+/** Staging and local only (isTestEnv): the mail sink and a way to run the cron on demand. */
+async function devRoute(req: Request, env: Env, url: URL): Promise<Response> {
+  const noStore = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+  if (req.method === "POST" && !sameOrigin(req, env)) return new Response("Cross-site requests aren't accepted.\n", { status: 403 });
+  if (url.pathname === "/__dev/mail") {
+    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "POST") return methodNotAllowed("GET, POST");
+    return handleMailSink(req, env, url);
+  }
+  if (url.pathname === "/__dev/cron") {
+    if (req.method !== "POST") return methodNotAllowed("POST");
+    return new Response(JSON.stringify(await scheduledTasks(env), null, 2), { headers: noStore });
+  }
+  return notFound(env);
+}
+
+/** What the cron runs every few hours (wrangler.jsonc "triggers"); POST /__dev/cron runs it on demand. */
+async function scheduledTasks(env: Env): Promise<Record<string, unknown>> {
+  const [stale, indexnow, review] = await Promise.allSettled([
+    // The metadata harvest runs on GitHub Actions; this emails the maintainer if it stops succeeding.
+    checkHarvestStaleness(env),
+    // Tell search engines (IndexNow) about new and changed paper pages.
+    pingIndexNow(env),
+    // Review emails are throttled per upload; this sends one for uploads queued since the last.
+    env.SITE_URL ? notifyReview(env, env.SITE_URL) : Promise.resolve("SITE_URL not set"),
+  ]);
+  const out = (r: PromiseSettledResult<unknown>) =>
+    r.status === "fulfilled" ? (r.value ?? "done") : { error: r.reason instanceof Error ? r.reason.stack : String(r.reason) };
+  return { "harvest staleness": out(stale), indexnow: out(indexnow), "review email": out(review) };
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const u = new URL(req.url);
@@ -208,14 +242,10 @@ export default {
       logRequest(req, u, isGet ? 301 : 308, 0);
       return Response.redirect(to.toString(), isGet ? 301 : 308);
     }
-    // Private-preview gate: while REQUIRE_ACCESS=1, only serve requests that came through
-    // Cloudflare Access (which adds this header after login). Remove the var to go public.
-    // Access sits in front of the workers.dev hostname only; on any other hostname (the custom
-    // domain) nothing is served while gated, so a forged header can't get through.
-    if (
-      env.REQUIRE_ACCESS === "1" &&
-      (!host.endsWith(".workers.dev") || !req.headers.get("cf-access-jwt-assertion"))
-    ) {
+    // Access gate (staging; once the private preview): while REQUIRE_ACCESS=1, only serve requests
+    // that came through Cloudflare Access. With ACCESS_TEAM_DOMAIN and ACCESS_AUD the Access JWT is
+    // verified (access.ts); without them only the workers.dev hostname, which Access covered, is served.
+    if (env.REQUIRE_ACCESS === "1" && !(await passedAccess(req, env, host))) {
       logRequest(req, u, 403, 0);
       return new Response("Private preview.\n", {
         status: 403,
@@ -224,8 +254,12 @@ export default {
     }
     const https = u.protocol === "https:" && !local;
     try {
-      const res = bodyTooLarge(req, u.pathname) ?? (await route(req, env, ctx));
+      let res = bodyTooLarge(req, u.pathname) ?? (await route(req, env, ctx));
       logRequest(req, u, res.status, Date.now() - t0, res);
+      if (env.ENVIRONMENT === "staging") {
+        res = new Response(res.body, res); // headers of fetched/redirect responses are immutable
+        res.headers.set("x-robots-tag", "noindex, nofollow");
+      }
       if (req.method === "HEAD" && res.body) return withBaseHeaders(new Response(null, res), https);
       return withBaseHeaders(res, https);
     } catch (e) {
@@ -241,21 +275,13 @@ export default {
     }
   },
   async scheduled(_ctrl: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    // The metadata harvest runs on GitHub Actions; this emails the maintainer if it stops succeeding.
     ctx.waitUntil(
-      checkHarvestStaleness(env).then(
-        (r) => console.log("harvest staleness", JSON.stringify(r)),
-        (e) => console.error("harvest staleness check failed", e instanceof Error ? e.stack : String(e)),
-      ),
+      scheduledTasks(env).then((r) => {
+        for (const [task, v] of Object.entries(r)) {
+          const failed = typeof v === "object" && v !== null && "error" in v;
+          (failed ? console.error : console.log)(task, JSON.stringify(v));
+        }
+      }),
     );
-    // Tell search engines (IndexNow) about new and changed paper pages.
-    ctx.waitUntil(
-      pingIndexNow(env).then(
-        (r) => console.log("indexnow", JSON.stringify(r)),
-        (e) => console.error("indexnow failed", e instanceof Error ? e.stack : String(e)),
-      ),
-    );
-    // Review emails are throttled per upload; this sends one for uploads queued since the last.
-    if (env.SITE_URL) ctx.waitUntil(notifyReview(env, env.SITE_URL));
   },
 } satisfies ExportedHandler<Env>;

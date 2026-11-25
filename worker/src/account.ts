@@ -85,7 +85,7 @@ function logInPage(env: Env, url: URL): Response {
   <h1 class="settings-title">Log in or create an account</h1>
   ${buttons
     ? html`${buttons}
-  ${devLogin(env) && html`<p class="settings-hint">Local test server: unconfigured providers use made-up accounts.</p>`}`
+  ${devLogin(env) && html`<p class="settings-hint">Test server: unconfigured providers use made-up accounts (docs/ACCOUNTS.md has the /auth/dev-* links).</p>`}`
     : html`<p class="settings-hint">Logging in isn’t switched on yet.</p>`}
   <p class="settings-fine"><a href="/privacy">Privacy</a></p>
 </section>`,

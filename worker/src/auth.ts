@@ -10,6 +10,7 @@
 import type { Env } from "./db";
 import { html } from "./html";
 import { messagePage } from "./layout";
+import { accessVerifies } from "./access";
 
 export type Role = "member" | "maintainer";
 
@@ -450,9 +451,14 @@ function authMessage(env: Env, status: number, title: string, text: string, next
 // ---------------------------------------------------------------------------------------------
 // routes: /auth/*, /api/me
 
-/** Made-up test accounts: local test servers only (AUTH_DEV_LOGIN=1 and a localhost AUTH_ORIGIN). */
+/** Made-up test accounts: AUTH_DEV_LOGIN=1 plus either a localhost AUTH_ORIGIN (local test servers)
+ *  or staging behind a verified Access gate (ENVIRONMENT=staging, REQUIRE_ACCESS=1 and the Access
+ *  JWT settings, so every request here already passed Access). Never production: a unit test pins
+ *  production's config (test/config.test.ts). */
 export const devLogin = (env: Env): boolean =>
-  env.AUTH_DEV_LOGIN === "1" && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(env.AUTH_ORIGIN ?? "");
+  env.AUTH_DEV_LOGIN === "1" &&
+  (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(env.AUTH_ORIGIN ?? "") ||
+    (env.ENVIRONMENT === "staging" && env.REQUIRE_ACCESS === "1" && accessVerifies(env)));
 
 export function isAuthPath(path: string): boolean {
   return path.startsWith("/auth/") || path === "/api/me";
@@ -516,8 +522,9 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
     return identityDone(env, req, v, st.m, st.n, [clearOAuthCookie]);
   }
 
-  // Local testing without OAuth apps: made-up accounts. Needs AUTH_DEV_LOGIN=1 *and* a localhost
-  // AUTH_ORIGIN (both only in .dev.vars), so one stray setting can't switch it on in production.
+  // Testing without OAuth apps: made-up accounts. Needs AUTH_DEV_LOGIN=1 *and* a localhost
+  // AUTH_ORIGIN (both only in .dev.vars) or Access-gated staging (devLogin), so one stray setting
+  // can't switch it on in production.
   // Like the real routes, they sign in, or with link=1 from /account add the account.
   if (devLogin(env) && isGet && path.startsWith("/auth/dev-")) {
     const q = url.searchParams;

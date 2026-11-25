@@ -1,4 +1,5 @@
 {
+  // Production. The staging environment is at the end ("env.staging", docs/STAGING.md).
   // REQUIRE_ACCESS=1 keeps the site private: only requests that passed Cloudflare Access are served.
   // Set it to "0" (and remove the Access policy) to make the site public.
   "name": "open-cryptology",
@@ -53,6 +54,64 @@
     "ORCID_CLIENT_ID": "APP-KFHA8RSJQKRWKGG4",
     // GitHub numeric ids of maintainers (they can open /review).
     "MAINTAINER_GITHUB_IDS": "92398419",
-    "REQUIRE_ACCESS": "0"
+    "REQUIRE_ACCESS": "0",
+    // Only production sends email (src/mail.ts); scripts/dev.sh overrides this with "local".
+    "ENVIRONMENT": "production"
+  },
+  "env": {
+    // Staging (docs/STAGING.md): a separate Worker, open-cryptology-staging, with its own D1, R2,
+    // secrets and https://staging.opencryptology.org, behind Cloudflare Access. Deploy it with
+    // scripts/deploy-staging.sh (never deploy.sh, which is production-only). Bindings and vars are
+    // not inherited from the top level, so everything is repeated here; test/config.test.ts checks
+    // that none of it points at production. No send_email binding, on purpose: staging can't send
+    // email at all; src/mail.ts captures every message at /__dev/mail.
+    "staging": {
+      "name": "open-cryptology-staging",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "staging.opencryptology.org", "custom_domain": true }],
+      // Daily instead of every 4 h (staging data isn't harvested); POST /__dev/cron runs it on demand.
+      "triggers": { "crons": ["17 6 * * *"] },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "open-cryptology-staging", "database_id": "abe641ec-1684-42a4-971e-fc124ca8ee14" }
+      ],
+      "r2_buckets": [{ "binding": "PDFS", "bucket_name": "open-cryptology-staging-pdfs" }],
+      "send_email": [],
+      "ratelimits": [
+        { "name": "UPLOAD_LIMITER", "namespace_id": "2001", "simple": { "limit": 60, "period": 60 } },
+        { "name": "API_UPLOAD_LIMITER", "namespace_id": "2002", "simple": { "limit": 120, "period": 60 } },
+        { "name": "CONNECT_LIMITER", "namespace_id": "2003", "simple": { "limit": 60, "period": 60 } }
+      ],
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "SITE_NAME": "Open Cryptology",
+        "SITE_URL": "https://staging.opencryptology.org",
+        "REPO_URL": "https://github.com/selanavot/open-cryptology",
+        "SPONSOR_URL": "https://github.com/sponsors/selanavot",
+        "ISSUES_URL": "https://github.com/selanavot/open-cryptology/issues",
+        "ORIGIN_BASE": "https://eprint.iacr.org",
+        // Captured at /__dev/mail, never delivered (there is no MAILER binding here).
+        "CONTACT_FROM": "contact@opencryptology.org",
+        "CONTACT_TO": "maintainer@staging.invalid",
+        // Cloudflare's published Turnstile test keys: the widget always passes.
+        "TURNSTILE_SITEKEY": "1x00000000000000000000AA",
+        "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",
+        // Google and ORCID: the production clients, with the staging redirect URIs added. GitHub
+        // allows one callback per app, so staging has its own (GITHUB_CLIENT_ID added once it exists).
+        // Secrets: wrangler secret put <NAME> --env staging.
+        "GOOGLE_CLIENT_ID": "324996832184-cv4tektuv94l64frhiv3butka352dote.apps.googleusercontent.com",
+        "ORCID_CLIENT_ID": "APP-KFHA8RSJQKRWKGG4",
+        // 4242: the made-up maintainer of scripts/auth-smoke.mjs.
+        "MAINTAINER_GITHUB_IDS": "92398419,4242",
+        // Made-up accounts (/auth/dev-*), allowed here only because every request passed Access
+        // (src/auth.ts devLogin).
+        "AUTH_DEV_LOGIN": "1",
+        // Access gate: the JWT is verified against this team and application (src/access.ts). Until
+        // ACCESS_AUD is set the gate refuses every request.
+        "REQUIRE_ACCESS": "1",
+        "ACCESS_TEAM_DOMAIN": "fragrant-field-7a23.cloudflareaccess.com",
+        "ACCESS_AUD": ""
+      }
+    }
   }
 }

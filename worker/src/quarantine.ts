@@ -1,4 +1,5 @@
 import { type Env } from "./db";
+import { maintainerMailReady, sendMail } from "./mail";
 import { coverageChanged } from "./years";
 
 // Uploads that couldn't be verified automatically wait in R2 under quarantine/ (and in `uploads`
@@ -54,7 +55,7 @@ export async function pendingDuplicate(env: Env, paperId: string, sha: string): 
  * nothing new is pending since the last email. Never throws.
  */
 export async function notifyReview(env: Env, origin: string): Promise<void> {
-  if (!env.MAILER || !env.CONTACT_TO || !env.CONTACT_FROM) return;
+  if (!maintainerMailReady(env)) return;
   try {
     const now = new Date();
     const last = await env.DB.prepare("SELECT value FROM meta WHERE key = ?1").bind(LAST_SENT_KEY).first<{ value: string }>();
@@ -80,9 +81,9 @@ export async function notifyReview(env: Env, origin: string): Promise<void> {
     const total =
       (await env.DB.prepare("SELECT COUNT(*) AS n FROM uploads WHERE status = 'pending'").first<{ n: number }>())?.n ?? rows.length;
     const fresh = rows.filter((r) => r.created_at > lastAt).length;
-    await env.MAILER.send({
-      from: { name: `${env.SITE_NAME} uploads`, email: env.CONTACT_FROM },
-      to: env.CONTACT_TO,
+    await sendMail(env, "review-reminder", {
+      from: { name: `${env.SITE_NAME} uploads`, email: env.CONTACT_FROM! },
+      to: env.CONTACT_TO!,
       subject: `[${env.SITE_NAME}] ${total} upload${total === 1 ? "" : "s"} waiting for review`,
       text: [
         `${total} upload${total === 1 ? "" : "s"} couldn't be verified automatically and ${total === 1 ? "is" : "are"} waiting for review` +

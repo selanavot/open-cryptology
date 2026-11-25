@@ -13,8 +13,15 @@ export interface Env {
   MAILER?: SendEmail;
   CONTACT_TO?: string;
   CONTACT_FROM?: string;
-  /** "1" = only serve requests that passed Cloudflare Access (pre-launch / maintenance mode). */
+  /** "1" = only serve requests that passed Cloudflare Access (staging; pre-launch / maintenance mode). */
   REQUIRE_ACCESS?: string;
+  /** Access team domain (e.g. "myteam.cloudflareaccess.com") and application audience tag: with both
+   *  set, the REQUIRE_ACCESS gate verifies the Access JWT (access.ts) on any hostname. */
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
+  /** "production" | "staging" | "local" (scripts/dev.sh). Only production sends email (mail.ts);
+   *  staging and local get the /__dev/* routes. Unset counts as not production. docs/STAGING.md. */
+  ENVIRONMENT?: string;
   /** Turnstile (CAPTCHA) on upload/contact forms; secret is a Worker secret. */
   TURNSTILE_SITEKEY?: string;
   TURNSTILE_SECRET?: string;

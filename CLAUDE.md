@@ -19,6 +19,10 @@
   `npm --prefix worker run typecheck` and the `worker` preview just work: `scripts/dev.sh` links
   `node_modules`, copies `.dev.vars` and uses the main checkout's local data (`DEV_STATE=copy` for a
   private copy when a test writes to it).
+- **Test on staging, never on production.** `scripts/deploy-staging.sh` puts any branch on
+  https://staging.opencryptology.org (own D1/R2, behind Access); email outside production is
+  captured at `/__dev/mail`. Send email only through `sendMail` (`worker/src/mail.ts`).
+  See [docs/STAGING.md](docs/STAGING.md).
 - **Never fetch PDFs from eprint.iacr.org** or bypass its bot challenge. Metadata comes from OAI-PMH
   plus one read of the RSS feed (`/rss/rss.xml`, for current PDF sizes), every 4 h at most; HTML
   pages (abstract, versions) answer GitHub Actions with a challenge, so we don't use them. PDFs come
