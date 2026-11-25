@@ -2,6 +2,19 @@
 
 Three places the Worker runs. Only production emails anyone.
 
+## Set-up status (2026-11-25)
+
+Done: D1 `open-cryptology-staging` and R2 `open-cryptology-staging-pdfs` exist and are seeded
+(5,336 papers of 2025–2026, 20 with PDFs). Still to do, by the maintainer or with his OK:
+
+1. Cloudflare Zero Trust → Access → a self-hosted application for `staging.opencryptology.org`:
+   one Allow policy for the maintainer's email (one-time code), one Service Auth policy with a new
+   service token for agents. Put the application's audience tag in `env.staging.vars.ACCESS_AUD`.
+   Put the token in `worker/.staging.env` of the main checkout.
+2. First deploy: `scripts/deploy-staging.sh`. This creates the Worker and the DNS record. Until
+   step 1 is done it answers 403 to everyone.
+3. OAuth callbacks and secrets for staging (see "Sign-in on staging").
+
 | | Local | Staging | Production |
 |---|---|---|---|
 | URL | `http://localhost:8787` (`npm --prefix worker run dev`, the `worker` preview) | https://staging.opencryptology.org, behind Cloudflare Access | https://opencryptology.org |
