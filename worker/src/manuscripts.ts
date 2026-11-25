@@ -464,7 +464,7 @@ function submitPage(env: Env, f: Form, status = 200): Response {
   const authorRows = (f.authors.length ? f.authors : [{ name: "" }, { name: "" }]).map(
     (a, i) => html`<div class="sb-author">
       <input class="form-control sb-name-input" name="author" value="${a.name}" aria-label="Author ${i + 1} name (required)" maxlength="200"${i === 0 ? raw(" required") : ""}>
-      <input class="form-control sb-orcid" name="author_orcid" value="${a.orcid ?? ""}" placeholder="0000-0000-0000-0000" aria-label="Author ${i + 1} ORCID iD (recommended)" maxlength="60" autocomplete="off" spellcheck="false" pattern="${ORCID_PATTERN}" title="An ORCID iD: 0000-0000-0000-0000">
+      <input class="form-control sb-orcid" name="author_orcid" value="${a.orcid ?? ""}" aria-label="Author ${i + 1} ORCID iD (recommended)" maxlength="60" autocomplete="off" spellcheck="false" pattern="${ORCID_PATTERN}" title="An ORCID iD: 0000-0000-0000-0000">
       <input class="form-control sb-email" name="author_email" type="email" value="${a.email ?? ""}" aria-label="Author ${i + 1} email (recommended)" maxlength="254" autocomplete="off" spellcheck="false">
       <button type="button" class="sb-remove" aria-label="Remove this author" hidden>×</button></div>`,
   );
