@@ -37,6 +37,40 @@ function redirect(url: URL, path: string, status = 301): Response {
   return new Response(null, { status, headers: { location: to.pathname + to.search, "cache-control": "public, max-age=86400" } });
 }
 
+// Request bodies: routes that take a PDF (or a profile picture) check their own, larger limits;
+// every other POST is a small form or JSON, so anything over SMALL_BODY is refused before a
+// handler parses it into memory (a 100 MB form post would otherwise cost CPU and memory).
+const SMALL_BODY = 1024 * 1024;
+const LARGE_BODY_RE = /^\/(?:\d{4}\/\d{1,6}\/upload|api\/upload\/|api\/manuscripts(?:\/|$)|submit$|\d{4}-\d{2}-\d{2}\/)/;
+
+/** 413 when a request declares a body bigger than its route accepts; null when it's fine. */
+export function bodyTooLarge(req: Request, path: string): Response | null {
+  const len = Number(req.headers.get("content-length") ?? "0");
+  if (!(len > SMALL_BODY) || LARGE_BODY_RE.test(path)) return null;
+  return new Response("Request body too large.\n", {
+    status: 413,
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+// On every response the Worker sends from the public site (not local dev): browsers keep to
+// https for a year, and never guess a content type.
+const HSTS = "max-age=31536000";
+
+export function withBaseHeaders(res: Response, https: boolean): Response {
+  if (!https) return res;
+  let out = res;
+  try {
+    out.headers.set("strict-transport-security", HSTS);
+  } catch {
+    // Immutable headers (Response.redirect, cached responses): copy, then set.
+    out = new Response(res.body, res);
+    out.headers.set("strict-transport-security", HSTS);
+  }
+  if (!out.headers.has("x-content-type-options")) out.headers.set("x-content-type-options", "nosniff");
+  return out;
+}
+
 function methodNotAllowed(allow: string): Response {
   return new Response("Method not allowed\n", { status: 405, headers: { allow, "content-type": "text/plain" } });
 }
@@ -188,21 +222,22 @@ export default {
         headers: { "content-type": "text/plain", "cache-control": "no-store", "x-robots-tag": "noindex" },
       });
     }
+    const https = u.protocol === "https:" && !local;
     try {
-      const res = await route(req, env, ctx);
+      const res = bodyTooLarge(req, u.pathname) ?? (await route(req, env, ctx));
       logRequest(req, u, res.status, Date.now() - t0, res);
-      if (req.method === "HEAD" && res.body) return new Response(null, res);
-      return res;
+      if (req.method === "HEAD" && res.body) return withBaseHeaders(new Response(null, res), https);
+      return withBaseHeaders(res, https);
     } catch (e) {
       console.error("unhandled", req.method, req.url, e instanceof Error ? e.stack : String(e));
       logRequest(req, u, 500, Date.now() - t0);
-      return messagePage(
+      return withBaseHeaders(messagePage(
         env,
         500,
         "Something went wrong",
         html`<p>Sorry — an unexpected error occurred. If it keeps happening, please
         <a href="${env.ISSUES_URL}">report an issue</a>.</p>`,
-      );
+      ), https);
     }
   },
   async scheduled(_ctrl: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {

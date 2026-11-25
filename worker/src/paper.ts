@@ -261,8 +261,23 @@ export async function servePdf(
     return new Response(null, { status: 304, headers });
   }
 
+  // R2 sometimes fails a read with an internal error (10001), in bursts: answer 503 with
+  // Retry-After, so readers and crawlers retry later, instead of an unhandled 500.
+  const unavailable = (e: unknown) => {
+    console.error("pdf storage error", pdfKey, e instanceof Error ? e.message : String(e));
+    return new Response("The PDF store is briefly unavailable. Please try again in a minute.\n", {
+      status: 503,
+      headers: { "content-type": "text/plain; charset=utf-8", "retry-after": "60", "cache-control": "no-store" },
+    });
+  };
+
   if (req.method === "HEAD") {
-    const h = await env.PDFS.head(pdfKey);
+    let h: R2Object | null;
+    try {
+      h = await env.PDFS.head(pdfKey);
+    } catch (e) {
+      return unavailable(e);
+    }
     if (!h) return missing(404, "The mirrored file is missing from storage.");
     headers.set("content-length", String(h.size));
     if (!etag) headers.set("etag", h.httpEtag);
@@ -282,9 +297,15 @@ export async function servePdf(
   let obj: R2ObjectBody | null;
   try {
     obj = await env.PDFS.get(pdfKey, hasRange ? { range: req.headers } : undefined);
-  } catch {
+  } catch (e) {
+    if (!hasRange) return unavailable(e);
     // R2 rejects unsatisfiable/malformed ranges; answer like an origin server would.
-    const h = await env.PDFS.head(pdfKey);
+    let h: R2Object | null;
+    try {
+      h = await env.PDFS.head(pdfKey);
+    } catch (e2) {
+      return unavailable(e2);
+    }
     return new Response(null, { status: 416, headers: { "content-range": `bytes */${h?.size ?? "*"}` } });
   }
   if (!obj) return missing(404, "The mirrored file is missing from storage.");
