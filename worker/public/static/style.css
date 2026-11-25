@@ -692,7 +692,14 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .sb-preview { padding: .375rem .75rem; border: 1px solid var(--border); border-radius: .25rem; background: #fff; line-height: 1.5; overflow-y: auto; }
 .sb-preview.is-empty { color: var(--muted); }
 .sb-authors { display: flex; flex-direction: column; gap: .4rem; }
-.sb-author { display: flex; gap: .4rem; align-items: center; }
+.sb-author { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.sb-author .form-control { width: auto; min-width: 0; }
+.sb-name-input { flex: 1.4 1 9rem; }
+.sb-orcid { flex: 0 0 11.8rem; font-size: .9rem; font-variant-numeric: tabular-nums; }
+.sb-email { flex: 1 1 9rem; font-size: .9rem; }
+@media (max-width: 575px) { .sb-authors { gap: .9rem; } .sb-name-input { flex-basis: 100%; } .sb-orcid, .sb-email { flex: 1 1 8rem; } }
+.orcid-link { margin-left: .25rem; text-decoration: none; }
+.orcid-icon { vertical-align: -1px; }
 .sb-remove { border: 0; background: none; color: var(--muted); font-size: 1.3rem; line-height: 1; padding: 0 .3rem; cursor: pointer; }
 .sb-remove:hover { color: #b42318; }
 .sb-add { padding-left: 0; }

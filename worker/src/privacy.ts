@@ -40,6 +40,9 @@ export function privacyPage(env: Env): Response {
   <p>What you post is public right away, with your name and photo shown as the uploader, and it stays
   public as described in the <a href="/terms">terms</a>. We keep each version you post, with when you posted
   it.</p>
+  <p>You can give an ORCID iD and an email for each author, so that people who sign in with them are
+  recognized as authors. ORCID iDs are shown with the authors' names. Emails are never shown or shared;
+  we keep them only to recognize authors. Give only the details of co-authors who agree.</p>
 
   <h4>Comments</h4>
   <p>Comments are public right away, with your name and photo, and we keep when you posted and last

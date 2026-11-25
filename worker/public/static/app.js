@@ -319,6 +319,9 @@
           var input = r.querySelector("input");
           input.required = i === 0; // at least one author
           input.setAttribute("aria-label", "Author " + (i + 1));
+          var o = r.querySelector(".sb-orcid"), m = r.querySelector(".sb-email");
+          if (o) o.setAttribute("aria-label", "Author " + (i + 1) + ": ORCID iD (optional)");
+          if (m) m.setAttribute("aria-label", "Author " + (i + 1) + ": email (optional, never shown)");
           r.querySelector(".sb-remove").hidden = rows.length < 2;
         });
       };
@@ -326,7 +329,7 @@
       add.addEventListener("click", function () {
         var row = list.querySelector(".sb-author").cloneNode(true);
         var input = row.querySelector("input");
-        input.value = "";
+        row.querySelectorAll("input").forEach(function (x) { x.value = ""; });
         list.appendChild(row);
         refresh();
         input.focus();

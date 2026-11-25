@@ -288,3 +288,21 @@ ALTER TABLE users ADD COLUMN bot_avatar BLOB; -- optional small JPEG supplied by
 -- top-level Issues, NULL otherwise (and on Issues from before severities). The levels are a list in
 -- code, not a CHECK here, because the rubric will change.
 ALTER TABLE comments ADD COLUMN severity TEXT;
+
+-- manuscript author ids (2026-11): worker/src/manuscripts.ts. Run on an existing database with:
+--   sed -n '/^-- manuscript author ids/,$p' db/schema.sql
+-- (the ALTER fails with "duplicate column" if run twice; the CREATEs are idempotent).
+-- The uploader may give each author an ORCID iD and an email (optional), so that people who sign
+-- in with them can later be recognized as authors. Neither is verified when posted.
+-- JSON array parallel to `authors`: an ORCID iD or null. NULL = none given. Shown on the page.
+ALTER TABLE manuscript_versions ADD COLUMN author_orcids TEXT;
+-- Authors' emails, per version. Personal data: never shown on a page or in the API; kept apart from
+-- manuscript_versions so a SELECT * there can't carry them.
+CREATE TABLE IF NOT EXISTS manuscript_author_emails (
+  manuscript_id TEXT NOT NULL,
+  v             INTEGER NOT NULL,
+  position      INTEGER NOT NULL,            -- index into manuscript_versions.authors
+  email         TEXT NOT NULL,               -- lowercased
+  PRIMARY KEY (manuscript_id, v, position)
+);
+CREATE INDEX IF NOT EXISTS manuscript_author_emails_email ON manuscript_author_emails(email);

@@ -10,7 +10,7 @@ import type { Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage, page } from "./layout";
 import { authOrigin, currentUser, randomId, randomToken, redirect303, sameOrigin, sha256hex, loadUser, type User } from "./auth";
-import { latestManuscriptsJson, manuscriptJson, MAX_PDF, publishManuscript } from "./manuscripts";
+import { latestManuscriptsJson, manuscriptJson, MAX_PDF, publishManuscript, type AuthorIn } from "./manuscripts";
 import { siteOrigin } from "./seo";
 import { avatar } from "./account";
 
@@ -110,7 +110,7 @@ export async function revokeAgentsOfManuscript(env: Env, manuscriptId: string): 
 
 interface Metadata {
   title: string;
-  authors: string[];
+  authors: (string | AuthorIn)[];
   abstract: string;
   license: string;
 }
@@ -132,7 +132,12 @@ async function readMetadata(form: FormData): Promise<Metadata | string> {
     }
     const o = (m ?? {}) as Record<string, unknown>;
     const authors = o.authors;
-    if (!Array.isArray(authors) || !authors.every((a) => typeof a === "string")) return "metadata.authors must be an array of names, in citation order.";
+    const isAuthor = (a: unknown) =>
+      typeof a === "string" ||
+      (!!a && typeof a === "object" && !Array.isArray(a) &&
+        Object.entries(a).every(([k, v]) => ["name", "orcid", "email"].includes(k) && (typeof v === "string" || (k !== "name" && v == null))));
+    if (!Array.isArray(authors) || !authors.every(isAuthor))
+      return 'metadata.authors must be an array in citation order, each a name or {"name": "...", "orcid": "...", "email": "..."} (orcid and email optional).';
     return { title: String(o.title ?? ""), authors, abstract: String(o.abstract ?? ""), license: String(o.license ?? "") };
   }
   return {
