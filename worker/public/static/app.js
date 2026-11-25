@@ -421,16 +421,27 @@
         var k = form.querySelector('input[name="kind"]:checked');
         return k ? k.value : "comment";
       };
+      // An Issue needs a severity: its row shows (and is sent) only while Issue is picked.
+      var sev = form.querySelector(".cm-severity");
+      var syncSeverity = function () {
+        if (!sev) return;
+        sev.hidden = kindOf() !== "issue";
+        sev.querySelectorAll("input").forEach(function (x) { x.disabled = sev.hidden; });
+      };
       var grow = function () {
         box.style.height = "auto";
         box.style.height = box.scrollHeight + 2 + "px";
-        submit.disabled = !box.value.trim() || !!(title && title.required && !title.value.trim());
+        submit.disabled = !box.value.trim() || !!(title && title.required && !title.value.trim()) ||
+          !!(sev && !sev.hidden && !sev.querySelector("input:checked"));
       };
       if (title) title.addEventListener("input", grow);
+      if (sev) sev.querySelectorAll("input").forEach(function (x) { x.addEventListener("change", grow); });
+      syncSeverity();
       form.querySelectorAll('input[name="kind"]').forEach(function (k) {
         k.addEventListener("change", function () {
           var kind = kindOf();
-          box.placeholder = kind === "issue" ? "What’s wrong, where in the paper, and how serious you think it is"
+          syncSeverity();
+          box.placeholder = kind === "issue" ? "What’s wrong, where in the paper, and why it matters"
             : kind === "question" ? "What would you like to know?"
             : kind === "extension" ? "What follows from the paper, or how it could go further" : "Add a comment";
           grow();
@@ -521,7 +532,7 @@
         form.querySelector(".cm-submit").textContent = "Save";
         box.value = raw[c.id] || "";
         box.setAttribute("aria-label", "Edit comment");
-        // A post's label and title can be changed too: both are copied from the box at the top.
+        // A post's label, severity and title can be changed too: all are copied from the box at the top.
         // A post from before titles may stay without one.
         var first = sec.querySelector(".cm-section > .cm-composer");
         if (c.hasAttribute("data-kind") && first) {
@@ -532,6 +543,12 @@
           ti.required = rawTitle[c.id] !== undefined;
           box.before(ti);
           form.querySelector(".cm-bar").before(ks);
+          var sv = first.querySelector(".cm-severity");
+          if (sv) {
+            sv = sv.cloneNode(true);
+            sv.querySelectorAll("input").forEach(function (x) { x.checked = x.value === c.getAttribute("data-severity"); });
+            form.querySelector(".cm-bar").before(sv);
+          }
         }
         body.hidden = true;
         body.after(form);

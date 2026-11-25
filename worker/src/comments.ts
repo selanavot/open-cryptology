@@ -5,8 +5,11 @@
 // Bodies are plain text, like abstracts: paragraphs and line breaks are kept, URLs become links,
 // and $TeX$ is typeset by KaTeX in the browser. Replies nest (shown up to MAX_DEPTH levels).
 // A top-level comment is a post: it has a title and may carry one label, Issue, Question or
-// Extension (kind; 'comment' is a post with no label), shown as a chip and used by the filter row. Severity, location and the like are for the text,
-// not fields. Threads from before titles (2026-11) have none.
+// Extension (kind; 'comment' is a post with no label), shown as a chip and used by the filter row.
+// An Issue also has a severity (Critical, High, Medium or Low; levels and their meaning in
+// severity.ts, explained on /severity), required whenever one is posted or saved; other kinds and
+// replies have none. Location and the like are for the text, not fields. Threads from before
+// titles (2026-11) have none, and Issues from before severities have none until edited.
 // Every comment has up and down votes; pages show the sum, never who voted.
 //
 // Who may do what (checked here; the page only hides controls):
@@ -26,6 +29,7 @@ import { isAuthFailure, publicUsers, requireUser, type User } from "./auth";
 import { err, json, tokenActor } from "./agentapi";
 import { siteOrigin } from "./seo";
 import { day } from "./pages";
+import { SEVERITY, SEVERITY_KEYS, severityLevel, severityList, type Severity } from "./severity";
 
 export const MAX_BODY = 10_000;
 export const MAX_TITLE = 200;
@@ -47,6 +51,7 @@ interface Row {
   edited_at: string | null;
   kind: Kind;
   title: string | null;
+  severity: Severity | null; // Issues only
   score: number; // up votes minus down votes
 }
 type Person = User & { deleted: boolean };
@@ -69,7 +74,7 @@ export async function botCommentFeed(env: Env, userId: string, url: URL): Promis
   const limit = 20;
   const order = top ? "score DESC, c.created_at DESC, c.id DESC" : "c.created_at DESC, c.id DESC";
   const rows = await env.DB.prepare(
-    `SELECT c.id, c.target, c.reply_to, c.kind, c.title, substr(c.body, 1, 281) AS excerpt, c.created_at,
+    `SELECT c.id, c.target, c.reply_to, c.kind, c.title, c.severity, substr(c.body, 1, 281) AS excerpt, c.created_at,
        COALESCE(p.title, v.title) AS paper_title,
        (SELECT COALESCE(SUM(vote), 0) FROM comment_votes WHERE comment_id = c.id) AS score
      FROM comments c LEFT JOIN papers p ON p.id = c.target
@@ -79,7 +84,7 @@ export async function botCommentFeed(env: Env, userId: string, url: URL): Promis
      WHERE c.user_id = ?1 AND c.state = 'visible' AND (p.id IS NOT NULL OR v.manuscript_id IS NOT NULL)
      ORDER BY ${order} LIMIT ?2 OFFSET ?3`,
   ).bind(userId, limit + 1, (current - 1) * limit).all<
-    Pick<Row, "id" | "target" | "reply_to" | "kind" | "title" | "created_at" | "score"> & { excerpt: string; paper_title: string }
+    Pick<Row, "id" | "target" | "reply_to" | "kind" | "title" | "severity" | "created_at" | "score"> & { excerpt: string; paper_title: string }
   >();
   const path = `/u/${userId}`;
   const pageLink = (n: number) => `${path}?sort=${top ? "top" : "recent"}&page=${n}#activity`;
@@ -93,7 +98,7 @@ export async function botCommentFeed(env: Env, userId: string, url: URL): Promis
       const excerpt = Array.from(c.excerpt);
       const label = c.reply_to !== null ? "Reply" : KIND_LABEL[c.kind];
       return html`<article class="bot-feed-item">
-        <div class="bot-feed-meta"><span class="cm-flair cm-flair-${c.kind}">${label}</span>
+        <div class="bot-feed-meta">${c.reply_to === null && c.kind === "issue" ? issueChip(c.severity) : html`<span class="cm-flair cm-flair-${c.kind}">${label}</span>`}
           <a href="/${c.target}">${c.paper_title}</a></div>
         <h3><a href="${permalink}">${c.title || (c.reply_to !== null ? "Reply in discussion" : "Comment in discussion")}</a></h3>
         <p>${excerpt.length > 280 ? excerpt.slice(0, 280).join("").trimEnd() + "…" : c.excerpt}</p>
@@ -140,6 +145,7 @@ const ERRORS = {
   bad_reply: [400, "reply_to must be a visible comment on the same page."],
   bad_kind: [400, 'kind is "comment" (no label), "issue", "question" or "extension"; replies are always comments.'],
   title: [400, `A top-level comment needs a title, up to ${MAX_TITLE} characters; replies have none.`],
+  severity: [400, `An issue needs a severity: ${severityList()} (see /severity); other kinds and replies have none.`],
   bot_vote: [403, "Only people signed in through the website can vote."],
   bad_vote: [400, "vote is 1, -1 or 0."],
   vote_rate: [429, "That's a lot of votes for one day. Try again tomorrow."],
@@ -157,24 +163,32 @@ function checkBody(s: string): string | Fail {
   return body;
 }
 
-/** The kind and title of a post, checked: a top-level post has a title, a reply has none. */
-function checkKind(kind: string, title: string, isReply: boolean): { kind: Kind; title: string | null } | Fail {
+/** The kind, title and severity of a post, checked: a top-level post has a title, a reply has
+ *  none; an Issue has a severity, nothing else does. */
+export function checkKind(
+  kind: string,
+  title: string,
+  isReply: boolean,
+  severity = "",
+): { kind: Kind; title: string | null; severity: Severity | null } | Fail {
   const k = (kind || "comment") as Kind;
   if (!KINDS.includes(k) || (isReply && k !== "comment")) return { error: "bad_kind" };
   const t = title.replace(/\s+/g, " ").trim();
   if (isReply ? t : !t || t.length > MAX_TITLE) return { error: "title" };
-  return { kind: k, title: t || null };
+  const s = severity.trim().toLowerCase();
+  if (k === "issue" ? !SEVERITY_KEYS.includes(s) : s) return { error: "severity" };
+  return { kind: k, title: t || null, severity: k === "issue" ? (s as Severity) : null };
 }
 
 async function addComment(
   env: Env,
   user: User,
   target: string,
-  f: { body: string; replyTo: number | null; tokenId?: string; kind?: string; title?: string },
+  f: { body: string; replyTo: number | null; tokenId?: string; kind?: string; title?: string; severity?: string },
 ): Promise<{ id: number } | Fail> {
   const body = checkBody(f.body);
   if (typeof body !== "string") return body;
-  const k = checkKind(f.kind ?? "", f.title ?? "", !!f.replyTo);
+  const k = checkKind(f.kind ?? "", f.title ?? "", !!f.replyTo, f.severity ?? "");
   if ("error" in k) return k;
   if (!(await targetInfo(env, target))) return { error: "not_found" };
   if (f.replyTo) {
@@ -184,12 +198,12 @@ async function addComment(
   const now = new Date();
   // The daily limit is checked in the same statement as the insert.
   const r = await env.DB.prepare(
-    `INSERT INTO comments (target, user_id, reply_to, body, token_id, created_at, kind, title)
-     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?9, ?10
+    `INSERT INTO comments (target, user_id, reply_to, body, token_id, created_at, kind, title, severity)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?9, ?10, ?11
       WHERE (SELECT count(*) FROM comments WHERE user_id = ?2 AND created_at > ?7) < ?8
      RETURNING id`,
   )
-    .bind(target, user.id, f.replyTo, body, f.tokenId ?? null, now.toISOString(), new Date(now.getTime() - 86400_000).toISOString(), DAILY, k.kind, k.title)
+    .bind(target, user.id, f.replyTo, body, f.tokenId ?? null, now.toISOString(), new Date(now.getTime() - 86400_000).toISOString(), DAILY, k.kind, k.title, k.severity)
     .first<{ id: number }>();
   return r ? { id: r.id } : { error: "rate" };
 }
@@ -201,21 +215,32 @@ async function getComment(env: Env, id: number): Promise<(Row & { owner: string 
     .first<Row & { owner: string }>();
 }
 
-/** New text, and for a top-level post a new title and label if given. A post from before
- *  titles stays untitled until it is given one. */
-async function editComment(env: Env, user: User, c: Row & { owner: string }, text: string, newTitle?: string, newKind?: string): Promise<null | Fail> {
+/** New text, and for a top-level post a new title, label and severity if given. A post from before
+ *  titles stays untitled until it is given one. An Issue keeps its severity unless given a new one,
+ *  and must have one when saved; relabelling it as something else drops the severity. */
+export async function editComment(
+  env: Env,
+  user: User,
+  c: Row & { owner: string },
+  text: string,
+  newTitle?: string,
+  newKind?: string,
+  newSeverity?: string,
+): Promise<null | Fail> {
   if (c.owner !== user.id) return { error: "not_yours" };
   if (c.state !== "visible") return { error: "removed" };
   const body = checkBody(text);
   if (typeof body !== "string") return body;
   const title = newTitle ?? c.title ?? "";
   const untitled = c.reply_to == null && c.title == null && !title.trim();
-  const k = checkKind(newKind ?? c.kind, untitled ? "-" : title, c.reply_to != null);
+  const kind = newKind ?? c.kind;
+  const severity = newSeverity ?? (kind === "issue" ? (c.severity ?? "") : "");
+  const k = checkKind(kind, untitled ? "-" : title, c.reply_to != null, severity);
   if ("error" in k) return k;
   if (untitled) k.title = null;
-  if (body !== c.body || k.title !== c.title || k.kind !== c.kind)
-    await env.DB.prepare("UPDATE comments SET body = ?2, title = ?3, kind = ?4, edited_at = ?5 WHERE id = ?1")
-      .bind(c.id, body, k.title, k.kind, new Date().toISOString())
+  if (body !== c.body || k.title !== c.title || k.kind !== c.kind || k.severity !== c.severity)
+    await env.DB.prepare("UPDATE comments SET body = ?2, title = ?3, kind = ?4, severity = ?5, edited_at = ?6 WHERE id = ?1")
+      .bind(c.id, body, k.title, k.kind, k.severity, new Date().toISOString())
       .run();
   return null;
 }
@@ -312,7 +337,8 @@ const ICON = {
 function composer(action: string, o: { submit: string; replyTo?: number; value?: string; id: string }): Html {
   // Only the box at the top starts a post, so only it has the title (above the text) and the
   // labels (under it, drawn like the chip a post will carry). A post is a
-  // plain comment unless another label is picked. app.js copies both into the edit box of a post.
+  // plain comment unless another label is picked. Picking Issue shows the severity row (app.js
+  // enables it; disabled, it isn't sent). app.js copies all three into the edit box of a post.
   const top = o.replyTo === undefined;
   const title = top
     ? html`<input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" required placeholder="Title" aria-label="Title" autocomplete="off">`
@@ -320,7 +346,10 @@ function composer(action: string, o: { submit: string; replyTo?: number; value?:
   const labels = top
     ? html`<div class="cm-kinds" role="radiogroup" aria-label="Label">${KINDS.map(
         (k) => html`<label class="cm-kind cm-kind-${k}"><input type="radio" name="kind" value="${k}"${k === "comment" ? raw(" checked") : ""}><span>${KIND_LABEL[k]}</span></label>`,
-      )}</div>`
+      )}</div>
+  <div class="cm-severity" role="radiogroup" aria-label="Severity" hidden><span class="cm-severity-label">Severity</span>${SEVERITY.map(
+        (l) => html`<label class="cm-kind cm-sev-${l.key}" title="${l.short}"><input type="radio" name="severity" value="${l.key}" required disabled><span>${l.label}</span></label>`,
+      )}<a class="cm-severity-help" href="/severity" target="_blank" rel="noopener">What do these mean?</a></div>`
     : "";
   return html`<form class="cm-composer" method="post" action="${action}">
   ${o.replyTo !== undefined ? html`<input type="hidden" name="reply_to" value="${o.replyTo || ""}">` : ""}
@@ -340,6 +369,14 @@ function composer(action: string, o: { submit: string; replyTo?: number; value?:
 function flairs(t: Thread, p: Person): Html {
   // The maintainer role works (remove) but isn't shown: no public mods for now.
   return html`${p.botBio !== null && html`<span class="cm-flair bot-badge">Bot</span>`}${p.id === t.uploader ? html`<span class="cm-flair cm-flair-op" title="Uploaded this manuscript">OP</span>` : ""}`;
+}
+
+/** An Issue's chip: with its severity, linked to what the level means. */
+function issueChip(severity: string | null): Html {
+  const l = severityLevel(severity);
+  return l
+    ? html`<a class="cm-flair cm-flair-issue cm-sev cm-sev-${l.key}" href="/severity#${l.key}" title="${l.label}: ${l.short} (What the levels mean)">Issue · ${l.label}</a>`
+    : html`<span class="cm-flair cm-flair-issue">${KIND_LABEL.issue}</span>`;
 }
 
 function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<number>, depth: number): Html[] {
@@ -371,14 +408,14 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
   const deleted = c.state === "deleted";
   const post = c.reply_to == null && !deleted;
   return [
-    html`<article class="cm${deleted ? " cm-deleted" : ""}" id="comment-${c.id}"${c.reply_to == null ? html` data-kind="${c.kind}"` : ""}${deleted ? "" : html` data-owner="${owner}"`}>
+    html`<article class="cm${deleted ? " cm-deleted" : ""}" id="comment-${c.id}"${c.reply_to == null ? html` data-kind="${c.kind}"` : ""}${c.reply_to == null && c.severity ? html` data-severity="${c.severity}"` : ""}${deleted ? "" : html` data-owner="${owner}"`}>
   <div class="cm-gutter">
     ${live ? html`<a class="cm-avatar" href="/u/${live.id}" tabindex="-1">${avatar(live, "avatar-xs")}</a>` : html`<span class="avatar avatar-xs cm-avatar-gone" aria-hidden="true"></span>`}
     <button type="button" class="cm-expand" aria-label="Expand thread" hidden>${ICON.plus}</button>
     ${line}
   </div>
   <div class="cm-content">
-    <div class="cm-head">${post && c.kind !== "comment" ? html`<span class="cm-flair cm-flair-${c.kind}">${KIND_LABEL[c.kind]}</span>` : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><span class="cm-edited" title="${day(c.edited_at)}">edited</span>` : ""}</div>
+    <div class="cm-head">${post && c.kind === "issue" ? issueChip(c.severity) : post && c.kind !== "comment" ? html`<span class="cm-flair cm-flair-${c.kind}">${KIND_LABEL[c.kind]}</span>` : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><span class="cm-edited" title="${day(c.edited_at)}">edited</span>` : ""}</div>
     ${deleted ? html`<div class="cm-body cm-body-gone">Comment deleted</div>` : html`${post && c.title ? html`<h3 class="cm-post-title tex">${c.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(c.body)}</div>
     <div class="cm-actions">
       <form class="cm-vote" method="post" action="/comments/${c.id}/vote">
@@ -414,6 +451,7 @@ const PAGE_ERRORS: Record<string, string> = {
   bad_reply: "That comment no longer exists.",
   bad_kind: "Couldn’t post that. Try again.",
   title: `Give your comment a title, up to ${MAX_TITLE} characters.`,
+  severity: "Choose a severity for the issue.",
   bot_vote: ERRORS.bot_vote[1],
   bad_vote: "Couldn’t count that vote. Try again.",
   vote_rate: "You’ve reached today’s voting limit.",
@@ -443,7 +481,7 @@ export function commentsSection(t: Thread, url: URL): Html {
       ? html`<div class="cm-filters" role="group" aria-label="Show" hidden>
     <button type="button" class="cm-filter" data-filter="" aria-pressed="true">All</button>
     ${([["issue", "Issues"], ["question", "Questions"], ["extension", "Extensions"]] as const).map(([k, label]) =>
-      n(k) ? html`<button type="button" class="cm-filter" data-filter="${k}" aria-pressed="false">${label} <span class="cm-count">${n(k)}</span></button>` : "",
+      n(k) ? html`<button type="button" class="cm-filter" data-filter="${k}" aria-pressed="false"${k === "issue" ? html` title="Most severe first"` : ""}>${label} <span class="cm-count">${n(k)}</span></button>` : "",
     )}
   </div>`
       : "";
@@ -519,7 +557,8 @@ async function form(req: Request, env: Env, path: string): Promise<Response> {
   if (nm) {
     const replyTo = Number(field("reply_to")) || null;
     const kind = replyTo ? "comment" : field("kind") || "comment";
-    const r = await addComment(env, a.user, target, { body: field("body"), replyTo, kind, title: replyTo ? "" : field("title") });
+    const severity = kind === "issue" ? field("severity") : "";
+    const r = await addComment(env, a.user, target, { body: field("body"), replyTo, kind, title: replyTo ? "" : field("title"), severity });
     return "error" in r ? back(target, r.error) : back(target, "posted", `comment-${r.id}`);
   }
   const action = am![2];
@@ -529,7 +568,15 @@ async function form(req: Request, env: Env, path: string): Promise<Response> {
   }
   const r =
     action === "edit"
-      ? await editComment(env, a.user, c!, field("body"), f.has("title") ? field("title") : undefined, f.has("kind") ? field("kind") : undefined)
+      ? await editComment(
+          env,
+          a.user,
+          c!,
+          field("body"),
+          f.has("title") ? field("title") : undefined,
+          f.has("kind") ? field("kind") : undefined,
+          f.has("severity") ? field("severity") : undefined,
+        )
       : await removeComment(env, a.user, c!, action as "delete" | "hide");
   const done = { edit: "edited", delete: "deleted", hide: "hidden" }[action]!;
   return r ? back(target, r.error, `comment-${c!.id}`) : back(target, done, `comment-${c!.id}`);
@@ -542,7 +589,7 @@ function personJson(origin: string, p: Person | undefined) {
 }
 
 function commentJson(origin: string, t: Thread, c: Row) {
-  const base = { id: c.id, url: `${origin}/${c.target}#comment-${c.id}`, reply_to: c.reply_to, kind: c.kind };
+  const base = { id: c.id, url: `${origin}/${c.target}#comment-${c.id}`, reply_to: c.reply_to, kind: c.kind, severity: c.severity ?? null };
   if (c.state === "hidden") return { ...base, removed: true };
   const p = t.people.get(c.user_id);
   if (c.state === "deleted") return { ...base, author: { ...personJson(origin, p), uploader: !!p && p.id === t.uploader }, deleted: true, created_at: c.created_at };
@@ -605,6 +652,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
       tokenId: who.token.id,
       kind: typeof f.kind === "string" ? f.kind : "",
       title: typeof f.title === "string" ? f.title : "",
+      severity: typeof f.severity === "string" ? f.severity : "",
     });
     if ("error" in r) return fail(r);
     const t = await loadThread(env, target);
@@ -621,8 +669,8 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   const who = await tokenActor(env, req, origin, "comments");
   if (who instanceof Response) return who;
   const f = await readFields(req);
-  if (f.body === undefined && f.title === undefined && f.kind === undefined)
-    return err(400, "nothing_to_do", 'Send {"body": "..."} with the new text ("title" and "kind" retitle and relabel a top-level comment).');
+  if (f.body === undefined && f.title === undefined && f.kind === undefined && f.severity === undefined)
+    return err(400, "nothing_to_do", 'Send {"body": "..."} with the new text ("title", "kind" and "severity" retitle, relabel and rerate a top-level comment).');
   const r = await editComment(
     env,
     who.user,
@@ -630,6 +678,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     typeof f.body === "string" ? f.body : c.body,
     typeof f.title === "string" ? f.title : undefined,
     typeof f.kind === "string" ? f.kind : undefined,
+    typeof f.severity === "string" ? f.severity : undefined,
   );
   if (r) return fail(r);
   const t = await loadThread(env, c.target);
