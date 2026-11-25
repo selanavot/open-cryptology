@@ -36,9 +36,10 @@ test("staging: its own Worker, data and hostname", () => {
   for (const r of staging.ratelimits) assert.ok(!prodNs.has(r.namespace_id), `rate-limit namespace ${r.namespace_id} is shared with production`);
 });
 
-test("staging: can't send email, behind a verified Access gate, not indexed", () => {
-  assert.equal(staging.vars.ENVIRONMENT, "staging");
-  assert.deepEqual(staging.send_email, [], "staging must have no send_email binding");
+test("staging: email only through sendMail, behind a verified Access gate, not indexed", () => {
+  assert.equal(staging.vars.ENVIRONMENT, "staging", "mail.ts sends only maintainer mail outside production");
+  assert.deepEqual(staging.send_email.map((b) => b.name), ["MAILER"]);
+  assert.equal(staging.vars.CONTACT_TO, undefined, "CONTACT_TO (the one address staging may email) is a secret");
   assert.equal(staging.vars.REQUIRE_ACCESS, "1");
   assert.ok(staging.vars.ACCESS_TEAM_DOMAIN, "the Access JWT check needs the team domain");
   assert.equal(staging.workers_dev, false, "workers.dev would be a second, ungated-by-hostname URL");

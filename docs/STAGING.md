@@ -1,6 +1,6 @@
 # Staging and test environments
 
-Three places the Worker runs. Only production emails anyone.
+Three places the Worker runs. Only production emails anyone but the maintainer.
 
 ## Set-up status (2026-11-25)
 
@@ -13,7 +13,10 @@ Done: D1 `open-cryptology-staging` and R2 `open-cryptology-staging-pdfs` exist a
    Put the token in `worker/.staging.env` of the main checkout.
 2. First deploy: `scripts/deploy-staging.sh`. This creates the Worker and the DNS record. Until
    step 1 is done it answers 403 to everyone.
-3. OAuth callbacks and secrets for staging (see "Sign-in on staging").
+3. `npx --prefix worker wrangler secret put CONTACT_TO --env staging`: the maintainer's address,
+   the same verified Email Routing destination as production. Until then the contact form on
+   staging says it isn't set up.
+4. OAuth callbacks and secrets for staging (see "Sign-in on staging").
 
 | | Local | Staging | Production |
 |---|---|---|---|
@@ -21,7 +24,7 @@ Done: D1 `open-cryptology-staging` and R2 `open-cryptology-staging-pdfs` exist a
 | Worker | `wrangler dev` | `open-cryptology-staging` (`env.staging` in `worker/wrangler.jsonc`) | `open-cryptology` |
 | Data | emulated D1/R2, ~20 PDFs (`pipeline/ingest_sample.py`) | D1 `open-cryptology-staging`, R2 `open-cryptology-staging-pdfs`: papers of the last 2 years, 20 PDFs, no users or comments copied | the real thing |
 | `ENVIRONMENT` | `local` (set by `scripts/dev.sh`) | `staging` | `production` |
-| Email | captured at `/__dev/mail` | captured at `/__dev/mail` (no `send_email` binding at all) | sent |
+| Email | captured at `/__dev/mail` | captured at `/__dev/mail`; mail to the maintainer alone is also sent, as `[staging] …` | sent |
 | Sign-in | made-up accounts (`/auth/dev-*`) | real GitHub/Google/ORCID, and made-up accounts | real |
 | Cron | `POST /__dev/cron` | daily, and `POST /__dev/cron` | every 4 h |
 | Deploy | — | `scripts/deploy-staging.sh`, any branch | merge to `main` (`scripts/deploy.sh --ci`) |
@@ -32,13 +35,20 @@ staging scale. Don't test on production.
 
 ## Email
 
-Every email goes through `sendMail(env, kind, message)` in `worker/src/mail.ts`. It hands the
-message to the `send_email` binding only when `ENVIRONMENT=production`. Anywhere else, and when
+Every email goes through `sendMail(env, kind, message)` in `worker/src/mail.ts`. With
+`ENVIRONMENT=production` it hands the message to the `send_email` binding. Anywhere else, and when
 the variable is missing, it stores the message as JSON under `mail-sink/` in that environment's
 own R2 bucket. `/__dev/mail` lists them, newest first (`?format=json` for scripts, `?to=<text>` to
-filter by recipient, a button to clear). A unit test fails if any other file uses `env.MAILER`,
-so new notifications (authors, replies) get this for free. Staging also has no `send_email`
-binding: even code that skipped `sendMail` would have nothing to send with.
+filter by recipient, a button to clear). Of those, a message addressed to the maintainer alone
+(`CONTACT_TO`, with no other recipient, cc or bcc) is also sent, with `[staging]` in the subject.
+That covers the contact form, upload-review reminders and the harvest alarm. Mail to anyone else,
+such as authors or people replying, is never sent outside production. A unit test fails if any
+other file uses `env.MAILER`, so new notifications get this for free.
+
+Today the binding goes through Cloudflare Email Routing, which delivers only to verified
+addresses (one: the maintainer's), so Cloudflare would refuse anything else anyway. Emailing
+users will need Cloudflare Email Service, which can send anywhere. From then on `sendMail` is the
+only guard, so revisit this section then (for example, give staging its own sending domain).
 
 ## Deploying to staging
 
@@ -48,8 +58,8 @@ scripts/deploy-staging.sh
 
 It deploys this checkout, any branch, local changes included, to the staging Worker only. First
 it runs the typecheck and the tests, including `worker/test/config.test.ts`. That test checks that
-staging's name, routes, D1, bucket and rate limits differ from production's, that staging has no
-`send_email` binding, and that the Access gate is on. If another branch went up in the last 2 hours,
+staging's name, routes, D1, bucket and rate limits differ from production's, that `CONTACT_TO`
+is a secret there, and that the Access gate is on. If another branch went up in the last 2 hours,
 the script stops: someone may be testing it. `--take` replaces it anyway (tell them).
 
 Schema changes: run the new statements on staging first:
@@ -114,7 +124,6 @@ a valid JWT the Worker answers 403. With `ACCESS_AUD` empty it refuses everythin
 - A striped banner on every page; `X-Robots-Tag: noindex, nofollow` on every response.
 - Cloudflare's Turnstile test keys (always pass), no analytics beacon, no IndexNow.
 - Its own rate-limit counters.
-- Wrangler warns that `send_email` isn't inherited by `env.staging`. That is deliberate.
 
 ## Production safety
 

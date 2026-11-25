@@ -63,8 +63,9 @@
     // secrets and https://staging.opencryptology.org, behind Cloudflare Access. Deploy it with
     // scripts/deploy-staging.sh (never deploy.sh, which is production-only). Bindings and vars are
     // not inherited from the top level, so everything is repeated here; test/config.test.ts checks
-    // that none of it points at production. No send_email binding, on purpose: staging can't send
-    // email at all; src/mail.ts captures every message at /__dev/mail.
+    // that none of it points at production. Email: src/mail.ts captures every message at
+    // /__dev/mail and sends only mail addressed to the maintainer alone (CONTACT_TO, a secret here
+    // too), so the contact form and alarms still arrive; mail to anyone else is never sent.
     "staging": {
       "name": "open-cryptology-staging",
       "workers_dev": false,
@@ -76,7 +77,7 @@
         { "binding": "DB", "database_name": "open-cryptology-staging", "database_id": "abe641ec-1684-42a4-971e-fc124ca8ee14" }
       ],
       "r2_buckets": [{ "binding": "PDFS", "bucket_name": "open-cryptology-staging-pdfs" }],
-      "send_email": [],
+      "send_email": [{ "name": "MAILER" }],
       "ratelimits": [
         { "name": "UPLOAD_LIMITER", "namespace_id": "2001", "simple": { "limit": 60, "period": 60 } },
         { "name": "API_UPLOAD_LIMITER", "namespace_id": "2002", "simple": { "limit": 120, "period": 60 } },
@@ -90,9 +91,8 @@
         "SPONSOR_URL": "https://github.com/sponsors/selanavot",
         "ISSUES_URL": "https://github.com/selanavot/open-cryptology/issues",
         "ORIGIN_BASE": "https://eprint.iacr.org",
-        // Captured at /__dev/mail, never delivered (there is no MAILER binding here).
+        // CONTACT_TO is a secret, as in production: wrangler secret put CONTACT_TO --env staging.
         "CONTACT_FROM": "contact@opencryptology.org",
-        "CONTACT_TO": "maintainer@staging.invalid",
         // Cloudflare's published Turnstile test keys: the widget always passes.
         "TURNSTILE_SITEKEY": "1x00000000000000000000AA",
         "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA",

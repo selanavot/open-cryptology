@@ -104,7 +104,7 @@ ${turnstileOn(env) && html`<script src="${TURNSTILE_JS}" async defer></script>`}
 <body>
 <a class="skip" href="#main">Skip to content</a>
 ${env.ENVIRONMENT === "staging" &&
-html`<div class="env-banner" style="background:repeating-linear-gradient(-45deg,#ffe08a 0 12px,#ffd35c 12px 24px);color:#3b2a00;text-align:center;font-size:.85rem;padding:.3rem 1rem">Staging: test data only. Email is captured at <a href="/__dev/mail">/__dev/mail</a>, never sent.</div>`}
+html`<div class="env-banner" style="background:repeating-linear-gradient(-45deg,#ffe08a 0 12px,#ffd35c 12px 24px);color:#3b2a00;text-align:center;font-size:.85rem;padding:.3rem 1rem">Staging: test data only. Email is captured at <a href="/__dev/mail">/__dev/mail</a>; only the maintainer’s own alerts are sent.</div>`}
 <header id="topNavbar">
   <nav class="navbar" aria-label="Main">
     <div class="container nav-inner">

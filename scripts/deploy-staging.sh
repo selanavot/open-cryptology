@@ -8,8 +8,8 @@
 #
 # It only ever deploys `--env staging`. Production deploys go through scripts/deploy.sh from main.
 # Before uploading it runs the Worker's tests, which include test/config.test.ts: staging's name,
-# routes, D1, bucket and rate limits differ from production's, there is no send_email binding,
-# and the Access gate is on. Schema: db/schema.sql changes go to staging D1 with
+# routes, D1, bucket and rate limits differ from production's, CONTACT_TO (the one address staging
+# may email, src/mail.ts) is a secret, and the Access gate is on. Schema: db/schema.sql changes go to staging D1 with
 # scripts/staging-data.sh schema, before deploying code that needs them.
 set -euo pipefail
 
