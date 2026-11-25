@@ -536,19 +536,17 @@
         // A post from before titles may stay without one.
         var first = sec.querySelector(".cm-section > .cm-composer");
         if (c.hasAttribute("data-kind") && first) {
-          var ks = first.querySelector(".cm-kinds").cloneNode(true);
-          ks.querySelectorAll("input").forEach(function (x) { x.checked = x.value === c.getAttribute("data-kind"); });
+          var ks = first.querySelector(".cm-labels").cloneNode(true);
+          ks.querySelectorAll('input[name="kind"]').forEach(function (x) { x.checked = x.value === c.getAttribute("data-kind"); });
+          ks.querySelectorAll('input[name="severity"]').forEach(function (x) { x.checked = x.value === c.getAttribute("data-severity"); });
+          var sl = ks.querySelector(".cm-severity-label");
+          sl.id = "sev-" + id;
+          ks.querySelector(".cm-seg").setAttribute("aria-labelledby", sl.id);
           var ti = first.querySelector(".cm-title-input").cloneNode(true);
           ti.value = rawTitle[c.id] || "";
           ti.required = rawTitle[c.id] !== undefined;
           box.before(ti);
           form.querySelector(".cm-bar").before(ks);
-          var sv = first.querySelector(".cm-severity");
-          if (sv) {
-            sv = sv.cloneNode(true);
-            sv.querySelectorAll("input").forEach(function (x) { x.checked = x.value === c.getAttribute("data-severity"); });
-            form.querySelector(".cm-bar").before(sv);
-          }
         }
         body.hidden = true;
         body.after(form);

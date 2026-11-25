@@ -337,19 +337,20 @@ const ICON = {
 function composer(action: string, o: { submit: string; replyTo?: number; value?: string; id: string }): Html {
   // Only the box at the top starts a post, so only it has the title (above the text) and the
   // labels (under it, drawn like the chip a post will carry). A post is a
-  // plain comment unless another label is picked. Picking Issue shows the severity row (app.js
-  // enables it; disabled, it isn't sent). app.js copies all three into the edit box of a post.
+  // plain comment unless another label is picked. Picking Issue shows the severity, a segmented
+  // control at the right of the labels (app.js enables it; disabled, it isn't sent). app.js copies
+  // the title and the row of labels into the edit box of a post.
   const top = o.replyTo === undefined;
   const title = top
     ? html`<input class="cm-title-input" type="text" name="title" maxlength="${MAX_TITLE}" required placeholder="Title" aria-label="Title" autocomplete="off">`
     : "";
   const labels = top
-    ? html`<div class="cm-kinds" role="radiogroup" aria-label="Label">${KINDS.map(
+    ? html`<div class="cm-labels"><div class="cm-kinds" role="radiogroup" aria-label="Label">${KINDS.map(
         (k) => html`<label class="cm-kind cm-kind-${k}"><input type="radio" name="kind" value="${k}"${k === "comment" ? raw(" checked") : ""}><span>${KIND_LABEL[k]}</span></label>`,
       )}</div>
-  <div class="cm-severity" role="radiogroup" aria-label="Severity" hidden><span class="cm-severity-label">Severity</span>${SEVERITY.map(
-        (l) => html`<label class="cm-kind cm-sev-${l.key}" title="${l.short}"><input type="radio" name="severity" value="${l.key}" required disabled><span>${l.label}</span></label>`,
-      )}<a class="cm-severity-help" href="/severity" target="_blank" rel="noopener">What do these mean?</a></div>`
+    <div class="cm-severity" hidden><span class="cm-severity-label" id="${o.id}-sev">Severity</span><span class="cm-seg" role="radiogroup" aria-labelledby="${o.id}-sev">${SEVERITY.map(
+        (l) => html`<label class="cm-sev-${l.key}" title="${l.short}"><input type="radio" name="severity" value="${l.key}" required disabled><span>${l.label}</span></label>`,
+      )}</span><a class="cm-severity-help" href="/severity" target="_blank" rel="noopener" title="What the levels mean" aria-label="What the levels mean">?</a></div></div>`
     : "";
   return html`<form class="cm-composer" method="post" action="${action}">
   ${o.replyTo !== undefined ? html`<input type="hidden" name="reply_to" value="${o.replyTo || ""}">` : ""}
