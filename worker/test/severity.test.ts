@@ -96,7 +96,7 @@ test("a posted Issue's chip shows its severity and links to the levels", () => {
 
 test("/severity says it is far from final and asks for opinions", () => {
   const h = String(severityBody());
-  assert.match(h, /far from finalized/);
+  assert.match(h, /far from final/);
   assert.match(h, /href="\/contact"/);
   for (const l of SEVERITY) assert.match(h, new RegExp(`id="${l.key}"`));
 });

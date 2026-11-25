@@ -77,7 +77,7 @@ export function severityPage(env: Env): Response {
     title: "Severity of issues",
     description: `How ${env.SITE_NAME} rates the issues readers raise on papers: Critical, High, Medium and Low. Far from final; tell us what you think.`,
     canonical: "https://opencryptology.org/severity",
-    cache: "public, max-age=3600",
+    cache: "public, max-age=300", // short while the levels are still changing
     body: severityBody(),
   });
 }
@@ -85,9 +85,7 @@ export function severityPage(env: Env): Response {
 export function severityBody(): Html {
   return html`<section class="message severity-page">
   <h3>Severity of issues</h3>
-  <p class="severity-draft">This is a new project, that is just now getting off the ground (November 2026).
-  Therefore, the severity definitions (and everything else) are far from finalized.
-  Do <a href="/contact">tell us</a> what you think.</p>
+  <p class="severity-draft">A first draft, far from final. <a href="/contact">Tell us</a> what you think.</p>
 
   <p>An Issue’s severity is determined by how it affects the paper’s contribution. In particular, it
   rates the paper as written, rather than exploitability and downstream impact.</p>
