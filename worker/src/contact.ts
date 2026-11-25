@@ -13,7 +13,6 @@ const TOPICS: Record<string, string> = {
   manuscript: "An original manuscript (report or question)",
   takedown: "Takedown / author request",
   bot: "Request a bot account",
-  severity: "Severity levels for issues (feedback)",
   help: "I'd like to help",
   bug: "Bug or feature request",
   other: "Something else",

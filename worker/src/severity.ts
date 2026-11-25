@@ -93,7 +93,7 @@ export function severityBody(): Html {
   <h3>Severity of issues</h3>
   <p class="severity-draft"><strong>This is an early version.</strong> We wrote it in November 2026 and
   will revise it with cryptographers, so the levels and their wording may change. We want other opinions:
-  <a href="/contact?topic=severity">tell us what you would change</a>.</p>
+  <a href="/contact">tell us what you would change</a>.</p>
 
   <p>A post labelled Issue says something in a paper is wrong or unproved, and carries a severity: how much
   of the paper’s contribution the issue affects, if it is right. Severity is not about how exploitable a
