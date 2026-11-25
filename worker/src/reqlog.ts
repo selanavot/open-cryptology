@@ -5,7 +5,10 @@
  * location, and what Cloudflare says about bots. /privacy describes it; keep the two in step.
  *
  * Values of query parameters that are credentials (sign-in codes and the like) are replaced
- * with "REDACTED".
+ * with "REDACTED" in this line. Workers Logs itself also attaches the full request URL, query
+ * string included and unredacted ($workers.event.request.url / .search), to every log event, so
+ * this redaction does not keep a secret out of the logs: never put one in a URL. Send it in a
+ * POST body, a header or a cookie.
  */
 
 const SECRET_PARAMS = /^(code|state|token|access_token|id_token|key|secret|password|sig|signature)$/i;

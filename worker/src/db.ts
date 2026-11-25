@@ -218,7 +218,8 @@ export interface SearchHit extends ListItem {
 
 /**
  * Turn free-form user input into a safe FTS5 query: every term is quoted (so FTS syntax
- * characters are inert), terms are ANDed, a trailing * keeps prefix search, "quoted phrases"
+ * characters are inert), terms are ANDed, a trailing * keeps prefix search (on terms of 3+
+ * characters: "a*" would expand to most of the index on every request), "quoted phrases"
  * stay phrases, and `title:` / `author:` / `abstract:` restrict a term to one column.
  */
 export function toFtsQuery(q: string): string {
@@ -232,7 +233,7 @@ export function toFtsQuery(q: string): string {
     // Keep letters, digits and spaces; everything else separates words.
     term = term.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     if (!term) continue;
-    const quoted = `"${term}"${prefix ? "*" : ""}`;
+    const quoted = `"${term}"${prefix && [...term].length >= 3 ? "*" : ""}`;
     parts.push(col ? `${col} : ${quoted}` : quoted);
   }
   return parts.join(" ");
