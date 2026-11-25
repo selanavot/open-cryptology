@@ -4,13 +4,15 @@ import { html, raw, type Html } from "./html";
 const ORCID_ID = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
 
 /** The ORCID iD in what someone typed ("0000-0002-1825-0097", "https://orcid.org/0000-...",
- *  "orcid.org/..."), or null if there is none or its check digit is wrong (ISO 7064 11,2). */
+ *  "orcid.org/...", or the 16 characters without dashes), or null if there is none or its check
+ *  digit is wrong (ISO 7064 11,2). app.js checks the same way as people type. */
 export function parseOrcid(s: string): string | null {
-  const t = s
+  let t = s
     .trim()
     .replace(/^(?:https?:\/\/)?(?:www\.)?orcid\.org\//i, "")
     .replace(/\/$/, "")
     .toUpperCase();
+  if (/^\d{15}[\dX]$/.test(t)) t = t.replace(/(.{4})(?=.)/g, "$1-");
   if (!ORCID_ID.test(t)) return null;
   const digits = t.replace(/-/g, "");
   let total = 0;

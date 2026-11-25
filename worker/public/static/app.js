@@ -317,11 +317,12 @@
         var rows = list.querySelectorAll(".sb-author");
         rows.forEach(function (r, i) {
           var input = r.querySelector("input");
-          input.required = i === 0; // at least one author
-          input.setAttribute("aria-label", "Author " + (i + 1));
           var o = r.querySelector(".sb-orcid"), m = r.querySelector(".sb-email");
-          if (o) o.setAttribute("aria-label", "Author " + (i + 1) + " ORCID iD");
-          if (m) m.setAttribute("aria-label", "Author " + (i + 1) + " email");
+          // At least one author, and a name wherever an ORCID iD or email is given.
+          input.required = i === 0 || !!(o && o.value.trim()) || !!(m && m.value.trim());
+          input.setAttribute("aria-label", "Author " + (i + 1) + " name (required)");
+          if (o) o.setAttribute("aria-label", "Author " + (i + 1) + " ORCID iD (recommended)");
+          if (m) m.setAttribute("aria-label", "Author " + (i + 1) + " email (recommended)");
           r.querySelector(".sb-remove").hidden = rows.length < 2;
         });
       };
@@ -338,6 +339,29 @@
         var btn = e.target.closest(".sb-remove");
         if (btn) { btn.closest(".sb-author").remove(); refresh(); }
       });
+      // ORCID iDs as people paste them: a link or 16 characters becomes 0000-0000-0000-0000, and
+      // a wrong check digit (ISO 7064 11,2, as the server checks) marks the field invalid.
+      var orcidOk = function (v) {
+        if (!/^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/.test(v)) return false;
+        var d = v.replace(/-/g, ""), t = 0;
+        for (var k = 0; k < 15; k++) t = (t + Number(d[k])) * 2;
+        var c = (12 - (t % 11)) % 11;
+        return d[15] === (c === 10 ? "X" : String(c));
+      };
+      var checkOrcid = function (o, tidy) {
+        var v = o.value.trim().replace(/^(https?:\/\/)?(www\.)?orcid\.org\//i, "").replace(/\/$/, "").toUpperCase();
+        if (/^\d{15}[\dX]$/.test(v)) v = v.replace(/(.{4})(?=.)/g, "$1-");
+        if (tidy && v !== o.value) o.value = v;
+        o.setCustomValidity(!v || orcidOk(v) ? "" : "Not a valid ORCID iD");
+      };
+      list.addEventListener("input", function (e) {
+        if (e.target.matches(".sb-orcid")) checkOrcid(e.target, false);
+        if (e.target.matches(".sb-orcid, .sb-email")) refresh();
+      });
+      list.addEventListener("change", function (e) {
+        if (e.target.matches(".sb-orcid")) checkOrcid(e.target, true);
+      });
+      list.querySelectorAll(".sb-orcid").forEach(function (o) { checkOrcid(o, false); });
       refresh();
     }
     var file = document.getElementById("sb-file");

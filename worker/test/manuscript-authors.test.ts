@@ -27,6 +27,7 @@ test("parseOrcid takes the iD however it's typed, and checks the check digit", (
   assert.equal(parseOrcid(ADA), ADA);
   assert.equal(parseOrcid(` https://orcid.org/${ADA}/ `), ADA);
   assert.equal(parseOrcid(`orcid.org/0000-0002-9079-593x`), "0000-0002-9079-593X");
+  assert.equal(parseOrcid("0000000218250097"), ADA, "without dashes");
   assert.equal(parseOrcid("0000-0002-1825-0098"), null, "wrong check digit");
   assert.equal(parseOrcid("Ada"), null);
   assert.equal(parseEmail(" Ada@Example.ORG "), "ada@example.org");

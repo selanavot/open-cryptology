@@ -697,7 +697,12 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .sb-name-input { flex: 1.4 1 9rem; }
 .sb-orcid { flex: 0 0 11.8rem; font-size: .9rem; font-variant-numeric: tabular-nums; }
 .sb-email { flex: 1 1 9rem; font-size: .9rem; }
-@media (max-width: 575px) { .sb-authors { gap: .9rem; } .sb-name-input { flex-basis: 100%; } .sb-orcid, .sb-email { flex: 1 1 8rem; } }
+.sb-author-head { margin-bottom: -.15rem; }
+.sb-author-head > span { font-size: .85rem; font-weight: 600; padding-left: .1rem; white-space: nowrap; }
+.sb-author-head .sb-sub { font-size: .8rem; }
+.sb-author .sb-remove[hidden], .sb-author-head .sb-remove { display: inline-block; visibility: hidden; }
+.sb-orcid:user-invalid, .sb-email:user-invalid { border-color: #b42318; }
+@media (max-width: 575px) { .sb-authors { gap: .9rem; } .sb-name-input { flex-basis: 100%; } .sb-orcid { flex: 0 0 12.4rem; } .sb-email { flex: 1 1 5rem; } }
 .orcid-link { margin-left: .25rem; text-decoration: none; }
 .orcid-icon { vertical-align: -1px; }
 .sb-remove { border: 0; background: none; color: var(--muted); font-size: 1.3rem; line-height: 1; padding: 0 .3rem; cursor: pointer; }
