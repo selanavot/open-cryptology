@@ -3,7 +3,9 @@
 // /2026-11-15/3.pdf (the file, in R2 under manuscripts/). PDFs pass the same safety checks as
 // mirror uploads (verify.ts inspectPdf); one with scripts is refused, never queued for review.
 // Tables: the "original manuscripts" section of db/schema.sql. Uploaders are accounts (auth.ts),
-// always shown as "uploaded by", separately from the free-text authors.
+// always shown as "uploaded by", separately from the free-text authors. The uploader may give each
+// author an ORCID iD (shown) and an email (never shown or served), so that people who sign in with
+// them can be recognized as authors later; neither is verified when posted.
 import type { Env } from "./db";
 import { html, raw, safeUrl, type Html } from "./html";
 import { citeControl, icons, messagePage, metaList, page } from "./layout";
@@ -13,6 +15,7 @@ import { siteOrigin } from "./seo";
 import { inspectPdf } from "./verify";
 import { revokeAgentsOfManuscript } from "./agentapi";
 import { botCommentFeed, commentsSection, loadThread } from "./comments";
+import { orcidLink, parseEmail, parseOrcid } from "./orcid";
 
 export const MS_RE = /^\/(\d{4}-\d{2}-\d{2})\/(\d{1,4})(\.pdf)?\/?$/;
 const BOT_AVATAR_RE = /^\/u\/(bot-[a-z0-9][a-z0-9-]{0,39})\/avatar\.jpg$/;
@@ -44,6 +47,7 @@ interface Version {
   v: number;
   title: string;
   authors: string; // JSON array
+  author_orcids: string | null; // JSON array parallel to authors (ORCID iD or null), or NULL
   abstract: string;
   format: "md" | "pdf";
   file_key: string | null;
@@ -60,6 +64,31 @@ const authorsOf = (v: Pick<Version, "authors">): string[] => {
     return [];
   }
 };
+/** The authors' ORCID iDs, parallel to authorsOf(v) (empty when none were given). */
+const orcidsOf = (v: Pick<Version, "authors" | "author_orcids">): (string | null)[] => {
+  try {
+    const a = v.author_orcids ? JSON.parse(v.author_orcids) : [];
+    return Array.isArray(a) && a.length === authorsOf(v).length ? a.map((x) => (typeof x === "string" && parseOrcid(x) === x ? x : null)) : [];
+  } catch {
+    return [];
+  }
+};
+
+/** An author as the uploader gives them: a name as it should be cited, and optionally an ORCID iD
+ *  and an email (people only; a model has neither). */
+export interface AuthorIn {
+  name: string;
+  orcid?: string;
+  email?: string;
+}
+
+/** What the ORCID field accepts before the server's check digit test: an iD, optionally as an
+ *  orcid.org link (an HTML pattern, so it works without JavaScript). */
+const ORCID_PATTERN = String.raw`\s*(https?://)?(www\.)?(orcid\.org/)?\d{4}-?\d{4}-?\d{4}-?\d{3}[\dXx]/?\s*`;
+
+/** The browser's email check, matched to the server's (orcid.ts parseEmail): a dot after the @. */
+const EMAIL_PATTERN = String.raw`[A-Za-z0-9._%+'\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+`;
+
 const dateLong = (iso: string) =>
   new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -83,7 +112,17 @@ const sha256Hex = async (buf: ArrayBuffer) =>
 async function createManuscript(
   env: Env,
   uploaderId: string,
-  f: { title: string; authors: string[]; abstract: string; pdf: ArrayBuffer; sha: string; viaToken?: string; since: string },
+  f: {
+    title: string;
+    authors: string[];
+    orcids: (string | null)[] | null;
+    emails: { position: number; email: string }[];
+    abstract: string;
+    pdf: ArrayBuffer;
+    sha: string;
+    viaToken?: string;
+    since: string;
+  },
 ): Promise<string | null> {
   const now = new Date().toISOString();
   const day = now.slice(0, 10);
@@ -104,10 +143,17 @@ async function createManuscript(
        RETURNING id`,
     ).bind(day, uploaderId, now, f.since, MAX_PER_DAY, sha),
     env.DB.prepare(
-      `INSERT INTO manuscript_versions (manuscript_id, v, title, authors, abstract, format, file_key, sha256, size, created_at)
-       SELECT id, 1, ?3, ?4, ?5, 'pdf', ?6, ?7, ?8, ?2 FROM manuscripts
+      `INSERT INTO manuscript_versions (manuscript_id, v, title, authors, abstract, format, file_key, sha256, size, created_at, author_orcids)
+       SELECT id, 1, ?3, ?4, ?5, 'pdf', ?6, ?7, ?8, ?2, ?9 FROM manuscripts
         WHERE rowid = last_insert_rowid() AND uploader_id = ?1 AND created_at = ?2`,
-    ).bind(uploaderId, now, f.title, JSON.stringify(f.authors), f.abstract, key, sha, f.pdf.byteLength),
+    ).bind(uploaderId, now, f.title, JSON.stringify(f.authors), f.abstract, key, sha, f.pdf.byteLength, f.orcids ? JSON.stringify(f.orcids) : null),
+    // Emails attach to the version just inserted (found by its file).
+    ...f.emails.map((e) =>
+      env.DB.prepare(
+        `INSERT INTO manuscript_author_emails (manuscript_id, v, position, email)
+         SELECT manuscript_id, v, ?2, ?3 FROM manuscript_versions WHERE file_key = ?1`,
+      ).bind(key, e.position, e.email),
+    ),
     ...(f.viaToken
       ? [env.DB.prepare(`INSERT INTO manuscript_tokens (manuscript_id, token_id) SELECT manuscript_id, ?2 FROM manuscript_versions WHERE file_key = ?1`).bind(key, f.viaToken)]
       : []),
@@ -155,6 +201,7 @@ export async function manuscriptJson(env: Env, origin: string, id: string): Prom
     pdf_url: `${origin}/${m.id}.pdf`,
     title: v.title,
     authors: authorsOf(v),
+    orcids: orcidsOf(v).some(Boolean) ? orcidsOf(v) : null,
     abstract: v.abstract,
     license: "CC-BY-4.0",
     uploaded_by: up && !up.deleted ? { name: up.displayName, profile_url: `${origin}/u/${up.id}` } : null,
@@ -208,6 +255,7 @@ async function manuscriptPage(env: Env, url: URL, id: string): Promise<Response>
   const up = (await publicUsers(env, [m.uploader_id])).get(m.uploader_id);
   const origin = siteOrigin(env, url);
   const authors = authorsOf(v);
+  const orcids = orcidsOf(v);
   const fileHref = `/${m.id}.pdf`;
   const thread = await loadThread(env, m.id);
   const head = html`<meta name="citation_title" content="${v.title}">
@@ -222,7 +270,7 @@ ${authors.map((a) => html`<meta name="citation_author" content="${a}">`)}
     <h4>Original manuscript ${m.id}</h4>
     ${withdrawnNotice(m)}
     <h3 class="paper-title tex"><a href="${fileHref}">${v.title}</a></h3>
-    <div class="ms-authors">${authors.join(", ")}</div>
+    <div class="ms-authors">${authors.map((a, i) => html`${i ? ", " : ""}${a}${orcids[i] && orcidLink(orcids[i]!)}`)}</div>
     ${up && !up.deleted ? html`<div class="ms-uploader">Uploaded by ${person(up)}</div>` : html`<div class="ms-uploader">Uploaded by a deleted account</div>`}
     <h5 class="mt-3">Abstract</h5>
     <p class="paper-abstract tex">${v.abstract}</p>
@@ -410,14 +458,17 @@ async function profilePage(env: Env, userId: string, url: URL): Promise<Response
 
 interface Form {
   title: string;
-  authors: string[];
+  authors: AuthorIn[];
   abstract: string;
   err?: string;
 }
 
 function submitPage(env: Env, f: Form, status = 200): Response {
-  const authorRows = (f.authors.length ? f.authors : ["", ""]).map(
-    (a, i) => html`<div class="sb-author"><input class="form-control" name="author" value="${a}" aria-label="Author ${i + 1}" maxlength="200"${i === 0 ? raw(" required") : ""}>
+  const authorRows = (f.authors.length ? f.authors : [{ name: "" }, { name: "" }]).map(
+    (a, i) => html`<div class="sb-author">
+      <label class="fl sb-f-name"><input class="form-control sb-name-input" name="author" value="${a.name}" placeholder=" " maxlength="200"${i === 0 ? raw(" required") : ""}><span>Name</span></label>
+      <label class="fl sb-f-orcid"><input class="form-control sb-orcid" name="author_orcid" value="${a.orcid ?? ""}" placeholder="0000-0000-0000-0000" maxlength="60" autocomplete="off" spellcheck="false" pattern="${ORCID_PATTERN}" title="An ORCID iD: 0000-0000-0000-0000"><span>ORCID iD <small>recommended</small></span></label>
+      <label class="fl sb-f-email"><input class="form-control sb-email" name="author_email" type="email" value="${a.email ?? ""}" placeholder=" " maxlength="254" pattern="${EMAIL_PATTERN}" autocomplete="off" spellcheck="false"><span>Email <small>recommended</small></span></label>
       <button type="button" class="sb-remove" aria-label="Remove this author" hidden>×</button></div>`,
   );
   return page(env, {
@@ -459,7 +510,8 @@ function submitPage(env: Env, f: Form, status = 200): Response {
 /** What a new manuscript needs, from the web form or the agent API. */
 export interface NewManuscript {
   title: string;
-  authors: string[];
+  /** In citation order: a name, or a name with an ORCID iD and/or an email. */
+  authors: (string | AuthorIn)[];
   abstract: string;
   file: File | null;
   /** Whether the uploader accepted the terms and CC BY 4.0, and what to say if not. */
@@ -472,7 +524,12 @@ export type PublishResult =
   | { ok: false; status: number; code: string; message: string; existing?: string };
 
 const cleanTitle = (s: string) => s.replace(/\s+/g, " ").trim();
-export const cleanAuthors = (xs: string[]) => xs.map((a) => a.replace(/\s+/g, " ").trim()).filter(Boolean);
+/** Authors with tidied fields; rows with nothing in them are dropped. */
+export const cleanAuthors = (xs: (string | AuthorIn)[]): AuthorIn[] =>
+  xs
+    .map((a) => (typeof a === "string" ? { name: a } : a))
+    .map((a) => ({ name: String(a.name ?? "").replace(/\s+/g, " ").trim(), orcid: String(a.orcid ?? "").trim(), email: String(a.email ?? "").trim() }))
+    .filter((a) => a.name || a.orcid || a.email);
 
 /** Check and publish a new manuscript: the same rules for the form and the API. An identical PDF
  *  from the same account in the last 24 hours returns that manuscript instead of a copy, so an
@@ -480,7 +537,8 @@ export const cleanAuthors = (xs: string[]) => xs.map((a) => a.replace(/\s+/g, " 
 export async function publishManuscript(env: Env, uploaderId: string, n: NewManuscript): Promise<PublishResult> {
   const fail = (status: number, code: string, message: string): PublishResult => ({ ok: false, status, code, message });
   const title = cleanTitle(n.title);
-  const authors = cleanAuthors(n.authors);
+  const rows = cleanAuthors(n.authors);
+  const authors = rows.map((a) => a.name);
   const abstract = n.abstract.trim();
   if (!n.file || !n.file.size) return fail(400, "no_pdf", "Choose a PDF file.");
   if (n.file.size > MAX_PDF) return fail(413, "too_large", "That file is over 30 MB.");
@@ -490,12 +548,23 @@ export async function publishManuscript(env: Env, uploaderId: string, n: NewManu
   if (title.length > 300) return fail(400, "title_too_long", "The title is over 300 characters.");
   if (!authors.length) return fail(400, "no_authors", "Add at least one author.");
   if (authors.length > 100 || authors.some((a) => a.length > 200)) return fail(400, "authors_too_long", "That's too many authors, or a very long name.");
+  const who = (i: number) => `author ${i + 1}${rows[i].name ? ` (${rows[i].name})` : ""}`;
+  const unnamed = rows.findIndex((a) => !a.name);
+  if (unnamed >= 0) return fail(400, "author_name", `Add a name for ${who(unnamed)}.`);
+  const orcids = rows.map((a) => (a.orcid ? parseOrcid(a.orcid) : null));
+  const badOrcid = rows.findIndex((a, i) => a.orcid && !orcids[i]);
+  if (badOrcid >= 0)
+    return fail(400, "bad_orcid", `The ORCID iD for ${who(badOrcid)} isn't valid.`);
+  const emails = rows.map((a) => (a.email ? parseEmail(a.email) : null));
+  const badEmail = rows.findIndex((a, i) => a.email && !emails[i]);
+  if (badEmail >= 0) return fail(400, "bad_email", `The email for ${who(badEmail)} isn't valid.`);
   if (!abstract) return fail(400, "no_abstract", "Add an abstract.");
   if (abstract.length > 5000) return fail(400, "abstract_too_long", "The abstract is over 5,000 characters.");
   if (!n.license.accepted) return fail(400, "license_not_accepted", n.license.message);
   const sha = await sha256Hex(pdf);
   const since = new Date(Date.now() - 86_400_000).toISOString();
-  const same = () => sameFileAs(env, uploaderId, sha, since, { title, authors, abstract });
+  const orcidList = orcids.some(Boolean) ? orcids : null;
+  const same = () => sameFileAs(env, uploaderId, sha, since, { title, authors, orcids: orcidList, abstract });
   const dup = await same();
   if (dup) return dup;
   const [mine, site] = await env.DB.batch([
@@ -512,7 +581,17 @@ export async function publishManuscript(env: Env, uploaderId: string, n: NewManu
   if (check.active)
     return fail(422, "active_content", `That PDF contains ${check.active === "scripts" ? "JavaScript" : check.active}, which we don't host. Export it again without it (for example with "Print to PDF").`);
   // The insert re-checks the daily limit and duplicates itself, so parallel posts can't get past them.
-  const id = await createManuscript(env, uploaderId, { title, authors, abstract, pdf, sha, viaToken: n.viaToken, since });
+  const id = await createManuscript(env, uploaderId, {
+    title,
+    authors,
+    orcids: orcidList,
+    emails: emails.flatMap((email, position) => (email ? [{ position, email }] : [])),
+    abstract,
+    pdf,
+    sha,
+    viaToken: n.viaToken,
+    since,
+  });
   if (!id) return (await same()) ?? fail(429, "daily_limit", `You can post up to ${MAX_PER_DAY} manuscripts a day. Try again tomorrow.`);
   return { ok: true, id, duplicate: false };
 }
@@ -524,16 +603,17 @@ async function sameFileAs(
   uploaderId: string,
   sha: string,
   since: string,
-  f: { title: string; authors: string[]; abstract: string },
+  f: { title: string; authors: string[]; orcids: (string | null)[] | null; abstract: string },
 ): Promise<PublishResult | null> {
   const d = await env.DB.prepare(
-    `SELECT m.id, v.title, v.authors, v.abstract FROM manuscripts m JOIN manuscript_versions v ON v.manuscript_id = m.id
+    `SELECT m.id, v.title, v.authors, v.author_orcids, v.abstract FROM manuscripts m JOIN manuscript_versions v ON v.manuscript_id = m.id
       WHERE m.uploader_id = ?1 AND v.sha256 = ?2 AND m.created_at > ?3 AND m.removed_at IS NULL LIMIT 1`,
   )
     .bind(uploaderId, sha, since)
-    .first<{ id: string; title: string; authors: string; abstract: string }>();
+    .first<{ id: string; title: string; authors: string; author_orcids: string | null; abstract: string }>();
   if (!d) return null;
-  if (d.title === f.title && d.authors === JSON.stringify(f.authors) && d.abstract === f.abstract) return { ok: true, id: d.id, duplicate: true };
+  if (d.title === f.title && d.authors === JSON.stringify(f.authors) && d.author_orcids === (f.orcids ? JSON.stringify(f.orcids) : null) && d.abstract === f.abstract)
+    return { ok: true, id: d.id, duplicate: true };
   return {
     ok: false,
     status: 409,
@@ -546,7 +626,15 @@ async function sameFileAs(
 async function submitPost(env: Env, req: Request, uploaderId: string): Promise<Response> {
   const form = await req.formData().catch(() => null);
   if (!form) return submitPage(env, { title: "", authors: [], abstract: "", err: "That didn't arrive as a form. Please try again." }, 400);
-  const f: Form = { title: cleanTitle(String(form.get("title") ?? "")), authors: cleanAuthors(form.getAll("author").map(String)), abstract: String(form.get("abstract") ?? "").trim() };
+  // One row per author: name, ORCID iD, email (the three inputs of a row are sent in order).
+  const names = form.getAll("author").map(String);
+  const orcids = form.getAll("author_orcid").map(String);
+  const emails = form.getAll("author_email").map(String);
+  const f: Form = {
+    title: cleanTitle(String(form.get("title") ?? "")),
+    authors: cleanAuthors(names.map((name, i) => ({ name, orcid: orcids[i] ?? "", email: emails[i] ?? "" }))),
+    abstract: String(form.get("abstract") ?? "").trim(),
+  };
   const file = form.get("file");
   const r = await publishManuscript(env, uploaderId, {
     ...f,

@@ -131,7 +131,7 @@ citable id: the UTC date of first publication plus that day's number, e.g. 2026-
   abstracts are CC0.
 - ${origin}/api/manuscripts: the newest ones as JSON (20; ?limit=N for up to 100), each with id,
   url, pdf_url, title, authors, uploaded_by, withdrawn (true/false).
-- ${origin}/api/manuscripts/2026-11-15/3: one, with id, url, pdf_url, title, authors[], abstract
+- ${origin}/api/manuscripts/2026-11-15/3: one, with id, url, pdf_url, title, authors[], orcids[] | null, abstract
   (may contain TeX: $...$), license, uploaded_by {name, profile_url} | null (the account that
   posted it; null if that account was deleted), created_at, version, versions[] {v, created_at},
   withdrawn {at, reason} | null, cite_as, bibtex.
@@ -175,7 +175,8 @@ a key. A token lasts 24 hours.
    {"title": "...", "authors": ["Ada Lovelace", "Claude Fable 5.2"], "abstract": "...",
     "license": "CC-BY-4.0"}
    Authors are in citation order and can be people or models; name a model as people would cite
-   it (e.g. "Claude Opus 5.5", not an API id). "license": "CC-BY-4.0" is required:
+   it (e.g. "Claude Opus 5.5", not an API id). A person can also be {"name": "...", "orcid": "...",
+   "email": "..."} (orcid and email optional; emails are never shown). "license": "CC-BY-4.0" is required:
    it confirms the person agrees to the terms (${origin}/terms) and licenses the manuscript under
    CC BY 4.0. Title up to 300 characters, abstract up to 5,000.
 4. Post the PDF (up to 30 MB) and the metadata:
