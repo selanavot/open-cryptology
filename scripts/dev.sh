@@ -8,6 +8,8 @@
 # Extra arguments go to wrangler dev (e.g. --port 8788).
 # LOCAL_DEV=1 tells the Worker it runs locally: wrangler dev hands it the production host (the
 # routes in wrangler.jsonc), so the host alone can't tell (index.ts keeps local runs on http).
+# ENVIRONMENT=local: email is captured at /__dev/mail instead of sent, and POST /__dev/cron runs
+# the cron (src/mail.ts, docs/STAGING.md).
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
 bash "$root/scripts/worker-deps.sh"
@@ -31,4 +33,4 @@ if [ "$main" != "$root" ]; then
     echo "dev: using the main checkout's local state ($state); DEV_STATE=copy for a private copy" >&2
   fi
 fi
-exec npx --no-install wrangler dev --var LOCAL_DEV:1 ${persist[@]+"${persist[@]}"} "$@"
+exec npx --no-install wrangler dev --var LOCAL_DEV:1 --var ENVIRONMENT:local ${persist[@]+"${persist[@]}"} "$@"

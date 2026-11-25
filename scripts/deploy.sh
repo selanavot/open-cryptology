@@ -41,6 +41,9 @@ done
 
 root=$(git rev-parse --show-toplevel)
 cd "$root"
+# Production only: an environment selected through the shell (Wrangler reads these) would make
+# every command below act on another Worker. Staging deploys with scripts/deploy-staging.sh.
+unset CLOUDFLARE_ENV WRANGLER_ENV
 [ -f "$config" ] || die "no Wrangler config at $config"
 config=$(cd "$(dirname "$config")" && pwd)/$(basename "$config")
 

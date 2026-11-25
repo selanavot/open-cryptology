@@ -98,7 +98,7 @@ const people = await publicUsers(env, userIds); // names, photos and log-ins for
 | `ORCID_CLIENT_SECRET` | secret | |
 | `ORCID_BASE` | var, optional | `https://sandbox.orcid.org` for testing; default `https://orcid.org` |
 | `AUTH_ORIGIN` | `.dev.vars` only | `http://localhost:8788`: wrangler dev rewrites URLs to the production host |
-| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables made-up accounts, but only with a localhost `AUTH_ORIGIN`: `/auth/dev-login?login=<x>&ghid=<n>`, `/auth/dev-google?sub=<n>&email=<a@b>&name=<n>`, `/auth/dev-orcid?orcid=<iD>&name=<n>`. With `link=1` (and a same-origin click) they add to the signed-in account. Never in production. |
+| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables made-up accounts, but only with a localhost `AUTH_ORIGIN`: `/auth/dev-login?login=<x>&ghid=<n>`, `/auth/dev-google?sub=<n>&email=<a@b>&name=<n>`, `/auth/dev-orcid?orcid=<iD>&name=<n>`. With `link=1` (and a same-origin click) they add to the signed-in account. Also on Access-gated staging (`env.staging`, [STAGING.md](STAGING.md)). Never in production (`worker/test/config.test.ts`). |
 
 Sign-in shows up in the navbar once any provider's client id is set; the sign-in page offers the
 configured ones. Register one GitHub OAuth app for localhost and one for production.

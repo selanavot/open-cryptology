@@ -1,4 +1,5 @@
 import { type Env } from "./db";
+import { maintainerMailReady, sendMail } from "./mail";
 
 // Belt-and-braces alarm for the metadata harvest. The harvest runs on GitHub Actions
 // (.github/workflows/harvest.yml, pipeline/harvest_remote.py), which writes meta.harvest_last_ok
@@ -20,7 +21,7 @@ export async function checkHarvestStaleness(env: Env): Promise<Record<string, un
 
   const lastAlert = meta[LAST_ALERT_KEY] ?? null;
   if (lastAlert && now - Date.parse(lastAlert) < RESEND_EVERY) return { stale: true, alerted: false, lastAlert };
-  if (!env.MAILER || !env.CONTACT_TO || !env.CONTACT_FROM) {
+  if (!maintainerMailReady(env)) {
     console.error("metadata harvest is stale but MAILER/CONTACT_TO/CONTACT_FROM are not configured");
     return { stale: true, alerted: false, reason: "mail not configured" };
   }
@@ -36,9 +37,9 @@ export async function checkHarvestStaleness(env: Env): Promise<Record<string, un
   const age = Number.isFinite(lastOk) ? `${Math.round((now - lastOk) / 3600_000)} hours ago` : "never recorded";
   const repo = env.REPO_URL.replace(/\/$/, "");
   try {
-    await env.MAILER.send({
-      from: { name: `${env.SITE_NAME} monitor`, email: env.CONTACT_FROM },
-      to: env.CONTACT_TO,
+    await sendMail(env, "harvest-stale", {
+      from: { name: `${env.SITE_NAME} monitor`, email: env.CONTACT_FROM! },
+      to: env.CONTACT_TO!,
       subject: `[${env.SITE_NAME}] Metadata harvest is stale`,
       text: [
         `The last successful ePrint metadata harvest was ${age}` +

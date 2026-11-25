@@ -2,8 +2,10 @@ import { turnstileOk, turnstileWidget } from "./turnstile";
 import { type Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage, page } from "./layout";
+import { maintainerMailReady, sendMail } from "./mail";
 
-// Contact form → email to the maintainer via Cloudflare Email Routing (send_email binding).
+// Contact form → email to the maintainer via Cloudflare Email Routing (send_email binding, through
+// sendMail in mail.ts, which captures it instead outside production).
 // The destination address lives in the CONTACT_TO secret (never in git) and must be a verified
 // destination in Email Routing. CONTACT_FROM must be an address on the zone with Email Routing.
 // Spam protection: honeypot, same-origin check, Turnstile, plus a zone rate-limiting rule.
@@ -21,9 +23,7 @@ const MAX_MSG = 5000;
 const PAPER_ID_RE = /^\d{4}\/\d{1,6}$/;
 const EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 
-function contactConfigured(env: Env): boolean {
-  return Boolean(env.MAILER && env.CONTACT_TO && env.CONTACT_FROM);
-}
+const contactConfigured = maintainerMailReady;
 
 /** /contact: the contact form, with a GitHub issue as the alternative. ?paper=2024/123 and
  *  ?topic=help preselect the form. Paper pages link to /contact#paper=2024/123 instead (app.js fills
@@ -110,7 +110,7 @@ export async function handleContact(env: Env, req: Request, url: URL): Promise<R
     message,
   ].filter((l) => l !== "");
   try {
-    await env.MAILER!.send({
+    await sendMail(env, "contact", {
       from: { name: `${env.SITE_NAME} contact form`, email: env.CONTACT_FROM! },
       to: env.CONTACT_TO!,
       ...(email ? { replyTo: email } : {}),
