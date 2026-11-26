@@ -86,6 +86,18 @@ export async function hideComment(env: Env, by: string, id: number, note = ""): 
   return true;
 }
 
+/** Delete a comment's earlier versions (public at /comments/<id>/history), e.g. when an edit took
+ *  out something that must not stay public. Returns how many were deleted. */
+async function clearHistory(env: Env, by: string, id: number, note = ""): Promise<number> {
+  const c = await commentOwner(env, id);
+  if (!c) return 0;
+  const r = await env.DB.batch([
+    env.DB.prepare("DELETE FROM comment_revisions WHERE comment_id = ?1").bind(id),
+    log(env, by, "clear_history", "comment", String(id), c.owner, note),
+  ]);
+  return r[0].meta.changes ?? 0;
+}
+
 async function unhideComment(env: Env, by: string, id: number, note = ""): Promise<boolean> {
   const c = await commentOwner(env, id);
   if (!c || c.state !== "hidden") return false;
@@ -591,7 +603,9 @@ async function commentPage(env: Env, id: number, url: URL): Promise<Response> {
       : text(c.title, c.body)}
     <div class="mod-actions">${commentActions(c, back)}</div>
 
-    ${revisions.length > 0 && html`<h5 class="mt-4">Earlier versions</h5>${revisions.map((r) => html`<p class="small">Until ${when(r.replaced_at)}:</p>${text(r.title, r.body)}`)}`}
+    ${revisions.length > 0 && html`<h5 class="mt-4">Earlier versions <span class="small text-muted">(public at <a href="/comments/${id}/history">/comments/${id}/history</a>)</span></h5>
+    ${revisions.map((r) => html`<p class="small">Until ${when(r.replaced_at)}:</p>${text(r.title, r.body)}`)}
+    <div class="mod-actions">${act("comment", String(id), "clear_history", "Delete earlier versions", back, { confirm: "For good" })}</div>`}
 
     <h5 class="mt-4">Reports</h5>
     ${reports.length
@@ -622,6 +636,7 @@ async function actRoute(env: Env, req: Request, a: Actor): Promise<Response> {
   if (kind === "comment" && /^\d{1,12}$/.test(target)) {
     if (action === "hide") result = (await hideComment(env, by, Number(target), note)) ? "comment hidden" : null;
     if (action === "unhide") result = (await unhideComment(env, by, Number(target), note)) ? "comment restored" : null;
+    if (action === "clear_history" && confirmed) result = (await clearHistory(env, by, Number(target), note)) ? "earlier versions deleted" : null;
   } else if (kind === "manuscript" && MS_ID.test(target)) {
     if (action === "remove" && confirmed) result = (await removeManuscript(env, by, target, form.get("revoke") === "yes", note)).ok ? "manuscript removed" : null;
   } else if (kind === "user" && USER_ID.test(target)) {

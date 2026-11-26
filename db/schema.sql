@@ -350,7 +350,7 @@ CREATE TABLE IF NOT EXISTS mod_log (
   id       INTEGER PRIMARY KEY,
   at       TEXT NOT NULL,
   by       TEXT NOT NULL,                    -- the maintainer's users.id
-  action   TEXT NOT NULL,                    -- hide | unhide | remove | suspend | unsuspend | reset_name | dismiss
+  action   TEXT NOT NULL,                    -- hide | unhide | remove | suspend | unsuspend | reset_name | dismiss | clear_history
   kind     TEXT NOT NULL,                    -- 'comment' | 'manuscript' | 'user'
   target   TEXT NOT NULL,
   subject  TEXT,                             -- the account it concerns (author, uploader, the account itself)
@@ -359,8 +359,8 @@ CREATE TABLE IF NOT EXISTS mod_log (
 CREATE INDEX IF NOT EXISTS mod_log_subject ON mod_log(subject, at);
 CREATE INDEX IF NOT EXISTS mod_log_target ON mod_log(kind, target, at);
 
--- A comment's earlier text, saved each time its author edits it. Maintainers only; deleted with
--- the comment's text when its author deletes it.
+-- A comment's earlier text, saved each time its author edits it. Public (/comments/<id>/history);
+-- deleted with the comment's text when its author deletes it, or by a maintainer (clear_history).
 CREATE TABLE IF NOT EXISTS comment_revisions (
   comment_id  INTEGER NOT NULL,
   replaced_at TEXT NOT NULL,                 -- when this text was replaced by the next

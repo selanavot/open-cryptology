@@ -95,6 +95,35 @@ test("edits keep the earlier text for maintainers; a report keeps a copy if the 
   assert.match(page, /Deleted by its author\. As reported:[\s\S]*Cheap watches/);
 });
 
+test("a comment's edit history is public, until a maintainer deletes the earlier versions", async () => {
+  const { t, author, mod, id } = await setup();
+  assert.doesNotMatch(await t.text("/2025/542"), /\/history/); // not edited: no link
+  await t.form(`/comments/${id}/edit`, { body: "Second text" }, author);
+  await t.form(`/comments/${id}/edit`, { body: "Third text", title: "Retitled" }, author);
+  assert.match(await t.text("/2025/542"), new RegExp(`<a class="cm-edited" href="/comments/${id}/history"`));
+
+  const page = await t.text(`/comments/${id}/history`); // signed out
+  assert.match(page, /Current[\s\S]*Third text[\s\S]*Earlier[\s\S]*Second text[\s\S]*Original[\s\S]*Cheap watches/);
+  assert.match(page, /Retitled[\s\S]*Buy now/);
+  const one = (await (await t.get(`/api/comments/${id}`)).json()) as { history_url: string };
+  assert.match(one.history_url, new RegExp(`/api/comments/${id}/history$`));
+  const j = (await (await t.get(`/api/comments/${id}/history`)).json()) as { versions: { body: string; until: string | null }[] };
+  assert.deepEqual(j.versions.map((v) => v.body), ["Third text", "Second text", "Cheap watches at example.test"]);
+  assert.equal(j.versions[0].until, null);
+
+  let r = await t.form("/review/act", { kind: "comment", target: String(id), action: "clear_history", back: `/review/comments/${id}` }, mod); // no tick
+  assert.match(location(r), /nothing%20changed/);
+  r = await t.form("/review/act", { kind: "comment", target: String(id), action: "clear_history", confirm: "yes", back: `/review/comments/${id}` }, mod);
+  assert.match(location(r), /earlier%20versions%20deleted/);
+  const after = await t.text(`/comments/${id}/history`);
+  assert.doesNotMatch(after, /Cheap watches|Second text/);
+  assert.match(after, /Earlier versions weren’t kept/);
+
+  await t.form(`/comments/${id}/hide`, {}, mod);
+  assert.equal((await t.get(`/comments/${id}/history`)).status, 404);
+  assert.equal((await t.get(`/api/comments/${id}/history`)).status, 404);
+});
+
 test("a suspended account can't post, edit, vote, rename or use agents; unsuspending undoes it", async () => {
   const { t, author, reader, mod, id } = await setup();
   const agent = await t.token(author);
