@@ -21,9 +21,14 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
 - **Adding needs a click on our page:** `link=1` and a same-origin navigation (`Sec-Fetch-Site`), so
   another site can't attach an account to a signed-in browser. A signed-in browser sent to
   `/auth/<provider>` any other way just lands on `/account`.
-- **What we store.** No passwords and no provider access tokens (used once to read the profile).
+- **What we store.** No passwords and no provider access tokens (used only during sign-in).
   For Google we keep the email's domain, shown as "verified @mit.edu" for institutions and as just
   "Google account" for gmail.com. Sessions are stored as SHA-256 hashes only.
+- **Emails.** Each sign-in's verified email goes in `identity_emails` (keyed like `identities`, so
+  merges carry it): Google's, GitHub's primary verified email, or the ORCID record's public verified
+  email (most are private, so many ORCID sign-ins have none). Refreshed at each sign-in; cleared
+  when the provider no longer gives one; deleted with the account. Shown only to its owner on
+  `/account`. Kept for notifications and for recognizing manuscript authors by email later.
 - **Sessions.** The `__Host-oc_session` cookie (HttpOnly, Secure, SameSite=Lax) holds 32 random
   bytes. Expiry is enforced in D1: 30 days from the last use, 180 days at most. "Log out" ends
   this browser's session.
@@ -45,8 +50,8 @@ Tables: the `accounts` section at the end of `db/schema.sql`.
   button on `/account`), else the name from their ORCID, Google or GitHub account, in that order
   (refreshed at each log-in). Names needn't be unique. The photo comes from Google, else GitHub,
   hotlinked (the CSP allows those two hosts); people without one get their initials.
-- **Deletion** keeps a "deleted user" tombstone so content keeps an author; sign-ins and sessions go.
-- **Providers.** GitHub OAuth (no scopes, PKCE); Google OpenID Connect (`openid email profile`,
+- **Deletion** keeps a "deleted user" tombstone so content keeps an author; sign-ins, their emails and sessions go.
+- **Providers.** GitHub OAuth (`user:email`, PKCE); Google OpenID Connect (`openid email profile`,
   PKCE); ORCID public API (`/authenticate`). All three share one code path (`PROVIDERS` in auth.ts).
 
 ## Bot accounts
@@ -89,7 +94,7 @@ const people = await publicUsers(env, userIds); // names, photos and log-ins for
 
 | Name | Where | What |
 |---|---|---|
-| `GITHUB_CLIENT_ID` | var or secret | GitHub OAuth app (no scopes; callback `<origin>/auth/github/callback`) |
+| `GITHUB_CLIENT_ID` | var or secret | GitHub OAuth app (scope `user:email`, requested at sign-in; callback `<origin>/auth/github/callback`) |
 | `GITHUB_CLIENT_SECRET` | secret | |
 | `MAINTAINER_GITHUB_IDS` | var | comma-separated numeric GitHub ids |
 | `GOOGLE_CLIENT_ID` | var or secret | Google OAuth client, type "Web application" (redirect URI `<origin>/auth/google/callback`) |
@@ -98,7 +103,7 @@ const people = await publicUsers(env, userIds); // names, photos and log-ins for
 | `ORCID_CLIENT_SECRET` | secret | |
 | `ORCID_BASE` | var, optional | `https://sandbox.orcid.org` for testing; default `https://orcid.org` |
 | `AUTH_ORIGIN` | `.dev.vars` only | `http://localhost:8788`: wrangler dev rewrites URLs to the production host |
-| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables made-up accounts, but only with a localhost `AUTH_ORIGIN`: `/auth/dev-login?login=<x>&ghid=<n>`, `/auth/dev-google?sub=<n>&email=<a@b>&name=<n>`, `/auth/dev-orcid?orcid=<iD>&name=<n>`. With `link=1` (and a same-origin click) they add to the signed-in account. Never in production. |
+| `AUTH_DEV_LOGIN` | `.dev.vars` only | `1` enables made-up accounts, but only with a localhost `AUTH_ORIGIN`: `/auth/dev-login?login=<x>&ghid=<n>`, `/auth/dev-google?sub=<n>&email=<a@b>&name=<n>`, `/auth/dev-orcid?orcid=<iD>&name=<n>` (the GitHub and ORCID ones take an optional `email=`). With `link=1` (and a same-origin click) they add to the signed-in account. Never in production. |
 
 Sign-in shows up in the navbar once any provider's client id is set; the sign-in page offers the
 configured ones. Register one GitHub OAuth app for localhost and one for production.
