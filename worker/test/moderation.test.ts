@@ -105,6 +105,7 @@ test("a comment's edit history is public, until a maintainer deletes the earlier
   const page = await t.text(`/comments/${id}/history`); // signed out
   assert.match(page, /Current[\s\S]*Third text[\s\S]*Earlier[\s\S]*Second text[\s\S]*Original[\s\S]*Cheap watches/);
   assert.match(page, /Retitled[\s\S]*Buy now/);
+  assert.match(page, new RegExp(`<a class="report-link" href="/report\\?comment=${id}" rel="nofollow" data-login="Log in or create an account to report">Report</a>`));
   const one = (await (await t.get(`/api/comments/${id}`)).json()) as { history_url: string };
   assert.match(one.history_url, new RegExp(`/api/comments/${id}/history$`));
   const j = (await (await t.get(`/api/comments/${id}/history`)).json()) as { versions: { body: string; until: string | null }[] };

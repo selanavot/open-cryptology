@@ -671,7 +671,7 @@ async function historyPage(env: Env, id: number): Promise<Response> {
     cache: "public, max-age=60",
     body: html`<section class="cm-history">
   <h1 class="ms-title">Edit history</h1>
-  <p class="text-muted"><a href="/${c.target}#comment-${c.id}">${top && c.title ? c.title : "A comment"}</a>${p && !p.deleted ? ` by ${p.displayName}` : ""}</p>
+  <p class="text-muted"><a class="tex" href="/${c.target}#comment-${c.id}">${top && c.title ? c.title : "A comment"}</a>${p && !p.deleted ? ` by ${p.displayName}` : ""}</p>
   ${versions.map(
     (v, i) => html`<article class="cm-version">
     <div class="cm-head">${label(v)}<span class="cm-version-when">${i === 0 ? "Current" : i === n - 1 && !h.lost ? "Original" : "Earlier"} · <time datetime="${v.since}">${day(v.since)}</time></span></div>
@@ -679,6 +679,7 @@ async function historyPage(env: Env, id: number): Promise<Response> {
   </article>`,
   )}
   ${h.lost && html`<p class="text-muted small">Earlier versions weren’t kept.</p>`}
+  <a class="report-link" href="${reportHref("comment", String(c.id))}" rel="nofollow" data-login="${REPORT_LOGIN}">Report</a>
 </section>`,
   });
 }
