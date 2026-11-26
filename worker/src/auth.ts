@@ -10,6 +10,7 @@
 import type { Env } from "./db";
 import { html } from "./html";
 import { messagePage } from "./layout";
+import { parseEmail } from "./orcid";
 
 export type Role = "member" | "maintainer";
 
@@ -326,6 +327,31 @@ export interface Verified {
   url: string; // public link, or "" (Google has none)
   name: string; // the person's name there, or ""
   avatar: string; // profile photo URL, or ""
+  /** The email the provider vouches for, lowercased; null when it has none; undefined when we
+   *  couldn't ask (a failed lookup keeps the one stored). Never shown except on /account. */
+  email?: string | null;
+}
+
+/** Store or clear the email a sign-in vouches for (identity_emails). */
+function saveEmail(env: Env, v: Verified): D1PreparedStatement | null {
+  if (v.email === undefined) return null;
+  if (v.email === null)
+    return env.DB.prepare("DELETE FROM identity_emails WHERE provider = ?1 AND provider_user_id = ?2").bind(v.provider, v.providerUserId);
+  return env.DB.prepare(
+    `INSERT INTO identity_emails (provider, provider_user_id, email, updated_at) VALUES (?1, ?2, ?3, ?4)
+     ON CONFLICT (provider, provider_user_id) DO UPDATE SET email = excluded.email, updated_at = excluded.updated_at`,
+  ).bind(v.provider, v.providerUserId, v.email, nowIso());
+}
+
+/** An account's emails, keyed "provider:providerUserId". For its owner's /account page only. */
+export async function accountEmails(env: Env, userId: string): Promise<Map<string, string>> {
+  const { results } = await env.DB.prepare(
+    `SELECT e.provider, e.provider_user_id, e.email FROM identity_emails e
+     JOIN identities i ON i.provider = e.provider AND i.provider_user_id = e.provider_user_id WHERE i.user_id = ?1`,
+  )
+    .bind(userId)
+    .all<{ provider: string; provider_user_id: string; email: string }>();
+  return new Map(results.map((r) => [`${r.provider}:${r.provider_user_id}`, r.email]));
 }
 
 async function identityOwner(env: Env, v: Verified): Promise<string | null> {
@@ -346,15 +372,22 @@ const insertIdentity = (env: Env, v: Verified, userId: string, t: string) =>
  *  name, photo). Returns the user's id. */
 export async function signInWith(env: Env, v: Verified): Promise<string> {
   const owner = await identityOwner(env, v);
+  const email = saveEmail(env, v);
   if (owner) {
-    await env.DB.prepare("UPDATE identities SET handle = ?3, url = ?4, name = ?5, avatar = ?6 WHERE provider = ?1 AND provider_user_id = ?2")
-      .bind(v.provider, v.providerUserId, v.handle, v.url, cleanName(v.name).slice(0, 200), v.avatar.slice(0, 500))
-      .run();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE identities SET handle = ?3, url = ?4, name = ?5, avatar = ?6 WHERE provider = ?1 AND provider_user_id = ?2")
+        .bind(v.provider, v.providerUserId, v.handle, v.url, cleanName(v.name).slice(0, 200), v.avatar.slice(0, 500)),
+      ...(email ? [email] : []),
+    ]);
     return owner;
   }
   const id = randomId();
   const t = nowIso();
-  await env.DB.batch([env.DB.prepare("INSERT INTO users (id, created_at) VALUES (?1, ?2)").bind(id, t), insertIdentity(env, v, id, t)]);
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO users (id, created_at) VALUES (?1, ?2)").bind(id, t),
+    insertIdentity(env, v, id, t),
+    ...(email ? [email] : []),
+  ]);
   return id;
 }
 
@@ -367,7 +400,9 @@ async function identityDone(env: Env, req: Request, v: Verified, mode: "login" |
     if (!me) return authMessage(env, 401, "Logged out", "Log in again, then add the account.", "/account", extraCookies);
     const owner = await identityOwner(env, v);
     if (owner && owner !== me.user.id) return redirect303("/account/merge", [...extraCookies, await offerMerge(env, me.user.id, owner, v)]);
-    if (!owner) await insertIdentity(env, v, me.user.id, nowIso()).run();
+    const email = saveEmail(env, v);
+    const writes = [...(owner ? [] : [insertIdentity(env, v, me.user.id, nowIso())]), ...(email ? [email] : [])];
+    if (writes.length) await env.DB.batch(writes);
     const u = await loadUser(env, me.user.id);
     return redirect303("/account?saved=linked", [...extraCookies, ...(u ? [loginCookie(u)] : [])]);
   }
@@ -536,6 +571,8 @@ export async function handleAuth(req: Request, env: Env, url: URL): Promise<Resp
       const email = q.get("email") ?? "";
       if (/^\d{1,30}$/.test(sub) && /@[a-z0-9.-]+$/i.test(email)) v = googleVerified({ sub, email, name: q.get("name") ?? "", avatar: "" });
     }
+    // dev-login and dev-orcid take an optional email=, as GitHub and ORCID may give one.
+    if (v && v.provider !== "google") v.email = parseEmail(q.get("email") ?? "");
     if (!v) return authMessage(env, 400, "Bad dev sign-in", "See docs/ACCOUNTS.md for the dev sign-in routes.");
     const mode = await startMode(env, req, url);
     if (mode === "signed-in") return redirect303("/account");
@@ -560,13 +597,13 @@ const form = (o: Record<string, string>) => ({
   body: new URLSearchParams(o),
 });
 
-// The providers' access tokens are used at most once, to read the profile, and never stored.
+// The providers' access tokens are used only during sign-in, to read the profile (and email), and never stored.
 const PROVIDERS: Record<Provider, ProviderConfig> = {
   github: {
     ready: (env) => !!(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
     authorize: (env, redirect_uri) => ({
       url: "https://github.com/login/oauth/authorize",
-      params: { client_id: env.GITHUB_CLIENT_ID!, redirect_uri, allow_signup: "true" }, // no scopes: public profile only
+      params: { client_id: env.GITHUB_CLIENT_ID!, redirect_uri, allow_signup: "true", scope: "user:email" }, // public profile + email addresses (read-only)
       pkce: true,
     }),
     async exchange(env, code, code_verifier, redirect_uri) {
@@ -576,13 +613,18 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
       );
       const tok = (await tr.json().catch(() => null)) as { access_token?: string } | null;
       if (!tok?.access_token) return null;
-      const ur = await fetch("https://api.github.com/user", {
-        headers: { authorization: `Bearer ${tok.access_token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": UA },
-      });
+      const gh = (p: string) =>
+        fetch(`https://api.github.com${p}`, {
+          headers: { authorization: `Bearer ${tok.access_token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": UA },
+        });
+      const [ur, er] = await Promise.all([gh("/user"), gh("/user/emails").catch(() => null)]);
       if (!ur.ok) return null;
       const u = (await ur.json()) as { id?: unknown; login?: unknown; name?: unknown; avatar_url?: unknown };
       if (typeof u.id !== "number" || typeof u.login !== "string") return null;
-      return githubVerified({ id: u.id, login: u.login, name: typeof u.name === "string" ? u.name : "", avatar: typeof u.avatar_url === "string" ? u.avatar_url : "" });
+      const v = githubVerified({ id: u.id, login: u.login, name: typeof u.name === "string" ? u.name : "", avatar: typeof u.avatar_url === "string" ? u.avatar_url : "" });
+      // Without the scope (someone declined it, or an old token) /user/emails is a 404: keep what we have.
+      if (er?.ok) v.email = githubEmail(await er.json().catch(() => null));
+      return v;
     },
   },
   google: {
@@ -626,7 +668,12 @@ const PROVIDERS: Record<Provider, ProviderConfig> = {
       );
       // The token response itself carries the iD and the name.
       const j = (await r.json().catch(() => null)) as { orcid?: string; name?: string } | null;
-      return j?.orcid && ORCID_RE.test(j.orcid) ? orcidVerified(j.orcid, j.name ?? "", orcidBase(env)) : null;
+      if (!j?.orcid || !ORCID_RE.test(j.orcid)) return null;
+      const v = orcidVerified(j.orcid, j.name ?? "", orcidBase(env));
+      // The /authenticate scope reads only public data: the record's public emails, if any.
+      const er = await fetch(`${orcidPub(env)}/v3.0/${j.orcid}/email`, { headers: { accept: "application/json", "user-agent": UA } }).catch(() => null);
+      if (er?.ok) v.email = orcidEmail(await er.json().catch(() => null));
+      return v;
     },
   },
 };
@@ -646,6 +693,24 @@ const githubVerified = (gh: { id: number; login: string; name: string; avatar: s
 
 export const ORCID_RE = /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/;
 const orcidBase = (env: Env) => (env.ORCID_BASE || "https://orcid.org").replace(/\/$/, "");
+/** ORCID's public API: pub.orcid.org, or pub.sandbox.orcid.org for the sandbox. */
+const orcidPub = (env: Env) => orcidBase(env).replace("://", "://pub.");
+
+/** GitHub's primary email, if verified (GET /user/emails). */
+export function githubEmail(list: unknown): string | null {
+  if (!Array.isArray(list)) return null;
+  const e = list.find((x) => x && typeof x === "object" && x.primary === true && x.verified === true);
+  return typeof e?.email === "string" ? parseEmail(e.email) : null;
+}
+
+/** An ORCID record's verified email, the primary one first (GET /v3.0/<iD>/email; public only). */
+export function orcidEmail(j: unknown): string | null {
+  const list = (j as { email?: unknown } | null)?.email;
+  if (!Array.isArray(list)) return null;
+  const ok = list.filter((x) => x && typeof x === "object" && x.verified === true && typeof x.email === "string");
+  const e = ok.find((x) => x.primary === true) ?? ok[0];
+  return e ? parseEmail(e.email) : null;
+}
 const orcidVerified = (orcid: string, name: string, base = "https://orcid.org"): Verified => ({
   provider: "orcid",
   providerUserId: orcid,
@@ -664,6 +729,7 @@ const googleVerified = (g: { sub: string; email: string; name: string; avatar: s
   url: "",
   name: g.name,
   avatar: photo(g.avatar),
+  email: parseEmail(g.email), // the callback checks email_verified
 });
 
 /** Consumer mail domains: a Google sign-in from these says nothing about an institution. */
@@ -751,6 +817,9 @@ export async function deleteAccount(env: Env, userId: string): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?1").bind(userId),
     env.DB.prepare("UPDATE api_tokens SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL").bind(userId, nowIso()),
+    env.DB.prepare(
+      "DELETE FROM identity_emails WHERE (provider, provider_user_id) IN (SELECT provider, provider_user_id FROM identities WHERE user_id = ?1)",
+    ).bind(userId),
     env.DB.prepare("DELETE FROM identities WHERE user_id = ?1").bind(userId),
     env.DB.prepare("DELETE FROM comment_votes WHERE user_id = ?1").bind(userId),
     env.DB.prepare("UPDATE users SET custom_name = NULL, deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL").bind(userId, nowIso()),

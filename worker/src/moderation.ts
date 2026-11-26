@@ -429,7 +429,7 @@ async function reportsPage(env: Env, url: URL): Promise<Response> {
       head = c
         ? html`Comment on <a href="/${c.target}#comment-${c.id}">${c.target}</a> by ${name(c.owner)}${stateTag(c.state)} · <a href="/review/comments/${c.id}">details</a>
           <blockquote class="report-quote">${c.title && html`<strong>${c.title}</strong><br>`}<span class="report-text">${excerpt(c.state === "deleted" && snap ? snap.body : c.body)}</span>
-          ${c.edited_at && c.edited_at > rows[rows.length - 1].created_at && html`<footer class="small"><strong>Edited since it was reported.</strong></footer>`}</blockquote>`
+          ${c.edited_at && c.edited_at >= rows[rows.length - 1].created_at && html`<footer class="small"><strong>Edited since it was reported.</strong></footer>`}</blockquote>`
         : html`Comment ${target} (gone)`;
       actions = html`${c?.state === "visible" && act("comment", target, "hide", "Hide", back)}`;
     } else if (kind === "manuscript") {
@@ -661,7 +661,8 @@ export async function handleModeration(req: Request, env: Env, url: URL): Promis
   if (isPost) return messagePage(env, 405, "Method not allowed", html`<p>Use the buttons on the page.</p>`, NO_STORE);
   if (path === "/review/reports") return reportsPage(env, url);
   if (path === "/review/users") {
-    const q = (url.searchParams.get("u") ?? "").trim().replace(/^https?:\/\/[^/]+/, "").replace(/^\/(u|review\/users)\//, "").replace(/[/?#].*$/, "");
+    // A profile link, a review link or a bare id: the last path segment, before any ?query or #hash.
+    const q = (url.searchParams.get("u") ?? "").slice(0, 300).split(/[?#]/)[0].split("/").filter(Boolean).pop() ?? "";
     return USER_RE.test(`/review/users/${q}`) ? redirect303(`/review/users/${q}`) : messagePage(env, 404, "No such account", html`${reviewNav()}<p>That isn’t an account link.</p>`, NO_STORE);
   }
   const um = USER_RE.exec(path);

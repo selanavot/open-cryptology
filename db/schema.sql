@@ -307,6 +307,21 @@ CREATE TABLE IF NOT EXISTS manuscript_author_emails (
 );
 CREATE INDEX IF NOT EXISTS manuscript_author_emails_email ON manuscript_author_emails(email);
 
+-- account emails (2026-11): worker/src/auth.ts. Run on an existing database with:
+--   sed -n '/^-- account emails/,$p' db/schema.sql
+-- (idempotent). The email each log-in method vouches for: Google's, GitHub's primary verified
+-- email (scope user:email), or the ORCID record's public verified email. Refreshed at each sign-in.
+-- Personal data: never shown except to its owner on /account; kept apart from identities so a
+-- SELECT * there can't carry it. Keyed like identities, so it follows them through merges.
+CREATE TABLE IF NOT EXISTS identity_emails (
+  provider          TEXT NOT NULL,
+  provider_user_id  TEXT NOT NULL,
+  email             TEXT NOT NULL,           -- lowercased
+  updated_at        TEXT NOT NULL,
+  PRIMARY KEY (provider, provider_user_id)
+);
+CREATE INDEX IF NOT EXISTS identity_emails_email ON identity_emails(email);
+
 -- moderation (2026-11): worker/src/moderation.ts. Run on an existing database with:
 --   sed -n '/^-- moderation (2026-11)/,$p' db/schema.sql
 -- (the ALTER at the end fails with "duplicate column" if run twice; the CREATEs are idempotent).

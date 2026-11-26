@@ -5,6 +5,7 @@ import type { Env } from "./db";
 import { html, type Html } from "./html";
 import { messagePage, page } from "./layout";
 import {
+  accountEmails,
   type Actor,
   type Identity,
   type MergeOffer,
@@ -61,6 +62,10 @@ export function identityDetail(i: Identity): Html {
   return html`<a href="${i.url}" rel="noopener">${i.handle}</a>`;
 }
 
+/** A log-in method on its owner's /account page: as elsewhere, plus the email it gave us. */
+const identityLine = (i: Identity, email?: string): Html =>
+  !email ? identityDetail(i) : i.provider === "google" ? html`<span>${email}</span>` : html`${identityDetail(i)} · <span>${email}</span>`;
+
 /** Icon + name, e.g. for a row label. */
 export const providerTag = (p: Provider): Html => html`<span class="provider-tag">${PROVIDER_ICON[p]}${PROVIDER_LABEL[p]}</span>`;
 
@@ -110,8 +115,9 @@ interface Notice {
   err?: string;
 }
 
-function accountPage(env: Env, a: Actor, notice: Notice, status = 200): Response {
+async function accountPage(env: Env, a: Actor, notice: Notice, status = 200): Promise<Response> {
   const u = a.user;
+  const emails = await accountEmails(env, u.id);
   const missing = PROVIDERS.filter((p) => !u.identities.some((i) => i.provider === p));
   const order = (i: Identity) => PROVIDERS.indexOf(i.provider);
   return settingsPage(
@@ -152,7 +158,7 @@ ${u.suspended && !notice.err && html`<p class="settings-notice settings-notice-e
     ${[...u.identities].sort((x, y) => order(x) - order(y)).map(
       (i) => html`<li class="acct-row">
       <span class="acct-tile">${PROVIDER_ICON[i.provider]}</span>
-      <span class="acct-main"><span class="acct-label">${PROVIDER_LABEL[i.provider]}</span><span class="acct-sub">${identityDetail(i)}</span></span>
+      <span class="acct-main"><span class="acct-label">${PROVIDER_LABEL[i.provider]}</span><span class="acct-sub">${identityLine(i, emails.get(`${i.provider}:${i.providerUserId}`))}</span></span>
       <span class="acct-state">${check} Connected</span>
     </li>`,
     )}
