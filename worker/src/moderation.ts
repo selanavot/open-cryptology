@@ -30,6 +30,11 @@ const NO_STORE = { cache: "no-store", noindex: true } as const;
 const MS_ID = /^\d{4}-\d{2}-\d{2}\/\d{1,4}$/;
 const USER_ID = /^[a-z0-9-]{4,40}$/;
 
+/** Report links: /report sends signed-out visitors to log in; with JS the log-in pop-up opens in
+ *  place, with this heading (app.js, data-login), and lands on the report form after. */
+export const REPORT_LOGIN = "Log in or create an account to report";
+export const reportHref = (kind: Kind, target: string) => `/report?${kind}=${encodeURIComponent(target)}`;
+
 const nowIso = () => new Date().toISOString();
 const when = (iso: string | null) => (iso ? `${iso.slice(0, 16).replace("T", " ")} UTC` : "");
 const excerpt = (s: string, n = 400) => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s);

@@ -72,7 +72,11 @@ test("review pages and actions are for maintainers only; reporting needs a sign-
   assert.match(await t.text("/2025/542"), /Cheap watches/);
   const r = await t.get(`/report?comment=${id}`);
   assert.equal(r.status, 303);
-  assert.match(location(r), /^\/account\?next=/);
+  assert.match(location(r), /^\/account\?next=%2Freport%3Fcomment%3D/);
+  // Signed-out readers see Report in the menu; it opens the log-in pop-up (data-login).
+  const page = await t.text("/2025/542");
+  assert.match(page, /<details class="cm-menu">/);
+  assert.match(page, new RegExp(`href="/report\\?comment=${id}" rel="nofollow" data-can="other" data-login="Log in or create an account to report">Report`));
 });
 
 test("edits keep the earlier text for maintainers; a report keeps a copy if the author deletes it", async () => {

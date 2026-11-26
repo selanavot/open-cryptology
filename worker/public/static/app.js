@@ -220,8 +220,10 @@
   // - data-login is the pop-up's heading; leave it empty for "Log in or create an account".
   // - After logging in (which creates the account the first time) the person lands back on the
   //   link's ?next=, or on the current page when there is none (or the element isn't a link).
-  // - Keep the href pointing at /account?next=...: it is what works without JS, on a modifier- or
-  //   middle-click, for people already logged in, and on /account itself.
+  //   A link to another page of ours (e.g. Report, /report?comment=12) lands on that page instead.
+  // - Keep the href pointing at /account?next=... (or at a page that sends signed-out visitors to
+  //   log in, like /report): it is what works without JS, on a modifier- or middle-click, for
+  //   people already logged in, and on /account itself.
   // - Clicks are delegated from the document, so elements added later work too.
   // - From script: window.ocLogin(heading, next) opens it (both optional); it returns false when
   //   there is no pop-up on the page (logging in isn't switched on).
@@ -254,7 +256,7 @@
       var next = null;
       if (el.tagName === "A" && el.href) {
         var u = new URL(el.href);
-        if (u.origin === location.origin && u.pathname === "/account") next = u.searchParams.get("next");
+        if (u.origin === location.origin) next = u.pathname === "/account" ? u.searchParams.get("next") : u.pathname + u.search;
       }
       ev.preventDefault();
       open(el.getAttribute("data-login"), next);
