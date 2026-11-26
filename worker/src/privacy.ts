@@ -44,8 +44,9 @@ export function privacyPage(env: Env): Response {
 
   <h4>Comments</h4>
   <p>Comments are public right away, with your name and photo, and we keep when you posted and last
-  edited them. Editing replaces the text. Deleting a comment erases its text; maintainers can hide one
-  instead, keeping the text. Votes on comments are kept with your account so you can change them; pages
+  edited them. Editing replaces the text on the page; maintainers can still see earlier versions. Deleting
+  a comment erases its text and earlier versions; maintainers can hide one instead, keeping the text.
+  A report keeps who sent it and a copy of what was reported. Votes on comments are kept with your account so you can change them; pages
   show only the totals, never who voted, and your votes are deleted with your account.</p>
 
   <h4>Cookies</h4>

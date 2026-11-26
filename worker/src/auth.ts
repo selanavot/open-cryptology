@@ -29,6 +29,7 @@ export interface User {
   avatar: string; // photo from Google or GitHub, or "" (pages show initials)
   role: Role;
   identities: Identity[];
+  suspended: boolean; // a maintainer suspended it (moderation.ts): it can't post, edit, vote or use agents
 }
 export interface Actor {
   user: User;
@@ -196,19 +197,19 @@ const roleOf = (env: Env, ids: Identity[]): Role => {
   return ids.some((i) => i.provider === "github" && m.includes(i.providerUserId)) ? "maintainer" : "member";
 };
 
-function toUser(env: Env, id: string, customName: string | null, botBio: string | null, hasAvatar: number, identities: Identity[]): User {
-  return { id, botBio, displayName: customName || nameFrom(identities), customName, avatar: botBio !== null && hasAvatar ? `/u/${id}/avatar.jpg` : photoFrom(identities), role: roleOf(env, identities), identities };
+function toUser(env: Env, id: string, customName: string | null, botBio: string | null, hasAvatar: number, identities: Identity[], suspended = false): User {
+  return { id, botBio, displayName: customName || nameFrom(identities), customName, avatar: botBio !== null && hasAvatar ? `/u/${id}/avatar.jpg` : photoFrom(identities), role: roleOf(env, identities), identities, suspended };
 }
 
 /** A live (not deleted) user with all identities, or null. */
 export async function loadUser(env: Env, id: string): Promise<User | null> {
   const [u, ids] = await env.DB.batch([
-    env.DB.prepare("SELECT id, custom_name, bot_bio, bot_avatar IS NOT NULL AS has_avatar FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id),
+    env.DB.prepare("SELECT id, custom_name, bot_bio, bot_avatar IS NOT NULL AS has_avatar, suspended_at FROM users WHERE id = ?1 AND deleted_at IS NULL").bind(id),
     env.DB.prepare("SELECT * FROM identities WHERE user_id = ?1 ORDER BY created_at").bind(id),
   ]);
-  const row = (u.results as { id: string; custom_name: string | null; bot_bio: string | null; has_avatar: number }[])[0];
+  const row = (u.results as { id: string; custom_name: string | null; bot_bio: string | null; has_avatar: number; suspended_at: string | null }[])[0];
   if (!row) return null;
-  return toUser(env, row.id, row.custom_name, row.bot_bio, row.has_avatar, (ids.results as unknown as IdentityRow[]).map(toIdentity));
+  return toUser(env, row.id, row.custom_name, row.bot_bio, row.has_avatar, (ids.results as unknown as IdentityRow[]).map(toIdentity), row.suspended_at !== null);
 }
 
 /** Names, photos and sign-ins for many users at once (e.g. bylines), keyed by the ids asked for.
@@ -236,7 +237,7 @@ export async function publicUsers(env: Env, userIds: string[]): Promise<Map<stri
     let p = byId.get(r.id);
     if (!p) {
       p = r.deleted_at
-        ? { id: r.id, displayName: DELETED_NAME, customName: null, botBio: null, avatar: "", role: "member", identities: [], deleted: true }
+        ? { id: r.id, displayName: DELETED_NAME, customName: null, botBio: null, avatar: "", role: "member", identities: [], suspended: false, deleted: true }
         : { ...toUser(env, r.id, r.custom_name, r.bot_bio, r.has_avatar, idsBy.get(r.id) ?? []), deleted: false };
       byId.set(r.id, p);
     }

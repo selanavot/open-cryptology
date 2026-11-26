@@ -816,6 +816,7 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .cm-menu-list form { margin: 0; }
 .cm-menu-item { display: block; width: 100%; padding: .5rem .9rem; border: 0; background: none; font: inherit; font-size: .88rem; text-align: left; color: var(--text); cursor: pointer; }
 .cm-menu-item:hover { background: #f6f5f1; }
+a.cm-menu-item { text-decoration: none; }
 .cm-children { margin-top: .1rem; }
 .cm.is-collapsed > .cm-content > :not(.cm-head) { display: none; }
 .cm.is-collapsed > .cm-gutter > :not(.cm-expand) { display: none; }
@@ -933,3 +934,18 @@ a.cm-sev:hover { text-decoration: underline; }
 .severity-level h4 .cm-flair { font-size: .8rem; padding: .2rem .6rem; }
 .severity-level p, .severity-level ul { margin-bottom: .35rem; }
 .severity-level:target h4 .cm-flair { box-shadow: 0 0 0 .2rem var(--focus); }
+
+/* moderation (moderation.ts): Report links, the report form, maintainer review pages */
+.report-link { display: inline-block; margin-top: .75rem; font-size: .8rem; color: var(--muted); text-decoration: none; }
+.report-link:hover { text-decoration: underline; }
+.report-quote { margin: .5rem 0 1rem; padding: .4rem .8rem; border-left: 3px solid #e5e1d3; overflow-wrap: anywhere; }
+.report-quote footer { margin-top: .2rem; }
+.report-text { white-space: pre-wrap; }
+.report-form fieldset { border: 0; padding: 0; margin: 0; }
+.report-form .acct-check { display: block; }
+.mod-list { padding-left: 1.2rem; }
+.mod-item { margin-bottom: 1.2rem; }
+.mod-reports { margin: .2rem 0 .4rem; }
+.mod-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.mod-act { display: inline-flex; gap: .4rem; align-items: center; margin: 0; }
+.mod-note { width: 14rem; }

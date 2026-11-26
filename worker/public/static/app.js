@@ -693,7 +693,7 @@
         var any = false;
         menu.querySelectorAll("[data-can]").forEach(function (it) {
           var can = it.getAttribute("data-can");
-          it.hidden = !(can === "own" ? own : mod);
+          it.hidden = !(can === "own" ? own : can === "other" ? !own : mod);
           any = any || !it.hidden;
         });
         menu.hidden = !any;
