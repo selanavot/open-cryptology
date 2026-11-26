@@ -794,6 +794,8 @@ a.hm-primary:visited, a.hm-primary:visited:hover { color: #fff; }
 .cm-dot { color: #b0aea6; }
 .cm-time, .cm-time:visited { color: var(--muted); }
 .cm-time:hover { color: var(--text); text-decoration: underline; }
+a.cm-edited, a.cm-edited:visited { color: var(--muted); text-decoration: none; }
+a.cm-edited:hover { color: var(--text); text-decoration: underline; }
 .cm-flair { font-size: .68rem; font-weight: 700; letter-spacing: .02em; padding: .12rem .45rem; border-radius: 999px; line-height: 1.2; }
 .cm-flair-op { color: #8a4b00; background: #fff1d0; }
 .cm-body { font-size: .95rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: break-word; margin: .1rem 0 .15rem; }
@@ -949,3 +951,6 @@ a.cm-sev:hover { text-decoration: underline; }
 .mod-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .mod-act { display: inline-flex; gap: .4rem; align-items: center; margin: 0; }
 .mod-note { width: 14rem; }
+.cm-history .cm-version { padding: .8rem 0; border-top: 1px solid #ece8da; }
+.cm-history .cm-version:first-of-type { border-top: 0; }
+.cm-version-when { color: var(--muted); font-size: .85rem; }

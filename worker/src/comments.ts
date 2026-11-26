@@ -14,13 +14,14 @@
 //
 // Who may do what (checked here; the page only hides controls):
 //   comment, reply      anyone logged in, or their agent (DAILY a day)
-//   edit a comment      its author, or their agent (earlier text isn't kept)
+//   edit a comment      its author, or their agent (earlier versions stay public: /comments/<id>/history)
 //   delete a comment    its author (the text is erased); people only, not agents
 //   hide a comment      maintainers (the text is kept, as a record; moderation.ts logs it)
 //   vote                anyone logged in; people only, not agents
 //   report a comment    anyone logged in (moderation.ts, /report)
 // A suspended account (moderation.ts) can't post, edit or vote; it can still delete its own.
-// Edits keep the earlier text in comment_revisions, for maintainers only; deleting erases it too.
+// Edits keep the earlier text in comment_revisions, shown publicly at /comments/<id>/history (and
+// /api/comments/<id>/history); deleting the comment erases it too, and maintainers can delete it.
 //
 // Pages are publicly cached, so they render the public view only; the forms and buttons are in
 // the HTML but hidden, and app.js reveals them from the oc_login cookie and /api/me.
@@ -32,6 +33,7 @@ import { isAuthFailure, publicUsers, requireUser, type User } from "./auth";
 import { err, json, tokenActor } from "./agentapi";
 import { siteOrigin } from "./seo";
 import { day } from "./pages";
+import { messagePage, page } from "./layout";
 import { hideComment, REPORT_LOGIN, reportHref } from "./moderation";
 import { SEVERITY, SEVERITY_KEYS, severityLevel, severityList, type Severity } from "./severity";
 
@@ -436,7 +438,7 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
     ${line}
   </div>
   <div class="cm-content">
-    <div class="cm-head">${post && c.kind === "issue" ? issueChip(c.severity) : post && c.kind !== "comment" ? html`<span class="cm-flair cm-flair-${c.kind}">${KIND_LABEL[c.kind]}</span>` : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><span class="cm-edited" title="${day(c.edited_at)}">edited</span>` : ""}</div>
+    <div class="cm-head">${post && c.kind === "issue" ? issueChip(c.severity) : post && c.kind !== "comment" ? html`<span class="cm-flair cm-flair-${c.kind}">${KIND_LABEL[c.kind]}</span>` : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><a class="cm-edited" href="/comments/${c.id}/history" rel="nofollow" title="${day(c.edited_at)}: see earlier versions">edited</a>` : ""}</div>
     ${deleted ? html`<div class="cm-body cm-body-gone">Comment deleted</div>` : html`${post && c.title ? html`<h3 class="cm-post-title tex">${c.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(c.body)}</div>
     <div class="cm-actions">
       <form class="cm-vote" method="post" action="/comments/${c.id}/vote">
@@ -529,15 +531,29 @@ const FORM_ACT_RE = /^\/comments\/(\d+)\/(edit|delete|hide|vote)$/;
 const VOTES_RE = new RegExp(`^\\/(?:${PAGE_TARGET})\\/comments\\/votes$`);
 const API_LIST_RE = new RegExp(`^\\/api\\/(?:papers\\/(\\d{4})\\/(\\d{1,6})|manuscripts\\/(\\d{4}-\\d{2}-\\d{2})\\/(\\d{1,4}))\\/comments\\/?$`);
 const API_ONE_RE = /^\/api\/comments\/(\d+)\/?$/;
+/** GET: a comment's versions, newest first (page and JSON). */
+const HISTORY_RE = /^\/comments\/(\d+)\/history$/;
+const API_HISTORY_RE = /^\/api\/comments\/(\d+)\/history\/?$/;
 
 const targetFrom = (m: RegExpExecArray): string => (m[1] ? canonicalId(Number(m[1]), Number(m[2])) : `${m[3]}/${Number(m[4])}`);
 
 export const isCommentsPath = (path: string): boolean =>
-  FORM_NEW_RE.test(path) || FORM_ACT_RE.test(path) || VOTES_RE.test(path) || API_LIST_RE.test(path) || API_ONE_RE.test(path);
+  FORM_NEW_RE.test(path) ||
+  FORM_ACT_RE.test(path) ||
+  VOTES_RE.test(path) ||
+  API_LIST_RE.test(path) ||
+  API_ONE_RE.test(path) ||
+  HISTORY_RE.test(path) ||
+  API_HISTORY_RE.test(path);
 
 export async function handleComments(req: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname;
   const isApi = path.startsWith("/api/");
+  const hm = HISTORY_RE.exec(path) ?? API_HISTORY_RE.exec(path);
+  if (hm) {
+    if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { allow: "GET" } });
+    return isApi ? historyJson(env, url, Number(hm[1])) : historyPage(env, Number(hm[1]));
+  }
   try {
     return isApi ? await api(req, env, url) : await form(req, env, path);
   } catch (e) {
@@ -608,6 +624,82 @@ async function form(req: Request, env: Env, path: string): Promise<Response> {
 
 const fail = (f: Fail) => err(ERRORS[f.error][0], f.error, ERRORS[f.error][1]);
 
+// ---------------------------------------------------------------------------------------------
+// edit history: every version of a visible comment, newest first
+
+interface Version {
+  kind: Kind;
+  title: string | null;
+  severity: Severity | null;
+  body: string;
+  since: string; // when this text was posted or saved
+  until: string | null; // when an edit replaced it; null for the current text
+}
+
+/** A visible comment and its versions (null if it is gone). Edits from before versions were kept
+ *  (2026-11) left nothing behind: then the current text runs from its last edit, and `lost` is set. */
+async function loadHistory(env: Env, id: number): Promise<{ c: Row & { owner: string }; versions: Version[]; lost: boolean } | null> {
+  const c = await getComment(env, id);
+  if (!c || c.state !== "visible") return null;
+  const revs = await env.DB.prepare("SELECT kind, title, severity, body, replaced_at FROM comment_revisions WHERE comment_id = ?1 ORDER BY replaced_at, rowid")
+    .bind(id)
+    .all<{ kind: Kind; title: string | null; severity: Severity | null; body: string; replaced_at: string }>();
+  const lost = !!c.edited_at && !revs.results.length;
+  const versions: Version[] = [];
+  let since = c.created_at;
+  for (const r of revs.results) {
+    versions.push({ kind: r.kind, title: r.title, severity: r.severity, body: r.body, since, until: r.replaced_at });
+    since = r.replaced_at;
+  }
+  versions.push({ kind: c.kind, title: c.title, severity: c.severity, body: c.body, since: lost ? c.edited_at! : since, until: null });
+  return { c, versions: versions.reverse(), lost };
+}
+
+async function historyPage(env: Env, id: number): Promise<Response> {
+  const h = await loadHistory(env, id);
+  if (!h) return messagePage(env, 404, "No such comment", html`<p>That comment was deleted or removed.</p>`);
+  const { c, versions } = h;
+  const p = (await publicUsers(env, [c.user_id])).get(c.user_id);
+  const top = c.reply_to == null;
+  const label = (v: Version) =>
+    top && v.kind === "issue" ? issueChip(v.severity) : top && v.kind !== "comment" ? html`<span class="cm-flair cm-flair-${v.kind}">${KIND_LABEL[v.kind]}</span>` : "";
+  const n = versions.length;
+  return page(env, {
+    title: `Edit history of a comment on ${c.target}`,
+    katex: true,
+    noindex: true,
+    cache: "public, max-age=60",
+    body: html`<section class="cm-history">
+  <h1 class="ms-title">Edit history</h1>
+  <p class="text-muted"><a class="tex" href="/${c.target}#comment-${c.id}">${top && c.title ? c.title : "A comment"}</a>${p && !p.deleted ? ` by ${p.displayName}` : ""}</p>
+  ${versions.map(
+    (v, i) => html`<article class="cm-version">
+    <div class="cm-head">${label(v)}<span class="cm-version-when">${i === 0 ? "Current" : i === n - 1 && !h.lost ? "Original" : "Earlier"} · <time datetime="${v.since}">${day(v.since)}</time></span></div>
+    ${top && v.title ? html`<h3 class="cm-post-title tex">${v.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(v.body)}</div>
+  </article>`,
+  )}
+  ${h.lost && html`<p class="text-muted small">Earlier versions weren’t kept.</p>`}
+  <a class="report-link" href="${reportHref("comment", String(c.id))}" rel="nofollow" data-login="${REPORT_LOGIN}">Report</a>
+</section>`,
+  });
+}
+
+async function historyJson(env: Env, url: URL, id: number): Promise<Response> {
+  const h = await loadHistory(env, id);
+  if (!h) return fail({ error: "not_found" });
+  const origin = siteOrigin(env, url);
+  return json(
+    {
+      id,
+      url: `${origin}/${h.c.target}#comment-${id}`,
+      versions: h.versions.map((v) => ({ title: v.title, kind: v.kind, severity: v.severity, body: v.body, since: v.since, until: v.until })),
+      earlier_versions_lost: h.lost,
+    },
+    200,
+    { "cache-control": "public, max-age=60", "access-control-allow-origin": "*" },
+  );
+}
+
 function personJson(origin: string, p: Person | undefined) {
   return p && !p.deleted ? { name: p.displayName, profile_url: `${origin}/u/${p.id}` } : { name: "deleted user" };
 }
@@ -625,6 +717,7 @@ function commentJson(origin: string, t: Thread, c: Row) {
     score: c.score,
     created_at: c.created_at,
     edited_at: c.edited_at,
+    ...(c.edited_at ? { history_url: `${origin}/api/comments/${c.id}/history` } : {}),
   };
 }
 

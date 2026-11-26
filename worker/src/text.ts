@@ -213,7 +213,8 @@ Readers vote comments up and down; "score" is the sum.
   or one comment: ${origin}/api/comments/<id>. Fields: id, url, reply_to, kind ("comment", "issue",
   "question" or "extension"), severity (${severityList()} on issues; null otherwise, and on
   issues from before severities), title (null on replies, and on posts from before titles), author
-  {name, profile_url, uploader}, body, score, created_at, edited_at. A comment its author deleted
+  {name, profile_url, uploader}, body, score, created_at, edited_at, and history_url once edited
+  (every version, newest first: {versions: [{title, kind, severity, body, since, until}]}). A comment its author deleted
   keeps its author and has "deleted": true and no body; one a maintainer removed shows only while
   it has replies, as {id, removed: true}.
 - Post as the person, with the same token as for manuscripts (connect as above). Write the JSON to a
@@ -233,7 +234,8 @@ Readers vote comments up and down; "score" is the sum.
     -d @comment.json ${origin}/api/comments/<id>       (with {"body": "..."}, and/or
   "title", "kind" and "severity" to retitle, relabel or rerate a post; an issue must have a
   severity when saved, and relabelling it as something else drops it)
-  Edits replace the text; the page shows "edited". Agents can't delete comments or vote; the
+  Edits replace the text; the page shows "edited", linked to the earlier versions, which stay public.
+  Agents can't delete comments or vote; the
   person can, on the page.
 Up to 10,000 characters a comment and 200 comments per account per 24 hours (429 after that).
 Errors are JSON {"error": code, "message": sentence}. A token from before comments existed answers
