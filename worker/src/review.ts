@@ -3,6 +3,7 @@ import { coverageChanged } from "./years";
 import { html } from "./html";
 import { messagePage } from "./layout";
 import { isAuthFailure, redirect303, requireUser } from "./auth";
+import { openReportCount } from "./moderation";
 
 // Maintainer review of uploads that couldn't be verified automatically.
 // /review lists every pending upload (newest first); /review/<uploadId> shows one. Pending uploads
@@ -57,11 +58,13 @@ async function reviewIndex(env: Env, url: URL): Promise<Response> {
   const rows = r.results ?? [];
   const done = url.searchParams.get("done");
   const action = url.searchParams.get("action");
+  const reports = await openReportCount(env);
   return messagePage(
     env,
     200,
     "Uploads waiting for review",
-    html`${done && /^\d{4}\/\d+$/.test(done) && (action === "approved" || action === "rejected")
+    html`<p class="small"><a href="/review/reports">Reports (${reports} open)</a></p>
+    ${done && /^\d{4}\/\d+$/.test(done) && (action === "approved" || action === "rejected")
       ? html`<p class="upload-notice upload-notice-ok" role="status">Upload for <a href="/${done}">${done}</a> ${action}.</p>`
       : ""}
     <p>${rows.length === 0 ? "Nothing is waiting for review." : `${rows.length}${rows.length === 500 ? "+" : ""} pending, newest first.`}</p>

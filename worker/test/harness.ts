@@ -68,7 +68,7 @@ export class FakeD1 {
     this.db.exec("BEGIN");
     try {
       const out = [];
-      for (const s of stmts) out.push(await s.all());
+      for (const s of stmts) out.push(await s.run()); // run(): D1's batch reports meta.changes
       this.db.exec("COMMIT");
       return out;
     } catch (e) {

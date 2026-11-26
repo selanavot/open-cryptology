@@ -1,5 +1,6 @@
 import { apiUpload } from "./apiupload";
 import { handleReview, isReviewPath } from "./review";
+import { handleModeration, isModerationPath } from "./moderation";
 import { notifyReview } from "./quarantine";
 import { contactPage, handleContact } from "./contact";
 import { checkHarvestStaleness } from "./staleness";
@@ -125,6 +126,7 @@ async function route(req: Request, env: Env, ctx: ExecutionContext): Promise<Res
     if (req.method !== "POST") return json({ error: "method_not_allowed", message: "POST the PDF to this URL." }, 405, "no-store");
     return apiUpload(env, req, url, Number(um[1]), Number(um[2]));
   }
+  if (isModerationPath(path)) return handleModeration(req, env, url);
   if (isReviewPath(path)) {
     if (req.method !== "GET" && req.method !== "POST") return methodNotAllowed("GET, POST");
     return handleReview(req, env, url);

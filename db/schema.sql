@@ -321,3 +321,56 @@ CREATE TABLE IF NOT EXISTS identity_emails (
   PRIMARY KEY (provider, provider_user_id)
 );
 CREATE INDEX IF NOT EXISTS identity_emails_email ON identity_emails(email);
+
+-- moderation (2026-11): worker/src/moderation.ts. Run on an existing database with:
+--   sed -n '/^-- moderation (2026-11)/,$p' db/schema.sql
+-- (the ALTER at the end fails with "duplicate column" if run twice; the CREATEs are idempotent).
+
+-- A report from a signed-in person about a comment, an original manuscript or an account. One open
+-- report per person per thing. Closed when a maintainer acts on it or dismisses it; kept after.
+CREATE TABLE IF NOT EXISTS reports (
+  id           INTEGER PRIMARY KEY,
+  kind         TEXT NOT NULL,                -- 'comment' | 'manuscript' | 'user'
+  target       TEXT NOT NULL,                -- comments.id, manuscripts.id or users.id
+  reporter_id  TEXT NOT NULL,                -- users.id
+  reason       TEXT NOT NULL,                -- 'spam' | 'abuse' | 'other'
+  note         TEXT,                         -- the reporter's words, optional
+  snapshot     TEXT,                         -- what was reported, as it read then (survives edits and deletion)
+  created_at   TEXT NOT NULL,
+  closed_at    TEXT,
+  closed_by    TEXT,                         -- the maintainer
+  outcome      TEXT                          -- 'actioned' | 'dismissed'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS reports_once ON reports(kind, target, reporter_id) WHERE closed_at IS NULL;
+CREATE INDEX IF NOT EXISTS reports_open ON reports(closed_at, created_at);
+CREATE INDEX IF NOT EXISTS reports_reporter ON reports(reporter_id, created_at);
+
+-- Every maintainer action: who did what to which thing, and whose it was. Never shown publicly.
+CREATE TABLE IF NOT EXISTS mod_log (
+  id       INTEGER PRIMARY KEY,
+  at       TEXT NOT NULL,
+  by       TEXT NOT NULL,                    -- the maintainer's users.id
+  action   TEXT NOT NULL,                    -- hide | unhide | remove | suspend | unsuspend | reset_name | dismiss
+  kind     TEXT NOT NULL,                    -- 'comment' | 'manuscript' | 'user'
+  target   TEXT NOT NULL,
+  subject  TEXT,                             -- the account it concerns (author, uploader, the account itself)
+  note     TEXT
+);
+CREATE INDEX IF NOT EXISTS mod_log_subject ON mod_log(subject, at);
+CREATE INDEX IF NOT EXISTS mod_log_target ON mod_log(kind, target, at);
+
+-- A comment's earlier text, saved each time its author edits it. Maintainers only; deleted with
+-- the comment's text when its author deletes it.
+CREATE TABLE IF NOT EXISTS comment_revisions (
+  comment_id  INTEGER NOT NULL,
+  replaced_at TEXT NOT NULL,                 -- when this text was replaced by the next
+  kind        TEXT NOT NULL,
+  title       TEXT,
+  severity    TEXT,
+  body        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comment_revisions_comment ON comment_revisions(comment_id, replaced_at);
+
+-- Set while a maintainer has suspended the account: it can still sign in, read, delete its own
+-- comments and delete itself, but not post, edit, vote, rename, merge or use agents.
+ALTER TABLE users ADD COLUMN suspended_at TEXT;

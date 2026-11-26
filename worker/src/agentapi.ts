@@ -89,6 +89,7 @@ export async function tokenActor(env: Env, req: Request, origin: string, scope: 
   // loadUser refuses deleted accounts; merges move tokens to the kept account (auth.ts).
   const user = await loadUser(env, t.user_id);
   if (!user) return unauthorized("token_revoked", "The account behind this token is gone.");
+  if (user.suspended) return err(403, "suspended", "This account is suspended.");
   return { user, token: t };
 }
 

@@ -39,6 +39,9 @@ obtain and search for humans and AI assistants, while respecting each paper's li
 - `/YYYY/NNNN/upload` (POST) — upload (live if verified, else quarantine); `/api/upload/YYYY/NNNN`
   (POST) — the same for agents, JSON: 201 live, 202 queued for review
 - `/review`, `/review/<uploadId>` — maintainer review of quarantined uploads (maintainer log-in, docs/ACCOUNTS.md)
+- `/report` — signed-in people report a comment, original manuscript or account; `/review/reports`,
+  `/review/users/<id>`, `/review/comments/<id>` and `/review/act` (POST) — maintainer moderation:
+  hide, remove, suspend, reset names, every action logged (`worker/src/moderation.ts`)
 - `/api/papers/YYYY/NNNN` — JSON metadata; `/api/search?q=` — JSON search
 - `/missing`, `/api/missing` — papers that need a PDF (missing or outdated), as a page and as JSON
 - `/llms.txt` (guidance for agents), `/robots.txt`, `/support` (hosting costs), `/contact` (POST:

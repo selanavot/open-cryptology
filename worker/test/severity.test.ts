@@ -22,13 +22,15 @@ test("an Issue needs a severity, nothing else may have one", () => {
   assert.deepEqual(checkKind("issue", "", true, "low"), fail("bad_kind"));
 });
 
-// ---- editing, against a D1 stand-in that records the UPDATE
+// ---- editing, against a D1 stand-in that records the UPDATE (the earlier text's INSERT into
+// comment_revisions, batched with it, is ignored here; moderation.test.ts covers it)
 type Updated = { body: string; title: string | null; kind: string; severity: string | null } | null;
 function fakeEnv(): { env: Env; updated: () => Updated } {
   let last: Updated = null;
   const DB = {
     prepare: (sql: string) => ({
       bind: (...a: unknown[]) => ({
+        sql,
         run: async () => {
           assert.match(sql, /^UPDATE comments SET body = \?2, title = \?3, kind = \?4, severity = \?5/);
           last = { body: a[1] as string, title: a[2] as string | null, kind: a[3] as string, severity: a[4] as string | null };
@@ -36,6 +38,10 @@ function fakeEnv(): { env: Env; updated: () => Updated } {
         },
       }),
     }),
+    batch: async (stmts: { sql: string; run: () => Promise<unknown> }[]) => {
+      for (const st of stmts) if (!st.sql.startsWith("INSERT INTO comment_revisions")) await st.run();
+      return [];
+    },
   };
   return { env: { DB } as unknown as Env, updated: () => last };
 }

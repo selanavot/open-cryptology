@@ -108,6 +108,8 @@ const SAVED: Record<string, string> = {
   linked: "Connected.",
 };
 
+const SUSPENDED = "Your account is suspended.";
+
 interface Notice {
   ok?: string;
   err?: string;
@@ -123,6 +125,7 @@ async function accountPage(env: Env, a: Actor, notice: Notice, status = 200): Pr
     "Account settings",
     html`${notice.ok && html`<p class="settings-notice" role="status">${notice.ok}</p>`}
 ${notice.err && html`<p class="settings-notice settings-notice-err" role="alert">${notice.err}</p>`}
+${u.suspended && !notice.err && html`<p class="settings-notice settings-notice-err" role="status">${SUSPENDED}</p>`}
 <header class="settings-head acct-head">
   ${avatar(u, "avatar-lg")}
   <div class="settings-who">
@@ -255,11 +258,13 @@ async function accountPost(env: Env, req: Request): Promise<Response> {
       await dropMerge(env, m.id);
       return redirect303("/account?saved=merge-cancelled", [clearMergeCookie]);
     }
+    if (a.user.suspended || m.other.suspended) return accountPage(env, a, { err: SUSPENDED }, 403);
     await mergeAccounts(env, a.user.id, m.other.id, m.id);
     const u = await loadUser(env, a.user.id);
     return redirect303("/account?saved=merged", [clearMergeCookie, ...(u ? [loginCookie(u)] : [])]);
   }
   if (action === "name") {
+    if (a.user.suspended) return accountPage(env, a, { err: SUSPENDED }, 403);
     const name = form.get("name")?.toString() ?? "";
     const problem = nameProblem(name);
     if (problem) return accountPage(env, a, { err: problem }, 400);

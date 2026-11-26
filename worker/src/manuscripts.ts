@@ -13,7 +13,7 @@ import { avatar, identityDetail, providerTag } from "./account";
 import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type User } from "./auth";
 import { siteOrigin } from "./seo";
 import { inspectPdf } from "./verify";
-import { revokeAgentsOfManuscript } from "./agentapi";
+import { removeManuscript } from "./moderation";
 import { botCommentFeed, commentsSection, loadThread } from "./comments";
 import { orcidLink, parseEmail, parseOrcid } from "./orcid";
 
@@ -285,6 +285,7 @@ ${authors.map((a) => html`<meta name="citation_author" content="${a}">`)}
       <dt>Versions</dt>
       <dd>${metaList(versions.map((x) => html`v${x.v} <small class="text-muted">${dateLong(x.created_at)}</small>`))}</dd>
     </dl>
+    <a class="report-link" href="/report?manuscript=${m.id}" rel="nofollow">Report</a>
   </div>
 </div>
 ${commentsSection(thread, url)}`;
@@ -449,6 +450,7 @@ async function profilePage(env: Env, userId: string, url: URL): Promise<Response
   </header>
   <h5 class="ms-day">Original manuscripts uploaded</h5>
   ${r.results.length ? await rowsHtml(env, r.results) : html`<p class="text-muted">None yet.</p>`}
+  <a class="report-link" href="/report?user=${u.id}" rel="nofollow">Report</a>
 </div>`,
   });
 }
@@ -654,14 +656,7 @@ async function removePost(env: Env, req: Request): Promise<Response> {
   if (isAuthFailure(a)) return messagePage(env, 403, "Maintainers only", html`<p>Removing manuscripts is for maintainers.</p>`, NO_STORE);
   const form = await req.formData();
   const id = String(form.get("id") ?? "").trim().replace(/^https?:\/\/[^/]+\//, "").replace(/^\//, "").replace(/\.pdf$/, "");
-  const files = await env.DB.prepare("SELECT file_key FROM manuscript_versions WHERE manuscript_id = ?1 AND file_key IS NOT NULL").bind(id).all<{ file_key: string }>();
-  const r = await env.DB.batch([
-    env.DB.prepare("UPDATE manuscripts SET removed_at = ?2, removed_by = ?3 WHERE id = ?1 AND removed_at IS NULL").bind(id, new Date().toISOString(), a.user.id),
-    env.DB.prepare("UPDATE manuscript_versions SET body = NULL, file_key = NULL, abstract = '', title = '(removed)' WHERE manuscript_id = ?1 AND EXISTS (SELECT 1 FROM manuscripts WHERE id = ?1 AND removed_by = ?2)").bind(id, a.user.id),
-  ]);
-  const ok = (r[0].meta.changes ?? 0) > 0;
-  if (ok && files.results.length) await env.PDFS.delete(files.results.map((x) => x.file_key));
-  const revoked = form.get("revoke") === "yes" && (await revokeAgentsOfManuscript(env, id));
+  const { ok, revoked } = await removeManuscript(env, a.user.id, id, form.get("revoke") === "yes");
   return messagePage(
     env,
     ok ? 200 : 404,
@@ -719,7 +714,7 @@ function termsPage(env: Env): Response {
     access, or suspend anyone, at any time and for any reason. We'll usually say why.</li>
     <li><strong>Posts stay public otherwise.</strong> You can add versions or withdraw a manuscript, which adds a notice, but earlier versions
     stay readable, as on ePrint and arXiv. Don't post anything you couldn't leave public.</li>
-    <li><strong>Report problems</strong> through the <a href="/contact">contact form</a>. We may share information when the law requires it.</li>
+    <li><strong>Report problems</strong> with the Report link next to them, or through the <a href="/contact">contact form</a>. We may share information when the law requires it.</li>
   </ul>
 
   <h2>Accounts and agents</h2>
@@ -750,6 +745,7 @@ export async function handleManuscripts(req: Request, env: Env, url: URL): Promi
     if (req.method === "POST") {
       const r = await requireUser(env, req);
       if (isAuthFailure(r)) return r.code === "signin" ? redirect303("/account?next=/submit") : messagePage(env, 403, "Rejected", html`<p>Cross-site requests aren't accepted.</p>`, NO_STORE);
+      if (r.user.suspended) return messagePage(env, 403, "Account suspended", html`<p>Your account is suspended.</p>`, NO_STORE);
       return submitPost(env, req, r.user.id);
     }
     if (!isGet) return messagePage(env, 405, "Method not allowed", html`<p>Use the form.</p>`, NO_STORE);

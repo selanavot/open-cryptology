@@ -16,8 +16,11 @@
 //   comment, reply      anyone logged in, or their agent (DAILY a day)
 //   edit a comment      its author, or their agent (earlier text isn't kept)
 //   delete a comment    its author (the text is erased); people only, not agents
-//   hide a comment      maintainers (the text is kept, as a record)
+//   hide a comment      maintainers (the text is kept, as a record; moderation.ts logs it)
 //   vote                anyone logged in; people only, not agents
+//   report a comment    anyone logged in (moderation.ts, /report)
+// A suspended account (moderation.ts) can't post, edit or vote; it can still delete its own.
+// Edits keep the earlier text in comment_revisions, for maintainers only; deleting erases it too.
 //
 // Pages are publicly cached, so they render the public view only; the forms and buttons are in
 // the HTML but hidden, and app.js reveals them from the oc_login cookie and /api/me.
@@ -29,6 +32,7 @@ import { isAuthFailure, publicUsers, requireUser, type User } from "./auth";
 import { err, json, tokenActor } from "./agentapi";
 import { siteOrigin } from "./seo";
 import { day } from "./pages";
+import { hideComment } from "./moderation";
 import { SEVERITY, SEVERITY_KEYS, severityLevel, severityList, type Severity } from "./severity";
 
 export const MAX_BODY = 10_000;
@@ -152,6 +156,7 @@ const ERRORS = {
   not_yours: [403, "Only its author can edit or delete a comment."],
   maintainers: [403, "Only maintainers can do that."],
   removed: [409, "That comment was deleted or hidden."],
+  suspended: [403, "This account is suspended."],
 } as const;
 
 const cleanBody = (s: string) => s.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "").replace(/^\n+|\s+$/g, "");
@@ -186,6 +191,7 @@ async function addComment(
   target: string,
   f: { body: string; replyTo: number | null; tokenId?: string; kind?: string; title?: string; severity?: string },
 ): Promise<{ id: number } | Fail> {
+  if (user.suspended) return { error: "suspended" };
   const body = checkBody(f.body);
   if (typeof body !== "string") return body;
   const k = checkKind(f.kind ?? "", f.title ?? "", !!f.replyTo, f.severity ?? "");
@@ -228,6 +234,7 @@ export async function editComment(
   newSeverity?: string,
 ): Promise<null | Fail> {
   if (c.owner !== user.id) return { error: "not_yours" };
+  if (user.suspended) return { error: "suspended" };
   if (c.state !== "visible") return { error: "removed" };
   const body = checkBody(text);
   if (typeof body !== "string") return body;
@@ -238,10 +245,16 @@ export async function editComment(
   const k = checkKind(kind, untitled ? "-" : title, c.reply_to != null, severity);
   if ("error" in k) return k;
   if (untitled) k.title = null;
-  if (body !== c.body || k.title !== c.title || k.kind !== c.kind || k.severity !== c.severity)
-    await env.DB.prepare("UPDATE comments SET body = ?2, title = ?3, kind = ?4, severity = ?5, edited_at = ?6 WHERE id = ?1")
-      .bind(c.id, body, k.title, k.kind, k.severity, new Date().toISOString())
-      .run();
+  if (body !== c.body || k.title !== c.title || k.kind !== c.kind || k.severity !== c.severity) {
+    const now = new Date().toISOString();
+    // The text being replaced goes to comment_revisions (maintainers only), in the same batch.
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO comment_revisions (comment_id, replaced_at, kind, title, severity, body) SELECT id, ?2, kind, title, severity, body FROM comments WHERE id = ?1 AND state = 'visible'",
+      ).bind(c.id, now),
+      env.DB.prepare("UPDATE comments SET body = ?2, title = ?3, kind = ?4, severity = ?5, edited_at = ?6 WHERE id = ?1").bind(c.id, body, k.title, k.kind, k.severity, now),
+    ]);
+  }
   return null;
 }
 
@@ -249,6 +262,7 @@ export async function editComment(
  *  clears it, like clicking a lit arrow again. Returns the comment's new score and their vote. */
 async function voteComment(env: Env, user: User, c: Row, vote: number, toggle: boolean): Promise<{ score: number; vote: number } | Fail> {
   if (user.botBio !== null) return { error: "bot_vote" };
+  if (user.suspended) return { error: "suspended" };
   if (c.state !== "visible") return { error: "removed" };
   if (![1, 0, -1].includes(vote)) return { error: "bad_vote" };
   const now = new Date();
@@ -286,14 +300,20 @@ async function pageVotes(env: Env, user: User, target: string): Promise<{ scores
   return { scores, mine };
 }
 
-/** Delete your own (the text is erased) or, for maintainers, hide (the text is kept). */
+/** Delete your own (the text and its earlier versions are erased) or, for maintainers, hide (the
+ *  text is kept, and the hide is logged). */
 async function removeComment(env: Env, user: User, c: Row & { owner: string }, how: "delete" | "hide"): Promise<null | Fail> {
   if (how === "delete" && c.owner !== user.id) return { error: "not_yours" };
   if (how === "hide" && user.role !== "maintainer") return { error: "maintainers" };
   if (c.state !== "visible") return null;
-  await env.DB.prepare(`UPDATE comments SET state = ?2, moderated_by = ?3${how === "delete" ? ", body = ''" : ""} WHERE id = ?1`)
-    .bind(c.id, how === "delete" ? "deleted" : "hidden", user.id)
-    .run();
+  if (how === "hide") {
+    await hideComment(env, user.id, c.id);
+    return null;
+  }
+  await env.DB.batch([
+    env.DB.prepare("UPDATE comments SET state = 'deleted', moderated_by = ?2, body = '' WHERE id = ?1 AND state = 'visible'").bind(c.id, user.id),
+    env.DB.prepare("DELETE FROM comment_revisions WHERE comment_id = ?1").bind(c.id),
+  ]);
   return null;
 }
 
@@ -432,6 +452,8 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
           <button type="button" class="cm-menu-item" data-edit data-can="own" hidden>Edit</button>
           <form method="post" action="/comments/${c.id}/delete" data-can="own" hidden><button class="cm-menu-item" type="submit">Delete</button></form>
           <form method="post" action="/comments/${c.id}/hide" data-can="moderate" hidden><button class="cm-menu-item" type="submit">Remove</button></form>
+          <a class="cm-menu-item" href="/report?comment=${c.id}" rel="nofollow" data-can="other" hidden>Report</a>
+          <a class="cm-menu-item" href="/review/comments/${c.id}" rel="nofollow" data-can="moderate" hidden>Moderate</a>
         </div>
       </details>
     </div>`}
@@ -459,6 +481,7 @@ const PAGE_ERRORS: Record<string, string> = {
   removed: "That comment was deleted.",
   not_yours: "You can’t do that.",
   maintainers: "You can’t do that.",
+  suspended: "Your account is suspended.",
 };
 
 /** The comments section of a paper or manuscript page. */
