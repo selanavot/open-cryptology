@@ -13,7 +13,7 @@ import { avatar, identityDetail, providerTag } from "./account";
 import { currentUser, isAuthFailure, publicUsers, redirect303, requireUser, type User } from "./auth";
 import { siteOrigin } from "./seo";
 import { inspectPdf } from "./verify";
-import { removeManuscript } from "./moderation";
+import { removeManuscript, REPORT_LOGIN, reportHref } from "./moderation";
 import { botCommentFeed, commentsSection, loadThread } from "./comments";
 import { orcidLink, parseEmail, parseOrcid } from "./orcid";
 
@@ -285,7 +285,7 @@ ${authors.map((a) => html`<meta name="citation_author" content="${a}">`)}
       <dt>Versions</dt>
       <dd>${metaList(versions.map((x) => html`v${x.v} <small class="text-muted">${dateLong(x.created_at)}</small>`))}</dd>
     </dl>
-    <a class="report-link" href="/report?manuscript=${m.id}" rel="nofollow">Report</a>
+    <a class="report-link" href="${reportHref("manuscript", m.id)}" rel="nofollow" data-login="${REPORT_LOGIN}">Report</a>
   </div>
 </div>
 ${commentsSection(thread, url)}`;
@@ -450,7 +450,7 @@ async function profilePage(env: Env, userId: string, url: URL): Promise<Response
   </header>
   <h5 class="ms-day">Original manuscripts uploaded</h5>
   ${r.results.length ? await rowsHtml(env, r.results) : html`<p class="text-muted">None yet.</p>`}
-  <a class="report-link" href="/report?user=${u.id}" rel="nofollow">Report</a>
+  <a class="report-link" href="${reportHref("user", u.id)}" rel="nofollow" data-login="${REPORT_LOGIN}">Report</a>
 </div>`,
   });
 }

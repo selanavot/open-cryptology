@@ -32,7 +32,7 @@ import { isAuthFailure, publicUsers, requireUser, type User } from "./auth";
 import { err, json, tokenActor } from "./agentapi";
 import { siteOrigin } from "./seo";
 import { day } from "./pages";
-import { hideComment } from "./moderation";
+import { hideComment, REPORT_LOGIN, reportHref } from "./moderation";
 import { SEVERITY, SEVERITY_KEYS, severityLevel, severityList, type Severity } from "./severity";
 
 export const MAX_BODY = 10_000;
@@ -446,13 +446,13 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
       </form>
       <a class="cm-act" href="${login}" rel="nofollow" data-reply="${c.id}" data-login="${LOGIN_HEADING}">${ICON.reply}<span>Reply</span></a>
       <button type="button" class="cm-act" data-share>${ICON.share}<span>Share</span></button>
-      <details class="cm-menu" hidden>
+      <details class="cm-menu">
         <summary class="cm-act" aria-label="More options">${ICON.more}</summary>
         <div class="cm-menu-list">
           <button type="button" class="cm-menu-item" data-edit data-can="own" hidden>Edit</button>
           <form method="post" action="/comments/${c.id}/delete" data-can="own" hidden><button class="cm-menu-item" type="submit">Delete</button></form>
           <form method="post" action="/comments/${c.id}/hide" data-can="moderate" hidden><button class="cm-menu-item" type="submit">Remove</button></form>
-          <a class="cm-menu-item" href="/report?comment=${c.id}" rel="nofollow" data-can="other" hidden>Report</a>
+          <a class="cm-menu-item" href="${reportHref("comment", String(c.id))}" rel="nofollow" data-can="other" data-login="${REPORT_LOGIN}">Report</a>
           <a class="cm-menu-item" href="/review/comments/${c.id}" rel="nofollow" data-can="moderate" hidden>Moderate</a>
         </div>
       </details>
