@@ -125,6 +125,14 @@ test("a comment's edit history is public, until a maintainer deletes the earlier
   assert.equal((await t.get(`/api/comments/${id}/history`)).status, 404);
 });
 
+test("a comment's short link goes to its place on the paper's page", async () => {
+  const { t, id } = await setup();
+  const r = await t.get(`/comments/${id}`);
+  assert.equal(r.status, 301);
+  assert.equal(location(r), `/2025/542#comment-${id}`);
+  assert.equal((await t.get(`/comments/${id + 1000}`)).status, 404);
+});
+
 test("a suspended account can't post, edit, vote, rename or use agents; unsuspending undoes it", async () => {
   const { t, author, reader, mod, id } = await setup();
   const agent = await t.token(author);
