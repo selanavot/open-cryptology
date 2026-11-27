@@ -349,7 +349,7 @@ const svg = (d: string) =>
   raw(`<svg class="cm-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`);
 const ICON = {
   reply: svg("M3.5 4.5h13v9h-7l-4 3v-3h-2z"),
-  share: svg("M10 3v10M6 7l4-4 4 4M4 11v5h12v-5"),
+  link: svg("M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"),
   more: raw(`<svg class="cm-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`),
   plus: svg("M10 5v10M5 10h10"),
   up: svg("M10 16V4.5M5 9.5l5-5 5 5"),
@@ -448,7 +448,7 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
         <button class="cm-act cm-down" name="vote" value="-1" aria-label="Downvote" aria-pressed="false">${ICON.down}</button>
       </form>
       <a class="cm-act" href="${login}" rel="nofollow" data-reply="${c.id}" data-login="${LOGIN_HEADING}">${ICON.reply}<span>Reply</span></a>
-      <button type="button" class="cm-act" data-share>${ICON.share}<span>Share</span></button>
+      <button type="button" class="cm-act" data-share>${ICON.link}<span>Copy link</span></button>
       <details class="cm-menu">
         <summary class="cm-act" aria-label="More options">${ICON.more}</summary>
         <div class="cm-menu-list">

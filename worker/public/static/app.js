@@ -605,6 +605,10 @@
       w.box.setSelectionRange(w.box.value.length, w.box.value.length);
     }
 
+    // Copy link; on phones and tablets, the share sheet instead.
+    var sheet = !!navigator.share && window.matchMedia("(pointer: coarse)").matches;
+    if (sheet) sec.querySelectorAll("[data-share] span").forEach(function (s) { s.textContent = "Share"; });
+
     sec.addEventListener("click", function (e) {
       var el = e.target.closest("[data-reply], [data-share], [data-edit], .cm-line, .cm-expand");
       if (!el) return;
@@ -615,11 +619,10 @@
       } else if (el.matches("[data-share]")) {
         var url = location.origin + location.pathname + "#" + c.id;
         var label = el.querySelector("span");
-        // Phones: the share sheet. Elsewhere: copy the link.
-        if (navigator.share && window.matchMedia("(pointer: coarse)").matches) navigator.share({ url: url }).catch(function () { /* closed */ });
+        if (sheet) navigator.share({ url: url }).catch(function () { /* closed */ });
         else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () {
           label.textContent = "Copied";
-          setTimeout(function () { label.textContent = "Share"; }, 1500);
+          setTimeout(function () { label.textContent = "Copy link"; }, 1500);
         });
       } else if (signedIn) {
         e.preventDefault();
