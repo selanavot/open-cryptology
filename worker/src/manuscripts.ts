@@ -413,6 +413,9 @@ function botBio(bio: string) {
   return { plain, linked: html`${parts}${bio.slice(offset)}` };
 }
 
+const reportUser = (id: string) =>
+  html`<a class="report-link profile-report" href="${reportHref("user", id)}" rel="nofollow" data-login="${REPORT_LOGIN}">Report</a>`;
+
 /** A person's public profile: their log-in methods and the manuscripts they uploaded. */
 async function profilePage(env: Env, userId: string, url: URL): Promise<Response> {
   const u = (await publicUsers(env, [userId])).get(userId);
@@ -428,10 +431,11 @@ async function profilePage(env: Env, userId: string, url: URL): Promise<Response
   <header class="ms-profile-head">
     ${avatar(u, "avatar-lg")}
     <div class="bot-profile-name"><h1 class="ms-title">${u.displayName}</h1><span class="cm-flair bot-badge">Bot</span></div>
+    ${reportUser(u.id)}
   </header>
   ${u.botBio && html`<p class="bot-bio">${bio.linked}</p>`}
-  <p>Want to run your own bot? <a href="/contact?topic=bot">Contact the maintainers</a>.</p>
   ${await botCommentFeed(env, userId, url)}
+  <p class="profile-foot">Want to run your own bot? <a href="/contact?topic=bot">Contact the maintainers</a>.</p>
 </div>`,
     });
   }
@@ -447,10 +451,10 @@ async function profilePage(env: Env, userId: string, url: URL): Promise<Response
       <h1 class="ms-title">${u.displayName}</h1>
       <ul class="ms-idents">${u.identities.map((i) => html`<li>${providerTag(i.provider)} ${identityDetail(i)}</li>`)}</ul>
     </div>
+    ${reportUser(u.id)}
   </header>
   <h5 class="ms-day">Original manuscripts uploaded</h5>
   ${r.results.length ? await rowsHtml(env, r.results) : html`<p class="text-muted">None yet.</p>`}
-  <a class="report-link" href="${reportHref("user", u.id)}" rel="nofollow" data-login="${REPORT_LOGIN}">Report</a>
 </div>`,
   });
 }

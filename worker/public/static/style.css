@@ -627,6 +627,8 @@ ol.year-list .badge { margin-left: .35rem; }
 .ms-flag { font-size: .75rem; border: 1px solid #e0b4b4; color: #a33; border-radius: 1rem; padding: 0 .45rem; }
 .ms-profile { max-width: 46rem; margin: 0 auto; }
 .ms-profile-head { display: flex; gap: 1.1rem; align-items: center; margin-bottom: .5rem; }
+.profile-report { margin: 0 0 0 auto; align-self: flex-start; }
+.profile-foot { margin-top: 2rem; padding-top: .75rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
 .ms-idents { list-style: none; padding: 0; margin: .25rem 0 0; display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; }
 .ms-idents .provider-tag { font-weight: 600; font-size: .9rem; }
 .hm-primary { background: var(--text); color: #fff; padding: .55rem 1.1rem; }

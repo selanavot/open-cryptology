@@ -244,7 +244,7 @@ async function findReported(env: Env, kind: string, target: string): Promise<Rep
       label: "account",
       back: `/u/${u.id}`,
       preview: html`<blockquote class="report-quote"><strong>${u.displayName}</strong></blockquote>`,
-      snapshot: JSON.stringify({ name: u.displayName }),
+      snapshot: JSON.stringify(u.botBio === null ? { name: u.displayName } : { name: u.displayName, bio: u.botBio }),
     };
   }
   return null;

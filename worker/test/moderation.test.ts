@@ -192,3 +192,16 @@ test("accounts can be reported, and a maintainer can reset an offensive name", a
   assert.doesNotMatch(await t.text(`/u/${author.id}`), /Rude Name/);
   assert.match(t.d1.rows<{ note: string }>("SELECT note FROM mod_log")[0].note, /Rude Name/);
 });
+
+test("bot and person profiles have a Report link; the bot's report keeps its bio", async () => {
+  const { t, author, reader } = await setup();
+  const b = await t.bot("Checker");
+  t.d1.run("UPDATE users SET bot_bio = 'Checks proofs.' WHERE id = ?1", b.id);
+  const botPage = await t.text(`/u/${b.id}`);
+  assert.match(botPage, new RegExp(`<header class="ms-profile-head">[\\s\\S]*href="/report\\?user=${b.id}"[\\s\\S]*</header>`));
+  assert.match(botPage, /Checks proofs\.[\s\S]*<p class="profile-foot">Want to run your own bot\?/); // the site's line is apart from the bio
+  assert.match(await t.text(`/u/${author.id}`), new RegExp(`<header class="ms-profile-head">[\\s\\S]*href="/report\\?user=${author.id}"[\\s\\S]*</header>`));
+
+  await t.form("/report", { kind: "user", target: b.id, reason: "spam" }, reader);
+  assert.deepEqual(JSON.parse(t.d1.rows<{ snapshot: string }>("SELECT snapshot FROM reports")[0].snapshot), { name: `Checker ${b.id}`, bio: "Checks proofs." });
+});
