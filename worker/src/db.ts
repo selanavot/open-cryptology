@@ -49,6 +49,8 @@ export interface Env {
   ORCID_CLIENT_SECRET?: string;
   /** https://sandbox.orcid.org for testing; unset = https://orcid.org. */
   ORCID_BASE?: string;
+  /** Analytics Engine: one data point per request (reqlog.ts), queried by scripts/traffic.mjs. */
+  TRAFFIC?: AnalyticsEngineDataset;
 }
 
 export interface Paper {

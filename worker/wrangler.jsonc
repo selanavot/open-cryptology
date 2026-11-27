@@ -28,6 +28,9 @@
   // logRequest (src/reqlog.ts) writes. Cloudflare's automatic invocation logs stay off: they would
   // double the number of log events and add little that the request line doesn't already hold.
   "observability": { "enabled": true, "head_sampling_rate": 1, "logs": { "invocation_logs": false } },
+  // Analytics Engine: the same request line as one data point (src/reqlog.ts dataPoint), kept about
+  // 3 months, for longer traffic questions (scripts/traffic.mjs). Field order is positional.
+  "analytics_engine_datasets": [{ "binding": "TRAFFIC", "dataset": "open_cryptology_requests" }],
   "send_email": [{ "name": "MAILER" }],
   // Upload rate limits per (salted) IP: web form 60/min, agent API 120/min. Daily caps: src/uploadguard.ts.
   "ratelimits": [
