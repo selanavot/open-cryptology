@@ -65,6 +65,8 @@ test("each request is labelled with the kind of client", () => {
   assert.equal(lineFor({ "user-agent": "Mozilla/5.0 (compatible; SERankingBacklinksBot/1.0; +https://seranking.com/backlinks-crawler)" }).client, "crawler");
   assert.equal(lineFor({ "user-agent": "curl/8.7.1" }).client, "script");
   assert.equal(lineFor({ "user-agent": "open-cryptology-backfill/1.0 (local requested backfill)" }).client, "site");
+  assert.equal(lineFor({ "user-agent": "Mozilla/5.0 (compatible; open-cryptology-deploy-check)" }).client, "site");
+  assert.equal(lineFor({ "user-agent": "ExampleBot/1.0 (+https://opencryptology.org)" }).client, "crawler");
 });
 
 test("the sign-in cookie's display name is logged, not the session", () => {
