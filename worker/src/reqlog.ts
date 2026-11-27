@@ -98,7 +98,9 @@ export function requestLine(req: Request, u: URL, status: number, ms: number, re
  */
 export type Client = "site" | "agent" | "crawler" | "person" | "script";
 
-const SITE_UA = /^(open-cryptology|opencryptology)/i;
+// Our tools name themselves "open-cryptology-<tool>", first ("open-cryptology-pipeline/0.1 ...") or
+// inside a browser-style user-agent ("Mozilla/5.0 (compatible; open-cryptology-deploy-check)").
+const SITE_UA = /(?:^|[\s;(])open-?cryptology(?:-|\/|$)/i;
 const AGENTS: Array<[RegExp, string]> = [
   [/ChatGPT-User|ChatGPT Agent/i, "chatgpt"],
   [/Claude-User|Claude-Web/i, "claude"],
