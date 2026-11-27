@@ -100,11 +100,12 @@
     });
   }
 
-  // Links to /YYYY/NNNN#upload: TeX rendering can shift the layout after the browser's initial
-  // jump to the upload box, so jump again (and once more on load, unless the reader has scrolled).
-  function scrollToUpload() {
-    if (location.hash !== "#upload") return;
-    var f = document.getElementById("upload");
+  // Links to /YYYY/NNNN#upload or #comment-N: TeX rendering can shift the layout after the
+  // browser's initial jump, so jump again (and once more on load, unless the reader has scrolled).
+  function scrollToHash() {
+    var id = location.hash.slice(1);
+    if (id !== "upload" && !/^comment-\d+$/.test(id)) return;
+    var f = document.getElementById(id);
     if (!f) return;
     f.scrollIntoView({ block: "start" });
     var y = window.scrollY;
@@ -614,7 +615,9 @@
       } else if (el.matches("[data-share]")) {
         var url = location.origin + location.pathname + "#" + c.id;
         var label = el.querySelector("span");
-        if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () {
+        // Phones: the share sheet. Elsewhere: copy the link.
+        if (navigator.share && window.matchMedia("(pointer: coarse)").matches) navigator.share({ url: url }).catch(function () { /* closed */ });
+        else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () {
           label.textContent = "Copied";
           setTimeout(function () { label.textContent = "Share"; }, 1500);
         });
@@ -641,6 +644,21 @@
         thread.setAttribute("data-show", b.getAttribute("data-filter"));
       });
     }
+
+    // A link to a comment in a folded thread or one the filter hides: unfold it, show All.
+    window.addEventListener("hashchange", function () {
+      var m = /^#(comment-\d+)$/.exec(location.hash);
+      var c = m && document.getElementById(m[1]);
+      if (!c || !sec.contains(c)) return;
+      for (var p = c; p && p !== sec; p = p.parentElement) {
+        if (!p.classList.contains("is-collapsed")) continue;
+        p.classList.remove("is-collapsed");
+        p.querySelector(".cm-expand").hidden = true;
+      }
+      var all = filters && filters.querySelector('.cm-filter[data-filter=""]');
+      if (all && !c.getClientRects().length) all.click();
+      c.scrollIntoView({ block: "start" });
+    });
 
     // Votes. The arrows are forms, so they work without this; here they vote in place. Signed
     // out, they open the log-in pop-up.
@@ -707,7 +725,7 @@
   renderTex();
   setupAccountLink();
   setupLoginDialog();
-  scrollToUpload();
+  scrollToHash();
   setupGridNav();
   setupCopy();
   setupUpload();

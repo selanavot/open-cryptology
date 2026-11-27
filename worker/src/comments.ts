@@ -22,6 +22,7 @@
 // A suspended account (moderation.ts) can't post, edit or vote; it can still delete its own.
 // Edits keep the earlier text in comment_revisions, shown publicly at /comments/<id>/history (and
 // /api/comments/<id>/history); deleting the comment erases it too, and maintainers can delete it.
+// A comment's link is /<target>#comment-<id>; /comments/<id> redirects there.
 //
 // Pages are publicly cached, so they render the public view only; the forms and buttons are in
 // the HTML but hidden, and app.js reveals them from the oc_login cookie and /api/me.
@@ -533,6 +534,7 @@ const API_LIST_RE = new RegExp(`^\\/api\\/(?:papers\\/(\\d{4})\\/(\\d{1,6})|manu
 const API_ONE_RE = /^\/api\/comments\/(\d+)\/?$/;
 /** GET: a comment's versions, newest first (page and JSON). */
 const HISTORY_RE = /^\/comments\/(\d+)\/history$/;
+const LINK_RE = /^\/comments\/(\d+)\/?$/;
 const API_HISTORY_RE = /^\/api\/comments\/(\d+)\/history\/?$/;
 
 const targetFrom = (m: RegExpExecArray): string => (m[1] ? canonicalId(Number(m[1]), Number(m[2])) : `${m[3]}/${Number(m[4])}`);
@@ -544,6 +546,7 @@ export const isCommentsPath = (path: string): boolean =>
   API_LIST_RE.test(path) ||
   API_ONE_RE.test(path) ||
   HISTORY_RE.test(path) ||
+  LINK_RE.test(path) ||
   API_HISTORY_RE.test(path);
 
 export async function handleComments(req: Request, env: Env, url: URL): Promise<Response> {
@@ -553,6 +556,14 @@ export async function handleComments(req: Request, env: Env, url: URL): Promise<
   if (hm) {
     if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { allow: "GET" } });
     return isApi ? historyJson(env, url, Number(hm[1])) : historyPage(env, Number(hm[1]));
+  }
+  const lm = LINK_RE.exec(path);
+  if (lm) {
+    // A comment's short link: its place on the paper's page.
+    if (req.method !== "GET" && req.method !== "HEAD") return new Response(null, { status: 405, headers: { allow: "GET" } });
+    const c = await getComment(env, Number(lm[1]));
+    if (!c) return messagePage(env, 404, "No such comment", html`<p>That comment was deleted or removed.</p>`);
+    return new Response(null, { status: 301, headers: { location: `/${c.target}#comment-${c.id}` } });
   }
   try {
     return isApi ? await api(req, env, url) : await form(req, env, path);

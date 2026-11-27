@@ -822,8 +822,10 @@ a.cm-menu-item { text-decoration: none; }
 .cm-children { margin-top: .1rem; }
 .cm.is-collapsed > .cm-content > :not(.cm-head) { display: none; }
 .cm.is-collapsed > .cm-gutter > :not(.cm-expand) { display: none; }
-.cm:target > .cm-content > .cm-body { animation: cm-flash 2.5s ease-out; border-radius: .3rem; }
-@keyframes cm-flash { from { background: #fff4cc; } to { background: transparent; } }
+/* A linked comment (#comment-N) lands below the fixed navbar and stays marked. */
+.cm { scroll-margin-top: calc(var(--nav-h) + 1rem); }
+.cm:target > .cm-content > .cm-post-title,
+.cm:target > .cm-content > .cm-body { background: #fff6d6; box-shadow: 0 0 0 .3rem #fff6d6; border-radius: .2rem; animation: cm-flash 1.5s ease-out; }@keyframes cm-flash { from { background: #ffe9a3; box-shadow: 0 0 0 .3rem #ffe9a3; } }
 @media (max-width: 575.98px) {
   .cm { grid-template-columns: 1.5rem 1fr; column-gap: .4rem; }
   .cm-gutter .avatar-xs, .cm-expand { width: 1.5rem; height: 1.5rem; }
