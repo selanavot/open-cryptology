@@ -17,10 +17,11 @@ export function privacyPage(env: Env): Response {
   <h4>Reading the site</h4>
   <p>You don't need an account to read or download papers. The site uses Cloudflare Web Analytics,
   which counts page views without cookies, and Cloudflare (our host) keeps its usual short-lived
-  request logs. For seven days we also keep a log line for each request: the address you asked for
-  (including search terms), your IP address, network and approximate location, your browser's
-  user-agent and language, and the page that linked you here. We use it to understand how the site
-  is used and to tell readers from crawlers.</p>
+  request logs. We also keep a record of each request for about three months: the address you
+  asked for (including search terms), your IP address, network and approximate location, your
+  browser's user-agent and language, the page that linked you here, and, if you are signed in, the
+  name shown on your account. We use it to understand how the site is used, by people and by the AI
+  assistants they send, and to tell readers from crawlers.</p>
 
   <h4>Accounts</h4>
   <p>You sign in with GitHub, Google or ORCID. We never see your password, and we don't keep the

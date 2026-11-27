@@ -210,7 +210,7 @@ export default {
       if (host.startsWith("www.")) to.hostname = host.slice(4);
       if (!local) to.protocol = "https:";
       const isGet = req.method === "GET" || req.method === "HEAD";
-      logRequest(req, u, isGet ? 301 : 308, 0);
+      logRequest(env, req, u, isGet ? 301 : 308, 0);
       return Response.redirect(to.toString(), isGet ? 301 : 308);
     }
     // Private-preview gate: while REQUIRE_ACCESS=1, only serve requests that came through
@@ -221,7 +221,7 @@ export default {
       env.REQUIRE_ACCESS === "1" &&
       (!host.endsWith(".workers.dev") || !req.headers.get("cf-access-jwt-assertion"))
     ) {
-      logRequest(req, u, 403, 0);
+      logRequest(env, req, u, 403, 0);
       return new Response("Private preview.\n", {
         status: 403,
         headers: { "content-type": "text/plain", "cache-control": "no-store", "x-robots-tag": "noindex" },
@@ -230,12 +230,12 @@ export default {
     const https = u.protocol === "https:" && !local;
     try {
       const res = bodyTooLarge(req, u.pathname) ?? (await route(req, env, ctx));
-      logRequest(req, u, res.status, Date.now() - t0, res);
+      logRequest(env, req, u, res.status, Date.now() - t0, res);
       if (req.method === "HEAD" && res.body) return withBaseHeaders(new Response(null, res), https);
       return withBaseHeaders(res, https);
     } catch (e) {
       console.error("unhandled", req.method, req.url, e instanceof Error ? e.stack : String(e));
-      logRequest(req, u, 500, Date.now() - t0);
+      logRequest(env, req, u, 500, Date.now() - t0);
       return withBaseHeaders(messagePage(
         env,
         500,
