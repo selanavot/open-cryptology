@@ -436,7 +436,7 @@
     sec.querySelectorAll(".cm").forEach(function (c) {
       var b = c.querySelector(":scope > .cm-content > .cm-body");
       if (b) raw[c.id] = b.textContent;
-      var h = c.querySelector(":scope > .cm-content > .cm-post-title");
+      var h = c.querySelector(":scope > .cm-content > .cm-post-title > .cm-post-text");
       if (h) rawTitle[c.id] = h.textContent;
     });
     sec.querySelectorAll(".cm-time time").forEach(function (t) {

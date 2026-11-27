@@ -91,7 +91,7 @@ test("a posted Issue's chip shows its severity and links to the levels", () => {
   } as unknown as Thread;
   const h = String(commentsSection(t, new URL("https://x.test/2024/123")));
   assert.match(h, /id="comment-1" data-kind="issue" data-severity="critical"/);
-  assert.match(h, /<a class="cm-flair cm-flair-issue cm-sev cm-sev-critical" href="\/severity#critical"[^>]*>Issue · Critical<\/a>/);
+  assert.match(h, /<a class="cm-flair cm-flair-issue cm-sev cm-sev-critical" href="\/severity#critical"[^>]*>Critical issue<\/a><span class="cm-post-text tex">Broken<\/span><\/h3>/);
   assert.match(h, /id="comment-2" data-kind="issue" data-owner/); // from before severities: no attribute
   assert.match(h, /<span class="cm-flair cm-flair-issue">Issue<\/span>/);
   assert.doesNotMatch(h, /id="comment-3"[^>]*data-severity/);

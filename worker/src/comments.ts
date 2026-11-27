@@ -392,15 +392,26 @@ function composer(action: string, o: { submit: string; replyTo?: number; value?:
 
 function flairs(t: Thread, p: Person): Html {
   // The maintainer role works (remove) but isn't shown: no public mods for now.
-  return html`${p.botBio !== null && html`<span class="cm-flair bot-badge">Bot</span>`}${p.id === t.uploader ? html`<span class="cm-flair cm-flair-op" title="Uploaded this manuscript">OP</span>` : ""}`;
+  return html`${p.botBio !== null && html`<span class="cm-flair cm-flair-bot">Bot</span>`}${p.id === t.uploader ? html`<span class="cm-flair cm-flair-op" title="Uploaded this manuscript">OP</span>` : ""}`;
 }
 
 /** An Issue's chip: with its severity, linked to what the level means. */
 function issueChip(severity: string | null): Html {
   const l = severityLevel(severity);
   return l
-    ? html`<a class="cm-flair cm-flair-issue cm-sev cm-sev-${l.key}" href="/severity#${l.key}" title="${l.label}: ${l.short} (What the levels mean)">Issue · ${l.label}</a>`
+    ? html`<a class="cm-flair cm-flair-issue cm-sev cm-sev-${l.key}" href="/severity#${l.key}" title="${l.label}: ${l.short} (What the levels mean)">${l.label} issue</a>`
     : html`<span class="cm-flair cm-flair-issue">${KIND_LABEL.issue}</span>`;
+}
+
+/** A post's label (nothing for a plain comment). */
+function kindChip(kind: Kind, severity: string | null): Html | "" {
+  return kind === "issue" ? issueChip(severity) : kind !== "comment" ? html`<span class="cm-flair cm-flair-${kind}">${KIND_LABEL[kind]}</span>` : "";
+}
+
+/** A post's title, its label in front: the header line then says who, the title line what.
+ *  app.js reads the title's text from .cm-post-text. */
+function postTitle(kind: Kind, severity: string | null, title: string): Html {
+  return html`<h3 class="cm-post-title">${kindChip(kind, severity)}<span class="cm-post-text tex">${title}</span></h3>`;
 }
 
 function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<number>, depth: number): Html[] {
@@ -439,8 +450,8 @@ function commentHtml(t: Thread, c: Row, kids: Map<number, Row[]>, keep: Set<numb
     ${line}
   </div>
   <div class="cm-content">
-    <div class="cm-head">${post && c.kind === "issue" ? issueChip(c.severity) : post && c.kind !== "comment" ? html`<span class="cm-flair cm-flair-${c.kind}">${KIND_LABEL[c.kind]}</span>` : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><a class="cm-edited" href="/comments/${c.id}/history" rel="nofollow" title="${day(c.edited_at)}: see earlier versions">edited</a>` : ""}</div>
-    ${deleted ? html`<div class="cm-body cm-body-gone">Comment deleted</div>` : html`${post && c.title ? html`<h3 class="cm-post-title tex">${c.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(c.body)}</div>
+    <div class="cm-head">${post && !c.title ? kindChip(c.kind, c.severity) : ""}${live ? html`<a class="cm-name" href="/u/${live.id}">${live.displayName}</a>${flairs(t, live)}` : html`<span class="cm-name cm-name-gone">deleted user</span>`}<span class="cm-dot">·</span>${time}${c.edited_at && !deleted ? html`<span class="cm-dot">·</span><a class="cm-edited" href="/comments/${c.id}/history" rel="nofollow" title="${day(c.edited_at)}: see earlier versions">edited</a>` : ""}</div>
+    ${deleted ? html`<div class="cm-body cm-body-gone">Comment deleted</div>` : html`${post && c.title ? postTitle(c.kind, c.severity, c.title) : ""}<div class="cm-body tex">${bodyHtml(c.body)}</div>
     <div class="cm-actions">
       <form class="cm-vote" method="post" action="/comments/${c.id}/vote">
         <button class="cm-act cm-up" name="vote" value="1" aria-label="Upvote" aria-pressed="false">${ICON.up}</button>
@@ -672,8 +683,6 @@ async function historyPage(env: Env, id: number): Promise<Response> {
   const { c, versions } = h;
   const p = (await publicUsers(env, [c.user_id])).get(c.user_id);
   const top = c.reply_to == null;
-  const label = (v: Version) =>
-    top && v.kind === "issue" ? issueChip(v.severity) : top && v.kind !== "comment" ? html`<span class="cm-flair cm-flair-${v.kind}">${KIND_LABEL[v.kind]}</span>` : "";
   const n = versions.length;
   return page(env, {
     title: `Edit history of a comment on ${c.target}`,
@@ -685,8 +694,8 @@ async function historyPage(env: Env, id: number): Promise<Response> {
   <p class="text-muted"><a class="tex" href="/${c.target}#comment-${c.id}">${top && c.title ? c.title : "A comment"}</a>${p && !p.deleted ? ` by ${p.displayName}` : ""}</p>
   ${versions.map(
     (v, i) => html`<article class="cm-version">
-    <div class="cm-head">${label(v)}<span class="cm-version-when">${i === 0 ? "Current" : i === n - 1 && !h.lost ? "Original" : "Earlier"} · <time datetime="${v.since}">${day(v.since)}</time></span></div>
-    ${top && v.title ? html`<h3 class="cm-post-title tex">${v.title}</h3>` : ""}<div class="cm-body tex">${bodyHtml(v.body)}</div>
+    <div class="cm-head">${top && !v.title ? kindChip(v.kind, v.severity) : ""}<span class="cm-version-when">${i === 0 ? "Current" : i === n - 1 && !h.lost ? "Original" : "Earlier"} · <time datetime="${v.since}">${day(v.since)}</time></span></div>
+    ${top && v.title ? postTitle(v.kind, v.severity, v.title) : ""}<div class="cm-body tex">${bodyHtml(v.body)}</div>
   </article>`,
   )}
   ${h.lost && html`<p class="text-muted small">Earlier versions weren’t kept.</p>`}
